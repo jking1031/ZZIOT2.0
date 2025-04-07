@@ -38,11 +38,7 @@ function SiteDetailScreen({ route, navigation }) {
   const heartbeatIntervalRef = useRef(globalHeartbeatRef.current);
   const reconnectTimeoutRef = useRef(globalReconnectTimeoutRef.current);
 
-  // 添加flow引用作为组件状态
-  const [wsStatusTimeout, setWsStatusTimeout] = useState(null);
-
-  // 首先声明fetchSiteDetailHttp函数
-  const fetchSiteDetailHttp = useCallback(async () => {
+  const fetchSiteDetail = useCallback(async () => {
     if (controllerRef.current) {
       controllerRef.current.abort();
     }
@@ -51,6 +47,7 @@ function SiteDetailScreen({ route, navigation }) {
     controllerRef.current = controller;
 
     try {
+      console.log('开始获取站点详情数据...');
       const response = await axios.get(`https://nodered.jzz77.cn:9003/api/sites/site/${siteId}`, {
         signal: controller.signal,
         timeout: 10000
@@ -67,43 +64,12 @@ function SiteDetailScreen({ route, navigation }) {
       }
     } catch (error) {
       if (axios.isCancel(error)) {
-        // 请求被取消，不需要记录日志
+        console.log('请求被取消');
       } else {
         console.error('获取站点数据失败:', error);
       }
     }
   }, [siteId]);
-
-  // 然后声明fetchSiteDetail函数
-  const fetchSiteDetail = useCallback(async () => {
-    // 如果WebSocket已连接，优先通过WebSocket请求最新状态
-    if (wsConnected && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      try {
-        wsRef.current.send(JSON.stringify({
-          type: 'get_device_status',
-          siteId,
-          timestamp: Date.now()
-        }));
-        
-        // 设置短暂的超时，如果WebSocket响应太慢则回退到HTTP
-        const timeout = setTimeout(() => {
-          fetchSiteDetailHttp();
-        }, 5000); // 5秒超时
-        
-        // 保存超时引用以便取消
-        setWsStatusTimeout(timeout);
-        
-        // 直接返回，等待WebSocket推送
-        return;
-      } catch (e) {
-        console.error('通过WebSocket请求设备状态失败:', e);
-        // 失败时继续使用HTTP
-      }
-    }
-    
-    // WebSocket不可用或请求失败时，使用HTTP API
-    fetchSiteDetailHttp();
-  }, [siteId, wsConnected, wsRef, fetchSiteDetailHttp]);
 
   const startDataFetching = useCallback(() => {
     // 避免重复调用
@@ -129,198 +95,32 @@ function SiteDetailScreen({ route, navigation }) {
     }
   }, []);
 
-  // 修改心跳机制使用全局引用
-  const setupHeartbeat = useCallback(() => {
-    if (globalHeartbeatRef.current) {
-      clearInterval(globalHeartbeatRef.current);
-    }
-    
-    globalHeartbeatRef.current = setInterval(() => {
-      if (globalWSRef.current && globalWSRef.current.readyState === WebSocket.OPEN) {
-        try {
-          globalWSRef.current.send(JSON.stringify({ 
-            type: 'ping', 
-            timestamp: Date.now(),
-            siteId,
-            clientId: `mobile_${Platform.OS}_${Math.random().toString(36).substring(7)}`
-          }));
-        } catch (e) {
-          console.error('发送心跳失败:', e);
-          // 心跳失败，尝试重新连接
-          if (globalWSRef.current) {
-            globalWSRef.current.close();
-          }
-        }
-      }
-    }, 15000); // 降低到15秒发送一次心跳
-    
-    heartbeatIntervalRef.current = globalHeartbeatRef.current;
-  }, [siteId]);
-  
-  // 处理设备状态更新
-  const handleDeviceStatusUpdate = useCallback((data) => {
-    // 处理设备运行状态更新
-    if (data.devices && Array.isArray(data.devices)) {
-      setDevices(prevDevices => {
-        // 创建设备映射，提高更新效率
-        const deviceMap = {};
-        prevDevices.forEach(device => {
-          deviceMap[device.name] = device;
-        });
-        
-        // 将新状态合并到映射中
-        data.devices.forEach(updatedDevice => {
-          if (deviceMap[updatedDevice.name]) {
-            deviceMap[updatedDevice.name] = { ...deviceMap[updatedDevice.name], ...updatedDevice };
-          } else {
-            // 如果是新设备，直接添加
-            deviceMap[updatedDevice.name] = updatedDevice;
-          }
-        });
-        
-        // 转换回数组
-        return Object.values(deviceMap);
-      });
-    }
-    
-    // 处理阀门状态更新
-    if (data.valves && Array.isArray(data.valves)) {
-      setIsValve(prevValves => {
-        // 创建阀门映射
-        const valveMap = {};
-        prevValves.forEach(valve => {
-          valveMap[valve.name] = valve;
-        });
-        
-        // 合并新状态
-        data.valves.forEach(updatedValve => {
-          if (valveMap[updatedValve.name]) {
-            valveMap[updatedValve.name] = { ...valveMap[updatedValve.name], ...updatedValve };
-          } else {
-            valveMap[updatedValve.name] = updatedValve;
-          }
-        });
-        
-        return Object.values(valveMap);
-      });
-    }
-    
-    // 处理频率设备更新
-    if (data.frequencies && Array.isArray(data.frequencies)) {
-      setDeviceFrequency(prevFreq => {
-        // 创建频率设备映射
-        const freqMap = {};
-        prevFreq.forEach(freq => {
-          freqMap[freq.name] = freq;
-        });
-        
-        // 合并新状态
-        data.frequencies.forEach(updatedFreq => {
-          if (freqMap[updatedFreq.name]) {
-            freqMap[updatedFreq.name] = { ...freqMap[updatedFreq.name], ...updatedFreq };
-          } else {
-            freqMap[updatedFreq.name] = updatedFreq;
-          }
-        });
-        
-        return Object.values(freqMap);
-      });
-    }
-    
-    // 处理传感器数据点更新
-    if (data.indata && Array.isArray(data.indata)) {
-      setInData(prevData => {
-        const dataMap = {};
-        prevData.forEach(point => {
-          dataMap[point.name] = point;
-        });
-        
-        data.indata.forEach(updatedPoint => {
-          if (dataMap[updatedPoint.name]) {
-            dataMap[updatedPoint.name] = { ...dataMap[updatedPoint.name], ...updatedPoint };
-          } else {
-            dataMap[updatedPoint.name] = updatedPoint;
-          }
-        });
-        
-        return Object.values(dataMap);
-      });
-    }
-    
-    if (data.outdata && Array.isArray(data.outdata)) {
-      setOutData(prevData => {
-        const dataMap = {};
-        prevData.forEach(point => {
-          dataMap[point.name] = point;
-        });
-        
-        data.outdata.forEach(updatedPoint => {
-          if (dataMap[updatedPoint.name]) {
-            dataMap[updatedPoint.name] = { ...dataMap[updatedPoint.name], ...updatedPoint };
-          } else {
-            dataMap[updatedPoint.name] = updatedPoint;
-          }
-        });
-        
-        return Object.values(dataMap);
-      });
-    }
-    
-    // 清除WebSocket超时定时器
-    if (wsStatusTimeout) {
-      clearTimeout(wsStatusTimeout);
-      setWsStatusTimeout(null);
-    }
-  }, [wsStatusTimeout]);
-  
-  // 处理命令反馈
-  const handleCommandFeedback = useCallback((data) => {
-    const deviceId = data.deviceId || data.deviceName || data.valveName;
-    
-    if (deviceId) {
-      // 更新命令状态
-      setPendingCommands(prev => ({
-        ...prev,
-        [deviceId]: {
-          status: data.success ? 'success' : 'error',
-          message: data.message,
-          timestamp: Date.now()
-        }
-      }));
-      
-      // 如果是成功的反馈，3秒后自动清除状态显示
-      if (data.success) {
-        setTimeout(() => {
-          setPendingCommands(prev => {
-            const newState = { ...prev };
-            delete newState[deviceId];
-            return newState;
-          });
-        }, 3000);
-      }
-    }
-  }, []);
-  
   // 修改setupWebSocket以使用全局引用
   const setupWebSocket = useCallback(() => {
     // 严格检查，不允许在未进入页面的状态下建立连接
     if (!navigation.isFocused()) {
+      console.log('页面未获得焦点，取消WebSocket连接尝试');
       return;
     }
+    
+    console.log('尝试建立WebSocket连接...');
     
     // 防止重复连接 - 更全面的状态检查
     if (globalWSRef.current) {
       // 使用全局引用检查连接状态
       if (globalWSRef.current.readyState === WebSocket.CONNECTING) {
+        console.log('WebSocket连接正在建立中，忽略重复请求');
         wsRef.current = globalWSRef.current; // 确保本地引用同步
         return;
       }
       
       if (globalWSRef.current.readyState === WebSocket.OPEN) {
+        console.log('WebSocket已连接，无需重新连接');
         wsRef.current = globalWSRef.current; // 确保本地引用同步
         
         // 如果全局连接已存在，但本地状态未更新，则更新本地状态
         if (!wsConnected) {
+          console.log('更新本地连接状态');
           setWsConnected(true);
           globalConnected.current = true;
         }
@@ -337,10 +137,11 @@ function SiteDetailScreen({ route, navigation }) {
       try {
         if (oldSocket.readyState === WebSocket.CONNECTING || 
             oldSocket.readyState === WebSocket.OPEN) {
+          console.log('关闭现有WebSocket连接');
           oldSocket.close();
         }
       } catch (e) {
-        console.error('关闭旧连接时出错:', e);
+        console.log('关闭旧连接时出错:', e);
       }
       
       globalWSRef.current = null;
@@ -356,16 +157,19 @@ function SiteDetailScreen({ route, navigation }) {
     
     // 如果重连次数过多，延长等待时间并限制最大尝试次数
     if (reconnectAttempts > 10) {
+      console.log(`重连尝试次数过多(${reconnectAttempts})，暂停重连过程`);
       setWsConnected(false);
       return;
     }
     
     // 创建新连接
     try {
+      console.log('正在建立WebSocket连接...', new Date().toISOString());
       // 添加时间戳和随机数，避免缓存问题
-      const socket = new WebSocket(`wss://nodered.jzz77.cn:9003/ws/device${siteId}?t=${Date.now()}&client=mobile`);
+      const socket = new WebSocket(`wss://nodered.jzz77.cn:9003/ws/device?t=${Date.now()}&client=mobile`);
       
       socket.onopen = () => {
+        console.log('WebSocket连接已建立', new Date().toISOString());
         setWsConnected(true);
         globalConnected.current = true;
         setReconnectAttempts(0); // 重置重连计数
@@ -381,6 +185,7 @@ function SiteDetailScreen({ route, navigation }) {
               timestamp: Date.now()
             }
           }));
+          console.log('已发送初始化消息');
         } catch (e) {
           console.error('发送初始化消息失败:', e);
         }
@@ -393,6 +198,7 @@ function SiteDetailScreen({ route, navigation }) {
                 type: 'get_device_status',
                 siteId
               }));
+              console.log('已发送设备状态请求');
             } catch (e) {
               console.error('发送状态请求失败:', e);
             }
@@ -403,6 +209,7 @@ function SiteDetailScreen({ route, navigation }) {
       socket.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+          console.log('收到WebSocket消息:', data);
           
           if (data.type === 'pong') {
             // 处理心跳响应
@@ -410,19 +217,8 @@ function SiteDetailScreen({ route, navigation }) {
           }
           
           if (data.type === 'device_status') {
-            // 设备状态完整更新 - 交由专门函数处理
+            // 更新设备状态
             handleDeviceStatusUpdate(data);
-            
-            // 更新最后一次更新时间
-            setLastUpdateTime(new Date());
-          }
-          
-          if (data.type === 'device_status_change') {
-            // 处理增量设备状态更新
-            handleDeviceStatusUpdate(data);
-            
-            // 更新最后一次更新时间
-            setLastUpdateTime(new Date());
           }
           
           if (data.type === 'command_feedback') {
@@ -430,19 +226,9 @@ function SiteDetailScreen({ route, navigation }) {
             handleCommandFeedback(data);
           }
           
-          // 处理设备事件消息
-          if (data.type === 'device_event') {
-            // 设备事件(报警、故障等)
-            
-            // 如果是报警事件，可以触发UI提示
-            if (data.eventType === 'alarm' && data.alarmDetails) {
-              // 这里可以添加报警通知逻辑
-            }
-            
-            // 如果事件包含状态更新，同样更新设备状态
-            if (data.devices || data.valves || data.frequencies) {
-              handleDeviceStatusUpdate(data);
-            }
+          // 处理状态请求确认
+          if (data.type === 'status_request_received') {
+            console.log('服务器已接收状态请求:', data.message);
           }
         } catch (error) {
           console.error('解析WebSocket消息失败:', error);
@@ -450,6 +236,7 @@ function SiteDetailScreen({ route, navigation }) {
       };
       
       socket.onclose = (event) => {
+        console.log(`WebSocket连接已关闭: ${event.code} ${event.reason}`);
         setWsConnected(false);
         
         // 清理心跳定时器
@@ -462,6 +249,7 @@ function SiteDetailScreen({ route, navigation }) {
         if (AppState.currentState === 'active' && navigation.isFocused()) {
           // 正常关闭(1000)或未授权(1003)不需要重试
           if (event.code === 1000 || event.code === 1003) {
+            console.log('连接正常关闭或未授权，不进行重连');
             return;
           }
           
@@ -469,16 +257,20 @@ function SiteDetailScreen({ route, navigation }) {
           let baseDelay = 1000;
           if (event.reason && event.reason.includes('502')) {
             baseDelay = 5000;
+            console.log('检测到服务器502错误，使用更长的重连延迟');
           }
           
           const maxReconnectDelay = 60000; // 最大60秒重连间隔
           const delay = Math.min(baseDelay * Math.pow(1.5, reconnectAttempts), maxReconnectDelay);
+          console.log(`将在 ${delay}ms 后重连 (尝试 ${reconnectAttempts + 1})`);
           
           reconnectTimeoutRef.current = setTimeout(() => {
             // 再次检查页面是否仍然可见
             if (navigation.isFocused()) {
               setReconnectAttempts(prev => prev + 1);
               setupWebSocket();
+            } else {
+              console.log('页面已不可见，取消重连');
             }
           }, delay);
         }
@@ -509,6 +301,108 @@ function SiteDetailScreen({ route, navigation }) {
       }
     }
   }, [siteId, reconnectAttempts, navigation, handleDeviceStatusUpdate, handleCommandFeedback, setupHeartbeat]);
+  
+  // 修改心跳机制使用全局引用
+  const setupHeartbeat = useCallback(() => {
+    if (globalHeartbeatRef.current) {
+      clearInterval(globalHeartbeatRef.current);
+    }
+    
+    globalHeartbeatRef.current = setInterval(() => {
+      if (globalWSRef.current && globalWSRef.current.readyState === WebSocket.OPEN) {
+        try {
+          console.log('发送心跳...');
+          globalWSRef.current.send(JSON.stringify({ 
+            type: 'ping', 
+            timestamp: Date.now(),
+            siteId,
+            clientId: `mobile_${Platform.OS}_${Math.random().toString(36).substring(7)}`
+          }));
+        } catch (e) {
+          console.error('发送心跳失败:', e);
+          // 心跳失败，尝试重新连接
+          if (globalWSRef.current) {
+            globalWSRef.current.close();
+          }
+        }
+      }
+    }, 15000); // 降低到15秒发送一次心跳
+    
+    heartbeatIntervalRef.current = globalHeartbeatRef.current;
+  }, [siteId]);
+  
+  // 处理设备状态更新
+  const handleDeviceStatusUpdate = useCallback((data) => {
+    // 处理设备运行状态更新
+    if (data.devices && Array.isArray(data.devices)) {
+      setDevices(prevDevices => {
+        return prevDevices.map(device => {
+          const updatedDevice = data.devices.find(d => d.name === device.name);
+          if (updatedDevice) {
+            return { ...device, ...updatedDevice };
+          }
+          return device;
+        });
+      });
+    }
+    
+    // 处理阀门状态更新
+    if (data.valves && Array.isArray(data.valves)) {
+      setIsValve(prevValves => {
+        return prevValves.map(valve => {
+          const updatedValve = data.valves.find(v => v.name === valve.name);
+          if (updatedValve) {
+            return { ...valve, ...updatedValve };
+          }
+          return valve;
+        });
+      });
+    }
+    
+    // 处理频率设备更新
+    if (data.frequencies && Array.isArray(data.frequencies)) {
+      setDeviceFrequency(prevFreq => {
+        return prevFreq.map(freq => {
+          const updatedFreq = data.frequencies.find(f => f.name === freq.name);
+          if (updatedFreq) {
+            return { ...freq, ...updatedFreq };
+          }
+          return freq;
+        });
+      });
+    }
+    
+    // 更新最后一次更新时间
+    setLastUpdateTime(new Date());
+  }, []);
+  
+  // 处理命令反馈
+  const handleCommandFeedback = useCallback((data) => {
+    const deviceId = data.deviceId || data.deviceName || data.valveName;
+    
+    if (deviceId) {
+      // 更新命令状态
+      setPendingCommands(prev => ({
+        ...prev,
+        [deviceId]: {
+          status: data.success ? 'success' : 'error',
+          message: data.message,
+          timestamp: Date.now()
+        }
+      }));
+      
+      // 如果是成功的反馈，3秒后自动清除状态显示
+      if (data.success) {
+        setTimeout(() => {
+          setPendingCommands(prev => {
+            const newState = { ...prev };
+            delete newState[deviceId];
+            return newState;
+          });
+        }, 3000);
+      }
+    }
+  }, []);
   
   // 修改WebSocket发送命令函数使用全局引用
   const sendCommandWs = useCallback((command) => {
@@ -568,8 +462,11 @@ function SiteDetailScreen({ route, navigation }) {
     // 初始获取数据并开始定时更新
     startDataFetching();
     
+    console.log('SiteDetailScreen组件已挂载', new Date().toISOString());
+    
     // 检查是否已有全局连接
     if (globalWSRef.current && globalWSRef.current.readyState === WebSocket.OPEN) {
+      console.log('发现已有全局连接，复用现有连接');
       wsRef.current = globalWSRef.current;
       setWsConnected(true);
     }
@@ -579,18 +476,22 @@ function SiteDetailScreen({ route, navigation }) {
     
     // 处理页面焦点变化
     const focusUnsubscribe = navigation.addListener('focus', () => {
+      console.log('页面获得焦点，确保数据刷新', new Date().toISOString());
       startDataFetching();
       
       // 确保只有在实际用户交互导致的焦点变化才连接WebSocket
       // 延迟连接以避免启动时的自动连接
       setTimeout(() => {
         if (navigation.isFocused()) {
+          console.log('页面可见，检查WebSocket连接', new Date().toISOString());
           hadFocus = true;
           
           // 只有在WebSocket未连接时才尝试连接
           if (!globalConnected.current && !globalWSRef.current) {
+            console.log('全局连接不存在，建立新连接');
             setupWebSocket();
           } else if (globalWSRef.current && globalWSRef.current.readyState === WebSocket.OPEN) {
+            console.log('全局连接存在，设置连接状态');
             wsRef.current = globalWSRef.current;
             setWsConnected(true);
           }
@@ -599,6 +500,7 @@ function SiteDetailScreen({ route, navigation }) {
     });
     
     const blurUnsubscribe = navigation.addListener('blur', () => {
+      console.log('页面失去焦点，停止数据刷新');
       stopDataFetching();
       // 页面失去焦点时不关闭WebSocket
     });
@@ -607,17 +509,20 @@ function SiteDetailScreen({ route, navigation }) {
     const appStateSubscription = AppState.addEventListener('change', nextAppState => {
       if (currentAppState.current.match(/inactive|background/) && nextAppState === 'active') {
         // 应用从后台恢复
+        console.log('应用从后台恢复，刷新数据');
         
         if (navigation.isFocused()) {
           startDataFetching();
           
           // 只有在WebSocket未连接且页面曾经获得过焦点时才尝试连接
           if (!globalConnected.current && !globalWSRef.current && hadFocus) {
+            console.log('应用从后台恢复，重新连接WebSocket');
             setupWebSocket();
           }
         }
       } else if (nextAppState.match(/inactive|background/)) {
         // 应用进入后台
+        console.log('应用进入后台，暂停数据刷新');
         stopDataFetching();
         // 不关闭WebSocket连接，允许后台接收推送
       }
@@ -626,6 +531,7 @@ function SiteDetailScreen({ route, navigation }) {
 
     // 重要修改：清理函数不再立即关闭WebSocket
     return () => {
+      console.log('组件卸载，但保留全局WebSocket连接', new Date().toISOString());
       stopDataFetching();
       focusUnsubscribe();
       blurUnsubscribe();
@@ -651,6 +557,8 @@ function SiteDetailScreen({ route, navigation }) {
       ) === -1;
       
       if (isLastInstance && globalWSRef.current) {
+        console.log('应用退出，清理全局WebSocket资源');
+        
         if (globalWSRef.current.readyState === WebSocket.OPEN) {
           try {
             // 发送关闭消息
