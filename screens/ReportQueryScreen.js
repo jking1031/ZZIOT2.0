@@ -295,7 +295,7 @@ const ReportQueryScreen = () => {
 
             {report.other_notes && (
               <View style={styles.infoSection}>
-                <Text style={[styles.sectionTitle, { color: colors.text }]}>其他备注</Text>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>巡查工作</Text>
                 <Text style={[styles.infoText, { color: colors.text }]}>{report.other_notes}</Text>
               </View>
             )}
@@ -533,7 +533,7 @@ const ReportQueryScreen = () => {
 
             {report.other_notes && (
               <View style={styles.infoSection}>
-                <Text style={[styles.sectionTitle, { color: colors.text }]}>其他备注</Text>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>巡查工作</Text>
                 <Text style={[styles.infoText, { color: colors.text }]}>{report.other_notes}</Text>
               </View>
             )}
