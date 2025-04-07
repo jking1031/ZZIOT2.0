@@ -39,6 +39,12 @@
         "ss":"悬浮物",
         "sw":"水温"
 
+    },
+    "sludge_data":{
+        "sample_name":"项目名称",
+        "concentration":"浓度",
+        "settling_ratio":"沉降比",
+        "water_content":"含水率",
+        "time":"时间"
     }
-
 }

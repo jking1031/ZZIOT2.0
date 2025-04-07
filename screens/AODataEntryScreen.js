@@ -45,7 +45,7 @@ const AODataEntryScreen = () => {
       }
 
       // 提交数据到服务器
-      const response = await fetch('http://112.28.56.235:13100/submit_ao', {
+      const response = await fetch('https://zziot.jzz77.cn:9003/submit_ao', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

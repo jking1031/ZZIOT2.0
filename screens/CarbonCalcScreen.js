@@ -33,7 +33,7 @@ const CarbonCalcScreen = () => {
       setError('');
       setResult('');
       
-      const response = await fetch('http://112.28.56.235:13100/api/calculateCarbon', {
+      const response = await fetch('https://zziot.jzz77.cn:9003/api/calculateCarbon', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',

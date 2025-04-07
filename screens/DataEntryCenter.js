@@ -12,8 +12,8 @@ const DataEntryCenter = () => {
     {
       title: '化验数据填报',
       icon: 'flask',
-      route: '化验数据填报',
-      description: '填报水质化验数据',
+      route: '化验数据中心',
+      description: '填报化验数据',
     },
     {
       title: '生产运行填报',
@@ -58,9 +58,12 @@ const styles = StyleSheet.create({
   },
   cardsContainer: {
     padding: 16,
-    gap: 16,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
   },
   card: {
+    width: '48%',
     borderRadius: 12,
     padding: 20,
     elevation: 3,
@@ -71,6 +74,7 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
+    marginBottom: 16,
   },
   cardContent: {
     alignItems: 'center',

@@ -1,12 +1,9 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { StyleSheet, View, Text, FlatList, TextInput, TouchableOpacity, RefreshControl } from 'react-native';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { StyleSheet, View, Text, FlatList, TextInput, TouchableOpacity, RefreshControl, AppState } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
-import useWebSocket from '../hooks/useWebSocket';
-
-// 导入WS_CONFIG配置
-import { WS_CONFIG } from '../hooks/useWebSocket';
+import axios from 'axios';
 
 function SiteListScreen({ navigation }) {
   const { colors, isDarkMode } = useTheme();
@@ -15,52 +12,157 @@ function SiteListScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdateTime, setLastUpdateTime] = useState(null);
   const [hasRequestedInitialData, setHasRequestedInitialData] = useState(false);
+  const [rawData, setRawData] = useState(null);
+  const [updateTimer, setUpdateTimer] = useState(null);
 
-  // 使用自定义Hook管理WebSocket连接
-  const handleWebSocketMessage = useCallback((data) => {
-    if (data.id && data.name) {
-      // 更新单个站点数据
-      setSites(prevSites => {
-        const existingSiteIndex = prevSites.findIndex(site => site.id === data.id);
-        if (existingSiteIndex >= 0) {
-          // 更新现有站点
-          const updatedSites = [...prevSites];
-          updatedSites[existingSiteIndex] = {
-            ...data,
-            lastUpdate: new Date()
-          };
-          return updatedSites;
-        } else {
-          // 添加新站点
-          return [...prevSites, { ...data, lastUpdate: new Date() }];
+  // 使用 useRef 来存储当前的 appState，避免触发重渲染
+  const currentAppState = useRef(AppState.currentState);
+
+  // 添加一个 ref 来跟踪是否正在获取数据
+  const isFetchingRef = useRef(false);
+
+  const fetchSites = useCallback(async (retryCount = 3, retryDelay = 5000) => {
+    // 如果正在获取数据，则返回
+    if (isFetchingRef.current) {
+      return;
+    }
+
+    isFetchingRef.current = true;
+    let lastError = null;
+    const controller = new AbortController();
+    
+    for (let i = 0; i < retryCount; i++) {
+      try {
+        const response = await axios.get('https://nodered.jzz77.cn:9003/api/site/sites', {
+          timeout: 10000,
+          signal: controller.signal,
+          validateStatus: function (status) {
+            return status >= 200 && status < 300;
+          }
+        });
+        
+        if (response.data) {
+          setRawData(response.data);
+          
+          if (!Array.isArray(response.data) && typeof response.data === 'object') {
+            response.data = [response.data];
+          }
+          
+          const formattedSites = Array.isArray(response.data) ? response.data.map(site => ({
+            id: (site.id || site._id || 0).toString(),
+            name: site.name || '未知站点',
+            status: site.status || '离线',
+            alarm: site.alarm || '设施正常',
+            address: site.address || '地址未知',
+            totalInflow: site.totalInflow || 0,
+            rawInfo: JSON.stringify(site, null, 2)
+          })) : [];
+          
+          setSites(formattedSites);
+          setLastUpdateTime(new Date());
+          return;
         }
-      });
-      setLastUpdateTime(new Date());
+      } catch (error) {
+        if (axios.isCancel(error)) {
+          console.log('请求被取消');
+          return;
+        }
+        console.error(`第 ${i + 1} 次获取站点数据失败:`, error);
+        lastError = error;
+        
+        if (error.response?.status === 404) {
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+          continue;
+        }
+        
+        if (i < retryCount - 1) {
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+        }
+      }
+    }
+    
+    if (lastError) {
+      let errorMessage = '获取站点数据失败';
+      
+      if (lastError.response) {
+        errorMessage = `服务器错误 (${lastError.response.status})`;
+      } else if (lastError.request) {
+        errorMessage = '无法连接到服务器，请检查网络连接';
+      }
+      
+      if (!sites.length) {
+        setSites([]);
+        setRawData(null);
+        setLastUpdateTime(null);
+      }
+      
+      console.error('重试后仍然失败:', errorMessage);
+    }
+    isFetchingRef.current = false;
+    return controller;
+  }, []);
+
+  // 使用 useRef 来存储定时器 ID，避免状态更新导致的重渲染
+  const timerRef = useRef(null);
+
+  const startDataFetching = useCallback(() => {
+    fetchSites();
+    if (!timerRef.current) {
+      timerRef.current = setInterval(fetchSites, 30000);
+      setUpdateTimer(timerRef.current);
+    }
+  }, [fetchSites]);
+
+  const stopDataFetching = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+      setUpdateTimer(null);
     }
   }, []);
 
-  const { isConnected, sendMessage } = useWebSocket(WS_CONFIG.sitesPath, null, handleWebSocketMessage);
-
-  // 连接成功后请求初始数据
+  // 修改 useEffect，移除初始数据获取
   useEffect(() => {
-    if (isConnected && !hasRequestedInitialData) {
-      console.log('站点列表连接成功，请求初始数据');
-      sendMessage({ type: 'refresh' });
-      setHasRequestedInitialData(true);
-    }
-  }, [isConnected, sendMessage, hasRequestedInitialData]);
+    const focusUnsubscribe = navigation.addListener('focus', () => {
+      // 只有当定时器未启动时才开始获取数据
+      if (!timerRef.current) {
+        startDataFetching();
+      }
+    });
+    
+    const blurUnsubscribe = navigation.addListener('blur', stopDataFetching);
+
+    const appStateSubscription = AppState.addEventListener('change', nextAppState => {
+      if (currentAppState.current.match(/inactive|background/) && nextAppState === 'active') {
+        startDataFetching();
+      } else if (nextAppState.match(/inactive|background/)) {
+        stopDataFetching();
+      }
+      currentAppState.current = nextAppState;
+    });
+
+    // 组件挂载时开始获取数据
+    startDataFetching();
+
+    return () => {
+      stopDataFetching();
+      focusUnsubscribe();
+      blurUnsubscribe();
+      appStateSubscription.remove();
+    };
+  }, [navigation, startDataFetching, stopDataFetching]);
 
   // 刷新数据
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      sendMessage({ type: 'refresh' });
+      await fetchSites();
     } catch (error) {
       console.error('刷新站点数据失败:', error);
     } finally {
       setRefreshing(false);
     }
-  }, [sendMessage]);
+  }, []);
 
   // 渲染站点卡片
   const renderSiteCard = ({ item }) => (
@@ -97,9 +199,6 @@ function SiteListScreen({ navigation }) {
                   <Text style={[styles.infoValue, { color: item.alarm === "设施正常" ? '#4CAF50' : '#FF5252' }]}>{item.alarm}</Text>
                 </View>
               )}
-              <View style={styles.infoRow}>
-
-              </View>
             </View>
           </View>
         </View>
@@ -111,9 +210,9 @@ function SiteListScreen({ navigation }) {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.statusContainer, { backgroundColor: colors.card }]}>
         <View style={styles.statusRow}>
-          <View style={[styles.connectionStatus, { backgroundColor: isConnected ? '#4CAF50' : '#FF5252' }]} />
+          <View style={[styles.connectionStatus, { backgroundColor: updateTimer ? '#4CAF50' : '#FF5252' }]} />
           <Text style={[styles.connectionText, { color: colors.text }]}>
-            {isConnected ? '已连接' : '未连接'}
+            {updateTimer ? '自动更新已开启' : '自动更新已关闭'}
           </Text>
         </View>
         <Text style={[styles.lastUpdateText, { color: colors.text }]}>
@@ -123,7 +222,7 @@ function SiteListScreen({ navigation }) {
       <FlatList
         data={sites}
         renderItem={renderSiteCard}
-        keyExtractor={(item) => item.id.toString()}
+        keyExtractor={(item) => (item.id || '').toString()}
         contentContainerStyle={styles.listContainer}
         refreshControl={
           <RefreshControl

@@ -1,67 +1,107 @@
 {
   "expo": {
     "name": "正泽物联",
-    "slug": "zziot",
-    "version": "1.3.1",
+    "slug": "zziot20",
+    "version": "1.5.3",
     "orientation": "portrait",
-    "icon": "./assets/logo3.png",
+    "icon": "./assets/logo4.png",
     "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/logo2.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.zziot.app",
-      "buildNumber": "1.3.1",
+      "buildNumber": "1.5.3",
       "requireFullScreen": true,
       "infoPlist": {
-        "NSCameraUsageDescription": "该应用需要访问您的相机用于拍摄照片",
-        "NSPhotoLibraryUsageDescription": "该应用需要访问您的照片库用于上传图片",
-        "NSPhotoLibraryAddUsageDescription": "该应用需要保存图片到您的照片库",
-        "NSLocationWhenInUseUsageDescription": "该应用需要访问您的位置来提供相关服务",
-        "ITSAppUsesNonExemptEncryption": false
-      }
-    },
-    "android": {
-      "package": "com.zziot.app",
-      "versionCode": 6,
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/logo3.png",
-        "backgroundColor": "#ffffff"
+        "NSCameraUsageDescription": "该应用需要访问您的相机用于拍摄照片和扫描二维码",
+        "NSPhotoLibraryUsageDescription": "该应用需要访问您的照片库用于上传和保存图片",
+        "NSPhotoLibraryAddUsageDescription": "该应用需要保存图片到您的照片库以便后续查看",
+        "NSLocationWhenInUseUsageDescription": "该应用需要访问您的位置来提供基于位置的服务和天气信息",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "该应用需要在后台访问您的位置来提供实时位置服务和天气更新",
+        "NSLocationAlwaysUsageDescription": "该应用需要在后台访问您的位置来提供持续的位置服务",
+        "NSMicrophoneUsageDescription": "该应用需要访问您的麦克风用于语音功能",
+        "NSContactsUsageDescription": "该应用需要访问您的通讯录以便分享和联系",
+        "NSCalendarsUsageDescription": "该应用需要访问您的日历以便添加和管理日程",
+        "NSRemindersUsageDescription": "该应用需要访问您的提醒事项以便设置提醒",
+        "NSMotionUsageDescription": "该应用需要访问您的运动与健身数据以提供相关功能",
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIRequiresFullScreen": true,
+        "UIStatusBarStyle": "UIStatusBarStyleLightContent",
+        "UIViewControllerBasedStatusBarAppearance": true,
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true,
+          "NSAllowsArbitraryLoadsInWebContent": true
+        }
       },
-      "permissions": [
-        "ACCESS_NETWORK_STATE",
-        "INTERNET",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE",
-        "CAMERA",
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_NETWORK_STATE",
-        "INTERNET",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE",
-        "CAMERA",
-        "ACCESS_FINE_LOCATION"
-      ]
-    },
-    "web": {
-      "favicon": "./assets/favicon.png"
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "extra": {
       "eas": {
-        "projectId": "2fddd55d-e4c9-49dd-bcb8-b13091433ca1"
+        "projectId": "a96d138c-2d47-49b1-845e-fd69f0d70c2a"
       }
     },
     "runtimeVersion": {
-      "policy": "appVersion"
+      "policy": "sdkVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/2fddd55d-e4c9-49dd-bcb8-b13091433ca1"
-    }
+      "enabled": true,
+      "fallbackToCacheTimeout": 0,
+      "checkAutomatically": "ON_LOAD",
+      "url": "https://u.expo.dev/a96d138c-2d47-49b1-845e-fd69f0d70c2a",
+      "requestHeaders": {
+        "expo-channel-name": "production"
+      }
+    },
+    "owner": "mrking1031",
+    "android": {
+      "package": "com.zziot.app",
+      "versionCode": 148,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/logo4.png",
+        "backgroundColor": "#ffffff"
+      },
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "RECORD_AUDIO",
+        "READ_CONTACTS",
+        "READ_CALENDAR",
+        "WRITE_CALENDAR",
+        "ACTIVITY_RECOGNITION",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "RECORD_AUDIO",
+        "READ_CONTACTS",
+        "READ_CALENDAR",
+        "WRITE_CALENDAR",
+        "ACTIVITY_RECOGNITION",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE"
+      ],
+      "allowBackup": true,
+      "softwareKeyboardLayoutMode": "pan"
+    },
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "networkSecurityConfig": "./android/app/src/main/res/xml/network_security_config.xml"
+          }
+        }
+      ]
+    ]
   }
 }
