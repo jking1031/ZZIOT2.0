@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { StyleSheet, View, Text, FlatList, TouchableOpacity, RefreshControl, Alert, Modal, ScrollView } from 'react-native';
+import { StyleSheet, View, Text, FlatList, TouchableOpacity, RefreshControl, Alert, Modal, ScrollView, ActivityIndicator } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -26,6 +26,7 @@ const MessageQueryScreen = () => {
   const [itemsPerPage] = useState(10);
   const [totalPages, setTotalPages] = useState(1);
   const [selectedDateRange, setSelectedDateRange] = useState('7');
+  const [loadingStartTime, setLoadingStartTime] = useState(null);
 
   const dateRangeOptions = [
     { label: '最近7天', value: '7' },
@@ -145,6 +146,7 @@ const MessageQueryScreen = () => {
 
   const fetchMessages = async () => {
     setRefreshing(true);
+    setLoadingStartTime(Date.now());
     // 为开始时间和结束时间增加8小时以适应时区差异
     const adjustedStartDate = new Date(startDate.getTime() + 8 * 60 * 60 * 1000);
     const adjustedEndDate = new Date(endDate.getTime() + 8 * 60 * 60 * 1000);
@@ -175,6 +177,16 @@ const MessageQueryScreen = () => {
         
         console.log('处理后的消息数据:', newMessages); // 调试日志
         
+        // 确保加载状态至少持续2秒
+        const currentTime = Date.now();
+        const elapsedTime = currentTime - loadingStartTime;
+        const remainingTime = Math.max(0, 2000 - elapsedTime);
+        
+        if (remainingTime > 0) {
+          await new Promise(resolve => setTimeout(resolve, remainingTime));
+        }
+        
+        // 更新数据状态
         setMessages(newMessages);
         updatePagination(newMessages);
         setCurrentPage(1);
@@ -184,14 +196,25 @@ const MessageQueryScreen = () => {
           messages: newMessages,
           timestamp: Date.now()
         }));
+        
+        // 结束加载状态
+        setRefreshing(false);
+        
+        // 在加载状态消失后，如果没有数据再提示
+        if (newMessages.length === 0) {
+          setTimeout(() => {
+            Alert.alert('提示', '所选时间范围内无消息数据');
+          }, 100);
+        }
       } else {
         throw new Error('未收到有效的响应数据');
       }
     } catch (error) {
       console.error('查询消息失败:', error);
-      Alert.alert('错误', error.message || '查询消息失败，请稍后重试');
-    } finally {
       setRefreshing(false);
+      setTimeout(() => {
+        Alert.alert('错误', '查询消息失败，请检查网络连接后重试');
+      }, 100);
     }
   };
 
@@ -409,6 +432,23 @@ const MessageQueryScreen = () => {
           ) : null
         }
       />
+
+      {/* 加载状态模态框 */}
+      <Modal
+        visible={refreshing}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => {}}
+      >
+        <View style={styles.loadingModalOverlay}>
+          <View style={styles.loadingModalView}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.loadingText}>
+              正在查询消息数据，请稍候...
+            </Text>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -603,6 +643,34 @@ const styles = StyleSheet.create({
   picker: {
     width: '100%',
     height: 200,
+  },
+  loadingModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingModalView: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 20,
+    width: '80%',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#000',
+    marginTop: 16,
+    textAlign: 'center',
   },
 });
 

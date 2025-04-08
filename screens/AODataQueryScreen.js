@@ -22,6 +22,7 @@ const AODataQueryScreen = () => {
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadingStartTime, setLoadingStartTime] = useState(null);
   const [aoData, setAoData] = useState([]);
   const [showAOPicker, setShowAOPicker] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -177,6 +178,8 @@ const AODataQueryScreen = () => {
     }
 
     setLoading(true);
+    setLoadingStartTime(Date.now());
+    
     try {
       const formattedStartDate = startDate.toISOString().split('T')[0];
       const formattedEndDate = endDate.toISOString().split('T')[0];
@@ -232,13 +235,33 @@ const AODataQueryScreen = () => {
           date: item.date,
           values: currentConfig.map(pool => item.values[pool.key] || 0)
         }));
-
+        
+      // 确保加载状态至少持续2秒
+      const currentTime = Date.now();
+      const elapsedTime = currentTime - loadingStartTime;
+      const remainingTime = Math.max(0, 2000 - elapsedTime);
+      
+      if (remainingTime > 0) {
+        await new Promise(resolve => setTimeout(resolve, remainingTime));
+      }
+      
+      // 更新数据
       setAoData(formattedData);
+      // 完成加载状态
+      setLoading(false);
+      
+      // 在加载状态消失后，如果没有数据再提示
+      if (formattedData.length === 0) {
+        setTimeout(() => {
+          Alert.alert('提示', '所选时间范围内无AO池数据');
+        }, 100);
+      }
     } catch (error) {
       console.error('数据获取失败:', error);
-      alert('数据获取失败，请重试');
-    } finally {
       setLoading(false);
+      setTimeout(() => {
+        Alert.alert('错误', '获取AO池数据失败，请检查网络连接后重试');
+      }, 100);
     }
   };
 
@@ -571,6 +594,23 @@ const AODataQueryScreen = () => {
           </>
         )}
       </ScrollView>
+
+      {/* 加载状态模态框 */}
+      <Modal
+        visible={loading}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => {}}
+      >
+        <View style={styles.loadingModalOverlay}>
+          <View style={styles.loadingModalView}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.loadingText}>
+              正在获取AO池数据，请稍候...
+            </Text>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -866,6 +906,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     minHeight: 200,
     maxHeight: 300,
+  },
+  loadingModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingModalView: {
+    backgroundColor: 'white', 
+    borderRadius: 12,
+    padding: 20,
+    width: '80%',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#000',
+    marginTop: 16,
+    textAlign: 'center',
   },
 });
 
