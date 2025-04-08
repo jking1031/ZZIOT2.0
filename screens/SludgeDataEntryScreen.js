@@ -14,10 +14,12 @@ import {
   TouchableWithoutFeedback
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
+import { Ionicons } from '@expo/vector-icons';
 
 const SludgeDataEntryScreen = () => {
   const { colors } = useTheme();
   const [loadingModalVisible, setLoadingModalVisible] = useState(false);
+  const [collapsedSamples, setCollapsedSamples] = useState({});
 
   const [samples, setSamples] = useState([{
     id: Date.now(),
@@ -28,15 +30,32 @@ const SludgeDataEntryScreen = () => {
     time: new Date().toISOString().split('T')[0]
   }]);
 
+  const toggleCollapse = (id) => {
+    setCollapsedSamples(prev => ({
+      ...prev,
+      [id]: !prev[id]
+    }));
+  };
+
+  const isSampleCollapsed = (id) => {
+    return !!collapsedSamples[id];
+  };
+
   const addSample = () => {
-    setSamples([...samples, {
+    const newSample = {
       id: Date.now(),
       sample_name: '',
       concentration: '',
       settling_ratio: '',
       water_content: '',
       time: new Date().toISOString().split('T')[0]
-    }]);
+    };
+    setSamples([...samples, newSample]);
+    // 默认展开新添加的样本
+    setCollapsedSamples(prev => ({
+      ...prev,
+      [newSample.id]: false
+    }));
   };
 
   const removeSample = (id) => {
@@ -45,6 +64,10 @@ const SludgeDataEntryScreen = () => {
       return;
     }
     setSamples(samples.filter(sample => sample.id !== id));
+    // 移除折叠状态
+    const updatedCollapsedSamples = {...collapsedSamples};
+    delete updatedCollapsedSamples[id];
+    setCollapsedSamples(updatedCollapsedSamples);
   };
 
   const updateSample = (id, field, value) => {
@@ -139,14 +162,17 @@ const SludgeDataEntryScreen = () => {
       setLoadingModalVisible(false);
       Alert.alert('成功', '数据已成功提交');
       // 重置表单
-      setSamples([{
+      const newSample = {
         id: Date.now(),
         sample_name: '',
         concentration: '',
         settling_ratio: '',
         water_content: '',
         time: new Date().toISOString().split('T')[0]
-      }]);
+      };
+      setSamples([newSample]);
+      // 重置折叠状态
+      setCollapsedSamples({ [newSample.id]: false });
     } catch (error) {
       console.error('提交失败:', error);
       Alert.alert('错误', error.message || '提交失败，请稍后重试');
@@ -154,6 +180,18 @@ const SludgeDataEntryScreen = () => {
       setIsSubmitting(false);
       setLoadingModalVisible(false);
     }
+  };
+
+  const renderSampleSummary = (sample) => {
+    return (
+      <View style={[styles.sampleSummary, { borderBottomColor: colors.border }]}>
+        <Text style={{ color: colors.text }}>
+          {sample.sample_name || '未命名样本'}{' '}
+          {sample.sample_name && sample.concentration ? `| 浓度: ${sample.concentration} g/L` : ''}
+          {sample.sample_name && sample.water_content ? ` | 含水率: ${sample.water_content}%` : ''}
+        </Text>
+      </View>
+    );
   };
 
   return (
@@ -174,9 +212,21 @@ const SludgeDataEntryScreen = () => {
           {samples.map((sample, index) => (
             <View key={sample.id} style={styles.sampleContainer}>
               <View style={styles.sampleHeader}>
-                <Text style={[styles.sampleTitle, { color: colors.text }]}>
-                  样本 {index + 1}
-                </Text>
+                <View style={styles.headerLeftSection}>
+                  <TouchableOpacity 
+                    onPress={() => toggleCollapse(sample.id)}
+                    style={styles.collapseButton}
+                  >
+                    <Ionicons 
+                      name={isSampleCollapsed(sample.id) ? "chevron-down" : "chevron-up"} 
+                      size={24} 
+                      color={colors.text} 
+                    />
+                  </TouchableOpacity>
+                  <Text style={[styles.sampleTitle, { color: colors.text }]}>
+                    样本 {index + 1}
+                  </Text>
+                </View>
                 <TouchableOpacity 
                   onPress={() => removeSample(sample.id)}
                   style={styles.removeButton}
@@ -185,88 +235,92 @@ const SludgeDataEntryScreen = () => {
                 </TouchableOpacity>
               </View>
 
-              <View style={styles.inputGroup}>
-                <Text style={[styles.label, { color: colors.text }]}>污泥样品名称</Text>
-                <TextInput
-                  style={[styles.input, { 
-                    backgroundColor: colors.background,
-                    color: colors.text,
-                    borderColor: colors.border,
-                    marginBottom: 16
-                  }]}
-                  value={sample.sample_name}
-                  onChangeText={(value) => updateSample(sample.id, 'sample_name', value)}
-                  placeholder="请输入污泥样品名称"
-                  placeholderTextColor={colors.text}
-                />
-              </View>
+              {isSampleCollapsed(sample.id) ? renderSampleSummary(sample) : (
+                <View style={styles.sampleContent}>
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.label, { color: colors.text }]}>污泥样品名称</Text>
+                    <TextInput
+                      style={[styles.input, { 
+                        backgroundColor: colors.background,
+                        color: colors.text,
+                        borderColor: colors.border,
+                        marginBottom: 16
+                      }]}
+                      value={sample.sample_name}
+                      onChangeText={(value) => updateSample(sample.id, 'sample_name', value)}
+                      placeholder="请输入污泥样品名称"
+                      placeholderTextColor={colors.text}
+                    />
+                  </View>
 
-              <View style={styles.inputRow}>
-                <View style={styles.inputGroup}>
-                  <Text style={[styles.label, { color: colors.text }]}>污泥浓度 (g/L)</Text>
-                  <TextInput
-                    style={[styles.input, { 
-                      backgroundColor: colors.background,
-                      color: colors.text,
-                      borderColor: colors.border
-                    }]}
-                    value={sample.concentration}
-                    onChangeText={(value) => updateSample(sample.id, 'concentration', value)}
-                    keyboardType="numeric"
-                    placeholder="污泥浓度"
-                    placeholderTextColor={colors.text}
-                  />
-                </View>
+                  <View style={styles.inputRow}>
+                    <View style={styles.inputGroup}>
+                      <Text style={[styles.label, { color: colors.text }]}>污泥浓度 (g/L)</Text>
+                      <TextInput
+                        style={[styles.input, { 
+                          backgroundColor: colors.background,
+                          color: colors.text,
+                          borderColor: colors.border
+                        }]}
+                        value={sample.concentration}
+                        onChangeText={(value) => updateSample(sample.id, 'concentration', value)}
+                        keyboardType="numeric"
+                        placeholder="污泥浓度"
+                        placeholderTextColor={colors.text}
+                      />
+                    </View>
 
-                <View style={styles.inputGroup}>
-                  <Text style={[styles.label, { color: colors.text }]}>污泥沉降比 (%)</Text>
-                  <TextInput
-                    style={[styles.input, { 
-                      backgroundColor: colors.background,
-                      color: colors.text,
-                      borderColor: colors.border
-                    }]}
-                    value={sample.settling_ratio}
-                    onChangeText={(value) => updateSample(sample.id, 'settling_ratio', value)}
-                    keyboardType="numeric"
-                    placeholder="污泥沉降比"
-                    placeholderTextColor={colors.text}
-                  />
-                </View>
-              </View>
+                    <View style={styles.inputGroup}>
+                      <Text style={[styles.label, { color: colors.text }]}>污泥沉降比 (%)</Text>
+                      <TextInput
+                        style={[styles.input, { 
+                          backgroundColor: colors.background,
+                          color: colors.text,
+                          borderColor: colors.border
+                        }]}
+                        value={sample.settling_ratio}
+                        onChangeText={(value) => updateSample(sample.id, 'settling_ratio', value)}
+                        keyboardType="numeric"
+                        placeholder="污泥沉降比"
+                        placeholderTextColor={colors.text}
+                      />
+                    </View>
+                  </View>
 
-              <View style={styles.inputRow}>
-                <View style={styles.inputGroup}>
-                  <Text style={[styles.label, { color: colors.text }]}>污泥压榨含水率 (%)</Text>
-                  <TextInput
-                    style={[styles.input, { 
-                      backgroundColor: colors.background,
-                      color: colors.text,
-                      borderColor: colors.border
-                    }]}
-                    value={sample.water_content}
-                    onChangeText={(value) => updateSample(sample.id, 'water_content', value)}
-                    keyboardType="numeric"
-                    placeholder="污泥压榨含水率"
-                    placeholderTextColor={colors.text}
-                  />
-                </View>
+                  <View style={styles.inputRow}>
+                    <View style={styles.inputGroup}>
+                      <Text style={[styles.label, { color: colors.text }]}>污泥压榨含水率 (%)</Text>
+                      <TextInput
+                        style={[styles.input, { 
+                          backgroundColor: colors.background,
+                          color: colors.text,
+                          borderColor: colors.border
+                        }]}
+                        value={sample.water_content}
+                        onChangeText={(value) => updateSample(sample.id, 'water_content', value)}
+                        keyboardType="numeric"
+                        placeholder="污泥压榨含水率"
+                        placeholderTextColor={colors.text}
+                      />
+                    </View>
 
-                <View style={styles.inputGroup}>
-                  <Text style={[styles.label, { color: colors.text }]}>采样日期</Text>
-                  <TextInput
-                    style={[styles.input, { 
-                      backgroundColor: colors.background,
-                      color: colors.text,
-                      borderColor: colors.border
-                    }]}
-                    value={sample.time}
-                    onChangeText={(value) => updateSample(sample.id, 'time', value)}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor={colors.text}
-                  />
+                    <View style={styles.inputGroup}>
+                      <Text style={[styles.label, { color: colors.text }]}>采样日期</Text>
+                      <TextInput
+                        style={[styles.input, { 
+                          backgroundColor: colors.background,
+                          color: colors.text,
+                          borderColor: colors.border
+                        }]}
+                        value={sample.time}
+                        onChangeText={(value) => updateSample(sample.id, 'time', value)}
+                        placeholder="YYYY-MM-DD"
+                        placeholderTextColor={colors.text}
+                      />
+                    </View>
+                  </View>
                 </View>
-              </View>
+              )}
             </View>
           ))}
 
@@ -324,6 +378,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
+  headerLeftSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  collapseButton: {
+    padding: 5,
+    marginRight: 8,
+  },
   sampleTitle: {
     fontSize: 18,
     fontWeight: 'bold',
@@ -336,6 +398,13 @@ const styles = StyleSheet.create({
   removeButtonText: {
     color: 'white',
     fontSize: 14,
+  },
+  sampleContent: {
+    width: '100%',
+  },
+  sampleSummary: {
+    paddingVertical: 10,
+    borderBottomWidth: 1,
   },
   inputRow: {
     flexDirection: 'row',

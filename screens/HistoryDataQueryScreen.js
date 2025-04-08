@@ -8,6 +8,7 @@ import {
   Platform,
   Alert,
   Modal,
+  ActivityIndicator,
 } from 'react-native';
 import RNPickerSelect from 'react-native-picker-select';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -37,6 +38,7 @@ const HistoryDataQueryScreen = () => {
   const [loading, setLoading] = useState(false);
   const [isTableVisible, setIsTableVisible] = useState(false);
   const [selectedDateRange, setSelectedDateRange] = useState('7');
+  const [loadingStartTime, setLoadingStartTime] = useState(null);
 
   const rowsPerPageOptions = [
     { label: '10条/页', value: 10 },
@@ -159,6 +161,7 @@ const HistoryDataQueryScreen = () => {
       }
 
       setLoading(true);
+      setLoadingStartTime(Date.now());
       
       const apiEndpoint = 'https://zziot.jzz77.cn:9003/query';
       
@@ -195,15 +198,38 @@ const HistoryDataQueryScreen = () => {
       
       // 按照时间间隔过滤数据
       const filteredData = filterDataByInterval(data);
+      
+      // 确保加载状态至少持续2秒
+      const currentTime = Date.now();
+      const elapsedTime = currentTime - loadingStartTime;
+      const remainingTime = Math.max(0, 2000 - elapsedTime);
+      
+      if (remainingTime > 0) {
+        await new Promise(resolve => setTimeout(resolve, remainingTime));
+      }
+      
+      // 更新数据
       setQueryResults(filteredData);
       setCurrentPage(1);
       setIsTableVisible(true);
-    } catch (error) {
-      console.error('Query failed:', error);
-      Alert.alert('查询失败', error.toString());
-    } finally {
+      
+      // 结束加载状态并关闭模态框
       setLoading(false);
       setModalVisible(false);
+      
+      // 在加载状态消失后，如果没有数据再提示
+      if (filteredData.length === 0) {
+        setTimeout(() => {
+          Alert.alert('提示', '所选时间范围内无相关数据');
+        }, 100);
+      }
+    } catch (error) {
+      console.error('Query failed:', error);
+      setLoading(false);
+      setModalVisible(false);
+      setTimeout(() => {
+        Alert.alert('错误', '查询失败，请检查网络连接后重试');
+      }, 100);
     }
   };
 
@@ -855,6 +881,34 @@ const HistoryDataQueryScreen = () => {
     dateRangeButtonText: {
       fontSize: 14,
     },
+    loadingModalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 20,
+    },
+    loadingModalView: {
+      backgroundColor: colors.card,
+      borderRadius: 12,
+      padding: 20,
+      width: '80%',
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: {
+        width: 0,
+        height: 2,
+      },
+      shadowOpacity: 0.25,
+      shadowRadius: 4,
+      elevation: 5,
+    },
+    loadingText: {
+      fontSize: 16,
+      color: colors.text,
+      marginTop: 16,
+      textAlign: 'center',
+    },
   });
 
   const handleExportAndShare = async () => {
@@ -1252,6 +1306,23 @@ const HistoryDataQueryScreen = () => {
           </TouchableOpacity>
         </Modal>
       </ScrollView>
+
+      {/* 加载状态模态框 */}
+      <Modal
+        visible={loading}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => {}}
+      >
+        <View style={styles.loadingModalOverlay}>
+          <View style={styles.loadingModalView}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.loadingText}>
+              数据查询中，请稍候...
+            </Text>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };

@@ -13,7 +13,8 @@ import {
   KeyboardAvoidingView,
   Keyboard,
   TouchableWithoutFeedback,
-  Platform
+  Platform,
+  Animated
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 
@@ -22,6 +23,7 @@ const LabDataEntryScreen = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [tempSampleName, setTempSampleName] = useState('');
   const [currentSampleId, setCurrentSampleId] = useState(null);
+  const [collapsedSamples, setCollapsedSamples] = useState({});
 
   const pickerSelectStyles = {
     inputIOS: {
@@ -78,8 +80,19 @@ const LabDataEntryScreen = () => {
     '殷庄出水'
   ];
 
+  const toggleCollapse = (id) => {
+    setCollapsedSamples(prev => ({
+      ...prev,
+      [id]: !prev[id]
+    }));
+  };
+
+  const isSampleCollapsed = (id) => {
+    return !!collapsedSamples[id];
+  };
+
   const addSample = () => {
-    setSamples([...samples, {
+    const newSample = {
       id: Date.now(),
       sample_name: '',
       cod: '',
@@ -90,7 +103,13 @@ const LabDataEntryScreen = () => {
       ss: '',
       sw: '',
       time: new Date().toISOString().split('T')[0]
-    }]);
+    };
+    setSamples([...samples, newSample]);
+    // 默认展开新添加的样本
+    setCollapsedSamples(prev => ({
+      ...prev,
+      [newSample.id]: false
+    }));
   };
 
   const removeSample = (id) => {
@@ -99,6 +118,10 @@ const LabDataEntryScreen = () => {
       return;
     }
     setSamples(samples.filter(sample => sample.id !== id));
+    // 移除折叠状态
+    const updatedCollapsedSamples = {...collapsedSamples};
+    delete updatedCollapsedSamples[id];
+    setCollapsedSamples(updatedCollapsedSamples);
   };
 
   const updateSample = (id, field, value) => {
@@ -205,7 +228,7 @@ const LabDataEntryScreen = () => {
       setLoadingModalVisible(false);
       Alert.alert('成功', '数据已成功提交');
       // 重置表单
-      setSamples([{
+      const newSample = {
         id: Date.now(),
         sample_name: '',
         cod: '',
@@ -216,7 +239,10 @@ const LabDataEntryScreen = () => {
         ss: '',
         sw: '',
         time: new Date().toISOString().split('T')[0]
-      }]);
+      };
+      setSamples([newSample]);
+      // 重置折叠状态
+      setCollapsedSamples({ [newSample.id]: false });
     } catch (error) {
       console.error('提交失败:', error);
       Alert.alert('错误', error.message || '提交失败，请稍后重试');
@@ -224,6 +250,18 @@ const LabDataEntryScreen = () => {
       setIsSubmitting(false);
       setLoadingModalVisible(false);
     }
+  };
+
+  const renderSampleSummary = (sample) => {
+    return (
+      <View style={[styles.sampleSummary, { borderBottomColor: colors.border }]}>
+        <Text style={{ color: colors.text }}>
+          {sample.sample_name || '未命名样本'}{' '}
+          {sample.sample_name && sample.cod ? `| COD: ${sample.cod} mg/L` : ''}
+          {sample.sample_name && sample.ph ? ` | pH: ${sample.ph}` : ''}
+        </Text>
+      </View>
+    );
   };
 
   return (
@@ -239,9 +277,21 @@ const LabDataEntryScreen = () => {
           {samples.map((sample, index) => (
             <View key={sample.id} style={styles.sampleContainer}>
               <View style={styles.sampleHeader}>
-                <Text style={[styles.sampleTitle, { color: colors.text }]}>
-                  样本 {index + 1}
-                </Text>
+                <View style={styles.headerLeftSection}>
+                  <TouchableOpacity 
+                    onPress={() => toggleCollapse(sample.id)}
+                    style={styles.collapseButton}
+                  >
+                    <Ionicons 
+                      name={isSampleCollapsed(sample.id) ? "chevron-down" : "chevron-up"} 
+                      size={24} 
+                      color={colors.text} 
+                    />
+                  </TouchableOpacity>
+                  <Text style={[styles.sampleTitle, { color: colors.text }]}>
+                    样本 {index + 1}
+                  </Text>
+                </View>
                 <TouchableOpacity 
                   onPress={() => removeSample(sample.id)}
                   style={styles.removeButton}
@@ -250,178 +300,182 @@ const LabDataEntryScreen = () => {
                 </TouchableOpacity>
               </View>
 
-              <View style={styles.inputGroup}>
-                <Text style={[styles.label, { color: colors.text }]}>水样名称</Text>
-                <TextInput
-                  style={[styles.input, { 
-                    backgroundColor: colors.background,
-                    color: colors.text,
-                    borderColor: colors.border,
-                    marginBottom: 8
-                  }]}
-                  value={sample.sample_name}
-                  editable={false}
-                  placeholder="当前未选择水样"
-                  placeholderTextColor={colors.text}
-                />
-                <View style={styles.buttonRow}>
-                  <TouchableOpacity 
-                    style={[styles.sampleSelectButton, { backgroundColor: colors.primary }]}
-                    onPress={() => {
-                      setCurrentSampleId(sample.id);
-                      setShowManualInput(false);
-                      setModalVisible(true);
-                    }}
-                  >
-                    <Text style={styles.buttonText}>选择水样名称</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={[styles.sampleSelectButton, { backgroundColor: colors.primary }]}
-                    onPress={() => {
-                      setCurrentSampleId(sample.id);
-                      setShowManualInput(true);
-                      setModalVisible(true);
-                    }}
-                  >
-                    <Text style={styles.buttonText}>手动输入</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
+              {isSampleCollapsed(sample.id) ? renderSampleSummary(sample) : (
+                <View style={styles.sampleContent}>
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.label, { color: colors.text }]}>水样名称</Text>
+                    <TextInput
+                      style={[styles.input, { 
+                        backgroundColor: colors.background,
+                        color: colors.text,
+                        borderColor: colors.border,
+                        marginBottom: 8
+                      }]}
+                      value={sample.sample_name}
+                      editable={false}
+                      placeholder="当前未选择水样"
+                      placeholderTextColor={colors.text}
+                    />
+                    <View style={styles.buttonRow}>
+                      <TouchableOpacity 
+                        style={[styles.sampleSelectButton, { backgroundColor: colors.primary }]}
+                        onPress={() => {
+                          setCurrentSampleId(sample.id);
+                          setShowManualInput(false);
+                          setModalVisible(true);
+                        }}
+                      >
+                        <Text style={styles.buttonText}>选择水样名称</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        style={[styles.sampleSelectButton, { backgroundColor: colors.primary }]}
+                        onPress={() => {
+                          setCurrentSampleId(sample.id);
+                          setShowManualInput(true);
+                          setModalVisible(true);
+                        }}
+                      >
+                        <Text style={styles.buttonText}>手动输入</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
 
-              <View style={styles.inputRow}>
-                <View style={styles.inputGroup}>
-                  <Text style={[styles.label, { color: colors.text }]}>COD (mg/L)</Text>
-                  <TextInput
-                    style={[styles.input, { 
-                      backgroundColor: colors.background,
-                      color: colors.text,
-                      borderColor: colors.border
-                    }]}
-                    value={sample.cod}
-                    onChangeText={(value) => updateSample(sample.id, 'cod', value)}
-                    keyboardType="numeric"
-                    placeholder="COD"
-                    placeholderTextColor={colors.text}
-                  />
-                </View>
+                  <View style={styles.inputRow}>
+                    <View style={styles.inputGroup}>
+                      <Text style={[styles.label, { color: colors.text }]}>COD (mg/L)</Text>
+                      <TextInput
+                        style={[styles.input, { 
+                          backgroundColor: colors.background,
+                          color: colors.text,
+                          borderColor: colors.border
+                        }]}
+                        value={sample.cod}
+                        onChangeText={(value) => updateSample(sample.id, 'cod', value)}
+                        keyboardType="numeric"
+                        placeholder="COD"
+                        placeholderTextColor={colors.text}
+                      />
+                    </View>
 
-                <View style={styles.inputGroup}>
-                  <Text style={[styles.label, { color: colors.text }]}>氨氮 (mg/L)</Text>
-                  <TextInput
-                    style={[styles.input, { 
-                      backgroundColor: colors.background,
-                      color: colors.text,
-                      borderColor: colors.border
-                    }]}
-                    value={sample.nh3}
-                    onChangeText={(value) => updateSample(sample.id, 'nh3', value)}
-                    keyboardType="numeric"
-                    placeholder="氨氮"
-                    placeholderTextColor={colors.text}
-                  />
-                </View>
-              </View>
+                    <View style={styles.inputGroup}>
+                      <Text style={[styles.label, { color: colors.text }]}>氨氮 (mg/L)</Text>
+                      <TextInput
+                        style={[styles.input, { 
+                          backgroundColor: colors.background,
+                          color: colors.text,
+                          borderColor: colors.border
+                        }]}
+                        value={sample.nh3}
+                        onChangeText={(value) => updateSample(sample.id, 'nh3', value)}
+                        keyboardType="numeric"
+                        placeholder="氨氮"
+                        placeholderTextColor={colors.text}
+                      />
+                    </View>
+                  </View>
 
-              <View style={styles.inputRow}>
-                <View style={styles.inputGroup}>
-                  <Text style={[styles.label, { color: colors.text }]}>总氮 (mg/L)</Text>
-                  <TextInput
-                    style={[styles.input, { 
-                      backgroundColor: colors.background,
-                      color: colors.text,
-                      borderColor: colors.border
-                    }]}
-                    value={sample.tn}
-                    onChangeText={(value) => updateSample(sample.id, 'tn', value)}
-                    keyboardType="numeric"
-                    placeholder="总氮"
-                    placeholderTextColor={colors.text}
-                  />
-                </View>
+                  <View style={styles.inputRow}>
+                    <View style={styles.inputGroup}>
+                      <Text style={[styles.label, { color: colors.text }]}>总氮 (mg/L)</Text>
+                      <TextInput
+                        style={[styles.input, { 
+                          backgroundColor: colors.background,
+                          color: colors.text,
+                          borderColor: colors.border
+                        }]}
+                        value={sample.tn}
+                        onChangeText={(value) => updateSample(sample.id, 'tn', value)}
+                        keyboardType="numeric"
+                        placeholder="总氮"
+                        placeholderTextColor={colors.text}
+                      />
+                    </View>
 
-                <View style={styles.inputGroup}>
-                  <Text style={[styles.label, { color: colors.text }]}>总磷 (mg/L)</Text>
-                  <TextInput
-                    style={[styles.input, { 
-                      backgroundColor: colors.background,
-                      color: colors.text,
-                      borderColor: colors.border
-                    }]}
-                    value={sample.tp}
-                    onChangeText={(value) => updateSample(sample.id, 'tp', value)}
-                    keyboardType="numeric"
-                    placeholder="总磷"
-                    placeholderTextColor={colors.text}
-                  />
-                </View>
-              </View>
+                    <View style={styles.inputGroup}>
+                      <Text style={[styles.label, { color: colors.text }]}>总磷 (mg/L)</Text>
+                      <TextInput
+                        style={[styles.input, { 
+                          backgroundColor: colors.background,
+                          color: colors.text,
+                          borderColor: colors.border
+                        }]}
+                        value={sample.tp}
+                        onChangeText={(value) => updateSample(sample.id, 'tp', value)}
+                        keyboardType="numeric"
+                        placeholder="总磷"
+                        placeholderTextColor={colors.text}
+                      />
+                    </View>
+                  </View>
 
-              <View style={styles.inputRow}>
-                <View style={styles.inputGroup}>
-                  <Text style={[styles.label, { color: colors.text }]}>pH</Text>
-                  <TextInput
-                    style={[styles.input, { 
-                      backgroundColor: colors.background,
-                      color: colors.text,
-                      borderColor: colors.border
-                    }]}
-                    value={sample.ph}
-                    onChangeText={(value) => updateSample(sample.id, 'ph', value)}
-                    keyboardType="numeric"
-                    placeholder="pH"
-                    placeholderTextColor={colors.text}
-                  />
-                </View>
+                  <View style={styles.inputRow}>
+                    <View style={styles.inputGroup}>
+                      <Text style={[styles.label, { color: colors.text }]}>pH</Text>
+                      <TextInput
+                        style={[styles.input, { 
+                          backgroundColor: colors.background,
+                          color: colors.text,
+                          borderColor: colors.border
+                        }]}
+                        value={sample.ph}
+                        onChangeText={(value) => updateSample(sample.id, 'ph', value)}
+                        keyboardType="numeric"
+                        placeholder="pH"
+                        placeholderTextColor={colors.text}
+                      />
+                    </View>
 
-                <View style={styles.inputGroup}>
-                  <Text style={[styles.label, { color: colors.text }]}>SS (mg/L)</Text>
-                  <TextInput
-                    style={[styles.input, { 
-                      backgroundColor: colors.background,
-                      color: colors.text,
-                      borderColor: colors.border
-                    }]}
-                    value={sample.ss}
-                    onChangeText={(value) => updateSample(sample.id, 'ss', value)}
-                    keyboardType="numeric"
-                    placeholder="SS"
-                    placeholderTextColor={colors.text}
-                  />
-                </View>
-              </View>
+                    <View style={styles.inputGroup}>
+                      <Text style={[styles.label, { color: colors.text }]}>SS (mg/L)</Text>
+                      <TextInput
+                        style={[styles.input, { 
+                          backgroundColor: colors.background,
+                          color: colors.text,
+                          borderColor: colors.border
+                        }]}
+                        value={sample.ss}
+                        onChangeText={(value) => updateSample(sample.id, 'ss', value)}
+                        keyboardType="numeric"
+                        placeholder="SS"
+                        placeholderTextColor={colors.text}
+                      />
+                    </View>
+                  </View>
 
-              <View style={styles.inputRow}>
-                <View style={styles.inputGroup}>
-                  <Text style={[styles.label, { color: colors.text }]}>水温 (℃)</Text>
-                  <TextInput
-                    style={[styles.input, { 
-                      backgroundColor: colors.background,
-                      color: colors.text,
-                      borderColor: colors.border
-                    }]}
-                    value={sample.sw}
-                    onChangeText={(value) => updateSample(sample.id, 'sw', value)}
-                    keyboardType="numeric"
-                    placeholder="水温"
-                    placeholderTextColor={colors.text}
-                  />
-                </View>
+                  <View style={styles.inputRow}>
+                    <View style={styles.inputGroup}>
+                      <Text style={[styles.label, { color: colors.text }]}>水温 (℃)</Text>
+                      <TextInput
+                        style={[styles.input, { 
+                          backgroundColor: colors.background,
+                          color: colors.text,
+                          borderColor: colors.border
+                        }]}
+                        value={sample.sw}
+                        onChangeText={(value) => updateSample(sample.id, 'sw', value)}
+                        keyboardType="numeric"
+                        placeholder="水温"
+                        placeholderTextColor={colors.text}
+                      />
+                    </View>
 
-                <View style={styles.inputGroup}>
-                  <Text style={[styles.label, { color: colors.text }]}>采样日期</Text>
-                  <TextInput
-                    style={[styles.input, { 
-                      backgroundColor: colors.background,
-                      color: colors.text,
-                      borderColor: colors.border
-                    }]}
-                    value={sample.time}
-                    onChangeText={(value) => updateSample(sample.id, 'time', value)}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor={colors.text}
-                  />
+                    <View style={styles.inputGroup}>
+                      <Text style={[styles.label, { color: colors.text }]}>采样日期</Text>
+                      <TextInput
+                        style={[styles.input, { 
+                          backgroundColor: colors.background,
+                          color: colors.text,
+                          borderColor: colors.border
+                        }]}
+                        value={sample.time}
+                        onChangeText={(value) => updateSample(sample.id, 'time', value)}
+                        placeholder="YYYY-MM-DD"
+                        placeholderTextColor={colors.text}
+                      />
+                    </View>
+                  </View>
                 </View>
-              </View>
+              )}
             </View>
           ))}
 
@@ -643,6 +697,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
+  headerLeftSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  collapseButton: {
+    padding: 5,
+    marginRight: 8,
+  },
   sampleTitle: {
     fontSize: 18,
     fontWeight: 'bold',
@@ -655,6 +717,13 @@ const styles = StyleSheet.create({
   removeButtonText: {
     color: 'white',
     fontSize: 14,
+  },
+  sampleContent: {
+    width: '100%',
+  },
+  sampleSummary: {
+    paddingVertical: 10,
+    borderBottomWidth: 1,
   },
   inputRow: {
     flexDirection: 'row',

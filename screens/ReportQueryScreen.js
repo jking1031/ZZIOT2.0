@@ -37,6 +37,8 @@ const ReportQueryScreen = () => {
   const screenHeight = Dimensions.get('window').height;
   const [selectedDateRange, setSelectedDateRange] = useState('7');
   const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [loadingStartTime, setLoadingStartTime] = useState(null);
 
   const dateRangeOptions = [
     { label: '最近7天', value: '7' },
@@ -141,6 +143,9 @@ const ReportQueryScreen = () => {
   // 获取报告数据
   const fetchReports = async () => {
     try {
+      setLoading(true);
+      setLoadingStartTime(Date.now());
+
       const adjustedStartDate = new Date(startDate.getTime() + 8 * 60 * 60 * 1000);
       const adjustedEndDate = new Date(endDate.getTime() + 8 * 60 * 60 * 1000);
       const apiUrl = selectedSite === 'gt' ? 
@@ -160,9 +165,32 @@ const ReportQueryScreen = () => {
         images: report.imagesurl ? report.imagesurl.split(',').filter(url => url) : []
       }));
 
+      // 确保加载状态至少持续2秒
+      const currentTime = Date.now();
+      const elapsedTime = currentTime - loadingStartTime;
+      const remainingTime = Math.max(0, 2000 - elapsedTime);
+      
+      if (remainingTime > 0) {
+        await new Promise(resolve => setTimeout(resolve, remainingTime));
+      }
+
+      // 先保存查询结果
       setReports(processedReports);
+      // 完成加载状态
+      setLoading(false);
+      
+      // 在加载状态消失后，如果没有数据再提示
+      if (processedReports.length === 0) {
+        setTimeout(() => {
+          Alert.alert('提示', '所选时间范围内无报表数据');
+        }, 100);
+      }
     } catch (error) {
       console.error('获取报告失败:', error);
+      setLoading(false);
+      setTimeout(() => {
+        Alert.alert('错误', '获取报表失败，请检查网络连接后重试');
+      }, 100);
     }
   };
 
@@ -1339,6 +1367,34 @@ const ReportQueryScreen = () => {
       minHeight: 200,
       maxHeight: 300,
     },
+    loadingModalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 20,
+    },
+    loadingModalView: {
+      backgroundColor: 'white', // 或者使用 colors.card
+      borderRadius: 12,
+      padding: 20,
+      width: '80%',
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: {
+        width: 0,
+        height: 2,
+      },
+      shadowOpacity: 0.25,
+      shadowRadius: 4,
+      elevation: 5,
+    },
+    loadingText: {
+      fontSize: 16,
+      color: '#000', // 或者使用 colors.text
+      marginTop: 16,
+      textAlign: 'center',
+    },
   });
 
   const dynamicStyles = {
@@ -1488,6 +1544,23 @@ const ReportQueryScreen = () => {
         {reports.map(report => selectedSite === 'gt' ? renderGTReportCard(report) : render5000ReportCard(report))}
       </ScrollView>
       {renderImageViewerModal()}
+      
+      {/* 加载状态模态框 */}
+      <Modal
+        visible={loading}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => {}}
+      >
+        <View style={styles.loadingModalOverlay}>
+          <View style={styles.loadingModalView}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.loadingText}>
+              正在获取报表数据，请稍候...
+            </Text>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
