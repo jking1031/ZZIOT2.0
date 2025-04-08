@@ -13,7 +13,8 @@ import {
   Platform,
   StatusBar,
   Switch,
-  ScrollView
+  ScrollView,
+  SectionList
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
@@ -72,6 +73,47 @@ const UserManagementScreen = () => {
   const [showCompanyPicker, setShowCompanyPicker] = useState(false);
   const [showDepartmentPicker, setShowDepartmentPicker] = useState(false);
 
+  // 添加按部门分组的功能
+  const [groupedUsers, setGroupedUsers] = useState([]);
+  
+  // 对用户按部门进行分组
+  const groupUsersByDepartment = (userList) => {
+    if (!userList || !Array.isArray(userList)) {
+      console.log('无效的用户列表，无法分组');
+      return;
+    }
+    
+    // 创建部门分组映射
+    const departmentGroups = {};
+    
+    // 遍历用户并按部门分组
+    userList.forEach(user => {
+      const department = user.department || '未分配部门';
+      
+      if (!departmentGroups[department]) {
+        departmentGroups[department] = [];
+      }
+      
+      departmentGroups[department].push(user);
+    });
+    
+    // 转换为数组格式用于渲染
+    const groupedData = Object.keys(departmentGroups).map(department => ({
+      title: department,
+      data: departmentGroups[department]
+    }));
+    
+    // 对分组进行排序，确保"未分配部门"在最后
+    groupedData.sort((a, b) => {
+      if (a.title === '未分配部门') return 1;
+      if (b.title === '未分配部门') return -1;
+      return a.title.localeCompare(b.title);
+    });
+    
+    console.log(`用户按部门分组完成，共${groupedData.length}个部门`);
+    setGroupedUsers(groupedData);
+  };
+
   // 检查是否是管理员，如果不是则返回
   useEffect(() => {
     // 只有管理员(is_admin值为1)才能访问此页面
@@ -128,6 +170,8 @@ const UserManagementScreen = () => {
       if (response.data && Array.isArray(response.data)) {
         console.log('获取到用户列表:', response.data.length);
         setUsers(response.data);
+        // 更新分组后的用户数据
+        groupUsersByDepartment(response.data);
       } else {
         console.log('服务器返回的用户数据格式不正确:', response.data);
         Alert.alert('错误', '获取用户列表失败，请稍后再试');
@@ -560,32 +604,44 @@ const UserManagementScreen = () => {
 
   // 删除用户
   const handleDeleteUser = async (userId) => {
-    Alert.alert(
-      '确认删除',
-      '确定要删除此用户吗？此操作不可撤销。',
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '删除',
-          style: 'destructive',
-          onPress: async () => {
-            setLoading(true);
-            try {
-              await axios.delete(`https://nodered.jzz77.cn:9003/api/users/${userId}`, {
-                timeout: 10000
-              });
-              Alert.alert('成功', '用户已成功删除');
-              fetchUsers();
-            } catch (error) {
-              console.error('删除用户失败:', error);
-              Alert.alert('错误', '删除用户失败，请稍后再试');
-            } finally {
-              setLoading(false);
+    try {
+      // 确认删除
+      Alert.alert(
+        '确认删除',
+        '确定要删除此用户吗？此操作无法撤销。',
+        [
+          { text: '取消', style: 'cancel' },
+          {
+            text: '确定删除',
+            style: 'destructive',
+            onPress: async () => {
+              setLoading(true);
+              try {
+                const response = await axios.delete(`https://nodered.jzz77.cn:9003/api/users/${userId}`);
+                
+                if (response.status === 200) {
+                  // 删除成功，更新用户列表
+                  const updatedUsers = users.filter(user => user.id !== userId);
+                  setUsers(updatedUsers);
+                  // 更新分组
+                  groupUsersByDepartment(updatedUsers);
+                  Alert.alert('成功', '用户已删除');
+                } else {
+                  Alert.alert('错误', '删除用户失败，请稍后再试');
+                }
+              } catch (error) {
+                console.error('删除用户失败:', error);
+                Alert.alert('错误', '删除用户时出错，请检查网络连接');
+              } finally {
+                setLoading(false);
+              }
             }
           }
-        }
-      ]
-    );
+        ]
+      );
+    } catch (error) {
+      console.error('确认删除对话框错误:', error);
+    }
   };
 
   // 打开编辑用户模态框
@@ -597,23 +653,50 @@ const UserManagementScreen = () => {
   // 更新用户信息
   const handleUpdateUser = async () => {
     if (!selectedUser) return;
-
+    
+    // 验证角色ID在0-9范围内
+    if (selectedUser.is_admin === undefined || selectedUser.is_admin === null ||
+        selectedUser.is_admin < 0 || selectedUser.is_admin > 9) {
+      Alert.alert('错误', '无效的角色ID，请选择有效角色 (0-9)');
+      return;
+    }
+    
     setLoading(true);
     try {
-      const response = await axios.put(
-        `https://nodered.jzz77.cn:9003/api/users/${selectedUser.id}`, 
-        selectedUser,
-        { timeout: 10000 }
-      );
-
+      const userData = {
+        username: selectedUser.username,
+        email: selectedUser.email,
+        company: selectedUser.company,
+        department: selectedUser.department,
+        phone: selectedUser.phone,
+        is_admin: selectedUser.is_admin
+      };
+      
+      if (selectedUser.password) {
+        userData.password = selectedUser.password;
+      }
+      
+      console.log('正在更新用户信息，用户ID:', selectedUser.id, '数据:', JSON.stringify(userData));
+      
+      const response = await axios.put(`https://nodered.jzz77.cn:9003/api/users/${selectedUser.id}`, userData);
+      
       if (response.status === 200) {
-        Alert.alert('成功', '用户信息已更新');
+        // 更新本地用户列表
+        const updatedUsers = users.map(user => 
+          user.id === selectedUser.id ? { ...user, ...userData } : user
+        );
+        setUsers(updatedUsers);
+        // 更新分组
+        groupUsersByDepartment(updatedUsers);
+        
         setShowEditModal(false);
-        fetchUsers();
+        Alert.alert('成功', '用户信息已更新');
+      } else {
+        Alert.alert('错误', '更新用户信息失败，请稍后再试');
       }
     } catch (error) {
       console.error('更新用户信息失败:', error);
-      Alert.alert('错误', '更新用户信息失败，请稍后再试');
+      Alert.alert('错误', '更新用户信息时出错，请检查网络连接');
     } finally {
       setLoading(false);
     }
@@ -625,28 +708,52 @@ const UserManagementScreen = () => {
     setShowRoleModal(true);
   };
 
-  // 更改用户角色
+  // 更改用户角色，确保角色ID在0-9范围内
   const changeUserRole = async (roleId) => {
-    if (!userToChangeRole) return;
-
+    if (!userToChangeRole) {
+      return;
+    }
+    
+    // 确保角色ID在有效范围内
+    if (roleId < 0 || roleId > 9) {
+      Alert.alert('错误', '无效的角色ID，请选择有效角色');
+      return;
+    }
+    
+    setLoading(true);
     try {
+      console.log('正在设置用户角色，用户ID:', userToChangeRole.id, '角色ID:', roleId);
       const response = await axios.put(
-        `https://nodered.jzz77.cn:9003/api/users/${userToChangeRole.id}`,
+        `https://nodered.jzz77.cn:9003/api/users/${userToChangeRole.id}/role`,
         { is_admin: roleId },
         { timeout: 10000 }
       );
-
+      
       if (response.status === 200) {
-        // 更新本地用户列表
-        setUsers(users.map(u => 
-          u.id === userToChangeRole.id ? { ...u, is_admin: roleId } : u
-        ));
+        // 更新本地用户数据
+        const updatedUsers = users.map(user => {
+          if (user.id === userToChangeRole.id) {
+            return { ...user, is_admin: roleId };
+          }
+          return user;
+        });
+        
+        setUsers(updatedUsers);
+        // 更新分组
+        groupUsersByDepartment(updatedUsers);
+        
         setShowRoleModal(false);
+        setUserToChangeRole(null);
+        
         Alert.alert('成功', '用户角色已更新');
+      } else {
+        Alert.alert('错误', '更新用户角色失败，请稍后再试');
       }
     } catch (error) {
       console.error('更新用户角色失败:', error);
-      Alert.alert('错误', '更新用户角色失败，请稍后再试');
+      Alert.alert('错误', '更新用户角色失败，请检查网络连接');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -807,7 +914,7 @@ const UserManagementScreen = () => {
             onPress={() => openRoleModal(item)}
           >
             <Ionicons 
-              name="shield" 
+              name="shield-outline" 
               size={22} 
               color={getRoleColor(roleId)} 
             />
@@ -817,7 +924,11 @@ const UserManagementScreen = () => {
             style={styles.actionButton}
             onPress={() => openEditModal(item)}
           >
-            <Ionicons name="create-outline" size={22} color="#2196F3" />
+            <Ionicons 
+              name="pencil-outline" 
+              size={22} 
+              color={colors.primary} 
+            />
           </TouchableOpacity>
           
           {!isCurrentUser && (
@@ -825,7 +936,11 @@ const UserManagementScreen = () => {
               style={styles.actionButton}
               onPress={() => handleDeleteUser(item.id)}
             >
-              <Ionicons name="trash-outline" size={22} color="#FF5252" />
+              <Ionicons 
+                name="trash-outline" 
+                size={22} 
+                color="#D32F2F" 
+              />
             </TouchableOpacity>
           )}
         </View>
@@ -886,6 +1001,81 @@ const UserManagementScreen = () => {
     );
   };
 
+  // 渲染部门标题
+  const renderSectionHeader = ({ section }) => {
+    return (
+      <View style={[styles.sectionHeader, { backgroundColor: colors.card }]}>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>
+          {section.title} ({section.data.length})
+        </Text>
+      </View>
+    );
+  };
+
+  // 完成用户添加，确保角色ID在0-9范围内
+  const handleCompleteAddUser = async () => {
+    try {
+      // 验证是否已选择角色
+      if (newUser.is_admin === undefined || newUser.is_admin === null) {
+        Alert.alert('提示', '请选择用户角色');
+        return;
+      }
+      
+      // 确保角色ID在有效范围内
+      if (newUser.is_admin < 0 || newUser.is_admin > 9) {
+        Alert.alert('错误', '无效的角色ID，请选择有效角色');
+        return;
+      }
+
+      setLoading(true);
+      
+      // 发送角色设置请求
+      console.log('正在设置新用户角色，用户ID:', addedUserId, '角色:', newUser.is_admin);
+      const roleResponse = await axios.put(
+        `https://nodered.jzz77.cn:9003/api/users/${addedUserId}/role`,
+        { is_admin: newUser.is_admin }
+      );
+      
+      if (roleResponse.status === 200) {
+        // 重新获取用户列表，确保有最新数据
+        const response = await axios.get('https://nodered.jzz77.cn:9003/api/users');
+        if (response.data && Array.isArray(response.data)) {
+          setUsers(response.data);
+          // 更新分组
+          groupUsersByDepartment(response.data);
+        }
+        
+        // 完成添加流程
+        setShowAddModal(false);
+        setAddUserStep(1);
+        setAddedUserId(null);
+        setNewUser({
+          username: '',
+          email: '',
+          password: '',
+          phone: '',
+          company: '',
+          company_id: '',
+          department: '',
+          department_id: '',
+          is_admin: 0
+        });
+        
+        Alert.alert('成功', '用户添加完成，并成功设置角色权限');
+      } else {
+        Alert.alert('角色设置失败', '用户已创建，但角色设置失败，请稍后在用户列表中设置');
+      }
+    } catch (error) {
+      console.error('完成用户添加时出错:', error);
+      Alert.alert(
+        '角色设置失败', 
+        '用户已创建，但角色设置失败，请稍后在用户列表中设置'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {Platform.OS === 'android' && <AndroidHeader />}
@@ -896,9 +1086,10 @@ const UserManagementScreen = () => {
           <Text style={[styles.loadingText, { color: colors.text }]}>加载中...</Text>
         </View>
       ) : (
-        <FlatList
-          data={users}
-          renderItem={renderUserItem}
+        <SectionList
+          sections={groupedUsers}
+          renderItem={({ item }) => renderUserItem({ item })}
+          renderSectionHeader={renderSectionHeader}
           keyExtractor={(item) => item.id.toString()}
           contentContainerStyle={styles.listContainer}
           refreshControl={
@@ -917,6 +1108,7 @@ const UserManagementScreen = () => {
               </Text>
             </View>
           }
+          stickySectionHeadersEnabled={true}
         />
       )}
       
@@ -1106,7 +1298,7 @@ const UserManagementScreen = () => {
                   backgroundColor: colors.primary,
                   flex: 1
                 }]}
-                onPress={addUserStep === 1 ? handleRegisterUser : handleSetUserRole}
+                onPress={addUserStep === 1 ? handleRegisterUser : handleCompleteAddUser}
                 disabled={loading}
               >
                 {loading ? (
@@ -1368,12 +1560,21 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   actionButtons: {
-    flexDirection: 'column',
-    justifyContent: 'space-between',
-    paddingLeft: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingLeft: 8,
   },
   actionButton: {
     padding: 8,
+    marginHorizontal: 2,
+  },
+  iconBackground: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   emptyContainer: {
     alignItems: 'center',
@@ -1549,6 +1750,39 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginRight: 12,
     borderWidth: 1,
+  },
+  sectionHeader: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.1)',
+    marginTop: 4,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  rightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    height: '100%',
+  },
+  editButton: {
+    backgroundColor: '#2196F3',
+  },
+  deleteButton: {
+    backgroundColor: '#FF5252',
+  },
+  actionText: {
+    color: 'white',
+    fontSize: 12,
+    marginTop: 4,
+    fontWeight: '500',
+  },
+  roleIconButton: {
+    padding: 8,
+    alignSelf: 'center',
+    marginLeft: 'auto',
   },
 });
 

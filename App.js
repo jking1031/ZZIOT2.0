@@ -1,14 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Alert, Platform, StatusBar, SafeAreaView, Text, View } from 'react-native';
 import * as Updates from 'expo-updates';
 import * as FileSystem from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import * as Notifications from 'expo-notifications';
-import { registerForPushNotificationsAsync } from './utils/notifications';
 import { ThemeProvider } from './context/ThemeContext';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthProvider } from './context/AuthContext';
 import SplashScreen from './screens/SplashScreen';
 import HomeScreen from './screens/HomeScreen';
 import SiteListScreen from './screens/SiteListScreen';
@@ -36,7 +34,6 @@ import TicketDetailScreen from './screens/TicketDetailScreen';
 import CreateTicketScreen from './screens/CreateTicketScreen';
 import LabDataScreen from './screens/LabDataScreen';
 import SludgeDataEntryScreen from './screens/SludgeDataEntryScreen';
-import { initJPush, registerJPushDevice } from './utils/jpushNotifications';
 
 // 添加错误边界组件
 class ErrorBoundary extends React.Component {
@@ -144,10 +141,7 @@ export default function App() {
             backgroundColor="rgba(33, 150, 243, 0.8)"
             translucent={Platform.OS === 'android'} // 安卓设置为透明状态栏
           />
-          <AppContent 
-            showSplash={showSplash} 
-            onSplashFinish={handleSplashFinish} 
-          />
+          <AppContent showSplash={showSplash} onSplashFinish={handleSplashFinish} />
         </AuthProvider>
       </ThemeProvider>
     </ErrorBoundary>
@@ -155,93 +149,9 @@ export default function App() {
 }
 
 function AppContent({ showSplash, onSplashFinish }) {
-  const { user } = useAuth();
-  const [expoPushToken, setExpoPushToken] = useState('');
-  const [jpushRegistrationId, setJpushRegistrationId] = useState('');
-  const notificationListener = useRef();
-  const responseListener = useRef();
-  const navigationRef = useRef(null);
-  
-  // 通知服务初始化
-  useEffect(() => {
-    const setupNotifications = async () => {
-      try {
-        if (Platform.OS === 'android') {
-          // Android使用极光推送
-          const initSuccess = initJPush();
-          
-          if (initSuccess && user && user.id) {
-            const regId = await registerJPushDevice(user.id);
-            setJpushRegistrationId(regId);
-          }
-        } else {
-          // iOS使用Expo推送服务
-          const token = await registerForPushNotificationsAsync();
-          setExpoPushToken(token);
-          
-          // 设置通知监听器
-          if (token) { // 只有在成功获取token时才设置监听器
-            notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
-              console.log('收到通知:', notification);
-            });
-            
-            responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
-              console.log('通知响应:', response);
-              const data = response.notification.request.content.data;
-              if (data && data.screen) {
-                AsyncStorage.setItem('pendingNavigation', JSON.stringify({
-                  screen: data.screen,
-                  params: data.params || {}
-                }));
-              }
-            });
-          }
-        }
-      } catch (error) {
-        console.error('设置通知服务失败:', error);
-      }
-    };
-    
-    setupNotifications();
-    
-    // 清理函数
-    return () => {
-      try {
-        if (notificationListener.current) {
-          Notifications.removeNotificationSubscription(notificationListener.current);
-        }
-        if (responseListener.current) {
-          Notifications.removeNotificationSubscription(responseListener.current);
-        }
-      } catch (error) {
-        console.error('移除通知订阅失败:', error);
-      }
-    };
-  }, [user]);
-  
-  // 处理通知导航
-  useEffect(() => {
-    const checkPendingNavigation = async () => {
-      try {
-        const pendingNavString = await AsyncStorage.getItem('pendingNavigation');
-        if (pendingNavString && navigationRef.current) {
-          const { screen, params } = JSON.parse(pendingNavString);
-          navigationRef.current.navigate(screen, params);
-          // 清除待处理的导航
-          await AsyncStorage.removeItem('pendingNavigation');
-        }
-      } catch (error) {
-        console.error('处理待导航出错:', error);
-      }
-    };
-    
-    if (!showSplash) {
-      checkPendingNavigation();
-    }
-  }, [showSplash]);
 
   return (
-    <NavigationContainer ref={navigationRef}>
+    <NavigationContainer>
       {showSplash ? (
         <SplashScreen onFinish={onSplashFinish} />
       ) : (

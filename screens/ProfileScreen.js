@@ -10,6 +10,7 @@ import Constants from 'expo-constants';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // 角色ID与角色信息的映射
 const roleMap = {
@@ -341,6 +342,55 @@ const ProfileScreen = () => {
     }
   };
 
+  // 清除本地用户数据
+  const clearLocalUserData = async () => {
+    try {
+      console.log('开始清除本地用户数据...');
+      
+      // 清除AsyncStorage中保存的用户数据
+      const keysToRemove = [
+        'user',             // 用户基本信息
+        'userRoles',        // 用户角色
+        'authToken',        // 认证令牌
+        'loginCredentials', // 登录凭证
+        'lastLogin',        // 上次登录信息
+        'userPreferences',  // 用户偏好设置
+        'userEmail',        // 邮箱/账号
+        'userPassword',     // 密码
+        'rememberMe'        // 记住登录状态
+      ];
+      
+      await AsyncStorage.multiRemove(keysToRemove);
+      
+      // 手动逐一清除，确保清除完全
+      await AsyncStorage.removeItem('userEmail');
+      await AsyncStorage.removeItem('userPassword');
+      await AsyncStorage.removeItem('rememberMe');
+      
+      // 注意：根据用户要求，保留本地头像文件，不再删除
+      // 头像文件将在用户下次登录时继续使用
+      if (user && user.id) {
+        const avatarUri = `${FileSystem.documentDirectory}avatars/user_${user.id}_avatar.jpg`;
+        const fileInfo = await FileSystem.getInfoAsync(avatarUri);
+        
+        if (fileInfo.exists) {
+          console.log('保留用户头像文件:', avatarUri);
+        }
+      }
+      
+      // 清除其他可能与用户相关的数据
+      // 清除查询过的消息缓存
+      await AsyncStorage.removeItem('queriedMessages');
+      // 清除保存的消息
+      await AsyncStorage.removeItem('messages');
+      await AsyncStorage.removeItem('previousMessages');
+      
+      console.log('本地用户数据清除完成');
+    } catch (error) {
+      console.error('清除本地用户数据时出错:', error);
+    }
+  };
+
   return (
     <ScrollView 
       style={[
@@ -647,19 +697,36 @@ const ProfileScreen = () => {
               { 
                 text: '确定', 
                 onPress: async () => {
-                  await logout();
-                  // 清理本地用户信息状态
-                  setUserInfo({
-                    avatar_seed: Math.random().toString(36).substring(2, 15),
-                    username: '',
-                    department: '',
-                    phone: '',
-                    company: ''
-                  });
-                  navigation.reset({
-                    index: 0,
-                    routes: [{ name: 'Home' }]
-                  });
+                  try {
+                    // 先清除本地用户数据
+                    await clearLocalUserData();
+                    
+                    // 调用Auth上下文中的登出方法
+                    await logout();
+                    
+                    // 清理本地用户信息状态
+                    setUserInfo({
+                      avatar_seed: Math.random().toString(36).substring(2, 15),
+                      username: '',
+                      department: '',
+                      phone: '',
+                      company: ''
+                    });
+                    
+                    // 重置本地头像URI
+                    setLocalAvatarUri(null);
+                    
+                    // 导航回主页
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'Home' }]
+                    });
+                    
+                    console.log('登出流程完成');
+                  } catch (error) {
+                    console.error('退出登录时出错:', error);
+                    Alert.alert('退出失败', '退出登录时出现错误，请重试');
+                  }
                 }
               }
             ]

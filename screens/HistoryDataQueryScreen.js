@@ -31,11 +31,12 @@ const HistoryDataQueryScreen = () => {
   const [columnMappings, setColumnMappings] = useState({});
   const [modalVisible, setModalVisible] = useState(false);
   const [currentSelectType, setCurrentSelectType] = useState(null);
-  const [dataInterval, setDataInterval] = useState('5');
+  const [dataInterval, setDataInterval] = useState('60');
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [showRowsPerPageModal, setShowRowsPerPageModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isTableVisible, setIsTableVisible] = useState(false);
+  const [selectedDateRange, setSelectedDateRange] = useState('7');
 
   const rowsPerPageOptions = [
     { label: '10条/页', value: 10 },
@@ -70,7 +71,13 @@ const HistoryDataQueryScreen = () => {
     { label: '上月', value: 'last_month' }
   ];
 
+  useEffect(() => {
+    handleDateRangeSelect('7');
+  }, []);
+
   const handleDateRangeSelect = (value) => {
+    setSelectedDateRange(value);
+    
     const today = new Date();
     let newStartDate = new Date();
     let newEndDate = new Date();
@@ -993,14 +1000,19 @@ const HistoryDataQueryScreen = () => {
                   key={option.value}
                   style={[
                     styles.dateRangeButton,
-                    { borderColor: colors.border }
+                    { borderColor: colors.border },
+                    selectedDateRange === option.value && { 
+                      backgroundColor: colors.primary, 
+                      borderColor: colors.primary 
+                    }
                   ]}
                   onPress={() => handleDateRangeSelect(option.value)}
                 >
                   <Text
                     style={[
                       styles.dateRangeButtonText,
-                      { color: colors.text }
+                      { color: colors.text },
+                      selectedDateRange === option.value && { color: '#fff' }
                     ]}
                   >
                     {option.label}

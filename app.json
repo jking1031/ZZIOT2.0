@@ -2,7 +2,7 @@
   "expo": {
     "name": "正泽物联",
     "slug": "zziot20",
-    "version": "1.5.2",
+    "version": "1.5.3",
     "orientation": "portrait",
     "icon": "./assets/logo4.png",
     "userInterfaceStyle": "light",
@@ -12,7 +12,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.zziot.app",
-      "buildNumber": "1.5.2",
+      "buildNumber": "1.5.3",
       "requireFullScreen": true,
       "infoPlist": {
         "NSCameraUsageDescription": "该应用需要访问您的相机用于拍摄照片和扫描二维码",
@@ -59,7 +59,7 @@
     "owner": "mrking1031",
     "android": {
       "package": "com.zziot.app",
-      "versionCode": 147,
+      "versionCode": 148,
       "adaptiveIcon": {
         "foregroundImage": "./assets/logo4.png",
         "backgroundColor": "#ffffff"
@@ -91,31 +91,15 @@
         "ACCESS_NETWORK_STATE"
       ],
       "allowBackup": true,
-      "softwareKeyboardLayoutMode": "pan",
-      "googleServicesFile": "./google-services.json"
+      "softwareKeyboardLayoutMode": "pan"
     },
     "plugins": [
       [
         "expo-build-properties",
         {
           "android": {
-            "extraMavenRepos": [
-              "https://developer.huawei.com/repo/"
-            ],
-            "gradleProperties": {
-              "android.useAndroidX": "true"
-            },
-            "extraGradleProperties": {
-              "android.enableJetifier": "true"
-            }
+            "networkSecurityConfig": "./android/app/src/main/res/xml/network_security_config.xml"
           }
-        }
-      ],
-      [
-        "./plugins/withJPushPlugin.cjs",
-        {
-          "appKey": "47d2b236e7f7169296e9e1a9",
-          "channel": "production"
         }
       ]
     ]

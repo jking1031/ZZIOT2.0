@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Platform, StatusBar } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
-import { StyleSheet, View, Text, ImageBackground, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Modal, TextInput, Switch, FlatList } from 'react-native';
+import { StyleSheet, View, Text, ImageBackground, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Modal, TextInput, Switch, FlatList, TouchableWithoutFeedback } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import * as Location from 'expo-location';
@@ -1006,6 +1006,9 @@ const HomeScreen = () => {
     department: ''
   });
   
+  // 新增一个状态来防止未登录用户使用应用
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  
   // 添加公司和部门选择的状态
   const [companies, setCompanies] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -1026,20 +1029,130 @@ const HomeScreen = () => {
   useEffect(() => {
     console.log('HomeScreen - Current user:', user);
     console.log('HomeScreen - Current isAdmin status:', isAdmin);
+    
+    // 根据用户登录状态设置认证状态
+    if (user) {
+      setIsAuthenticated(true);
+    } else {
+      setIsAuthenticated(false);
+    }
   }, [user, isAdmin]);
 
+  // 加载用户状态，检查登录状态
   useEffect(() => {
     if (!user && !loading) {
+      console.log('HomeScreen - 用户未登录，检查登录状态');
       checkLoginStatus();
+    } else if (user) {
+      // 如果用户已登录，关闭所有模态框
+      console.log('HomeScreen - 用户已登录，关闭所有登录/注册界面');
+      setShowLoginModal(false);
+      setShowRegisterModal(false);
     }
   }, [user, loading]);
 
-  // 监听用户状态变化，当用户为null时显示登录窗口
+  // 监听用户登出事件，重置登录表单状态
   useEffect(() => {
-    if (!user) {
+    // 监听用户登出事件
+    const logoutListener = EventRegister.addEventListener(
+      'USER_LOGGED_OUT',
+      () => {
+        console.log('收到用户登出事件，重置登录表单');
+        // 重置登录表单
+        setEmail('');
+        setPassword('');
+        setRememberMe(false);
+        // 重置注册表单
+        setRegisterForm({
+          username: '',
+          password: '',
+          confirmPassword: '',
+          email: '',
+          phone: '',
+          company: '',
+          department: ''
+        });
+      }
+    );
+    
+    // 组件卸载时移除监听
+    return () => {
+      EventRegister.removeEventListener(logoutListener);
+    };
+  }, []);
+
+  // 强制显示登录模态框，如果用户未登录
+  useEffect(() => {
+    if (!user && !loading) {
+      console.log('HomeScreen - 强制显示登录界面，因为用户未登录');
       setShowLoginModal(true);
+      setShowRegisterModal(false); // 确保注册模态框关闭
+      
+      // 重置注册表单
+      setRegisterForm({
+        username: '',
+        password: '',
+        confirmPassword: '',
+        email: '',
+        phone: '',
+        company: '',
+        department: ''
+      });
     }
-  }, [user]);
+  }, [user, loading]);
+
+  // 添加一个确保模态框状态一致的函数
+  const ensureModalState = (loginVisible, registerVisible) => {
+    console.log(`设置模态框状态: 登录=${loginVisible}, 注册=${registerVisible}`);
+    
+    // 先检查当前状态，避免不必要的状态更新
+    if (showLoginModal !== loginVisible || showRegisterModal !== registerVisible) {
+      // 使用批量更新来同时设置两个模态框的状态
+      setShowLoginModal(loginVisible);
+      setShowRegisterModal(registerVisible);
+    }
+  };
+  
+  // 创建一个延迟函数，用于按顺序执行操作
+  const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+  
+  // 处理从登录切换到注册的逻辑
+  const handleShowRegister = async () => {
+    try {
+      console.log('开始切换到注册界面...');
+      
+      // 关闭登录模态框
+      setShowLoginModal(false);
+      
+      // 等待足够长的时间，确保登录模态框完全关闭
+      await delay(1000);
+      
+      // 然后显示注册模态框
+      console.log('现在显示注册界面');
+      setShowRegisterModal(true);
+    } catch (error) {
+      console.error('切换到注册界面时出错:', error);
+    }
+  };
+  
+  // 处理从注册切换到登录的逻辑
+  const handleBackToLogin = async () => {
+    try {
+      console.log('开始切换到登录界面...');
+      
+      // 关闭注册模态框
+      setShowRegisterModal(false);
+      
+      // 等待足够长的时间，确保注册模态框完全关闭
+      await delay(1000);
+      
+      // 然后显示登录模态框
+      console.log('现在显示登录界面');
+      setShowLoginModal(true);
+    } catch (error) {
+      console.error('切换到登录界面时出错:', error);
+    }
+  };
 
   const checkLoginStatus = async () => {
     try {
@@ -1189,19 +1302,32 @@ const HomeScreen = () => {
   };
 
   const handleRegister = async () => {
+    console.log('开始处理注册请求...');
+    
     if (!registerForm.username || !registerForm.password || !registerForm.confirmPassword ||
         !registerForm.email || !registerForm.phone || !registerForm.company || !registerForm.department) {
+      console.log('注册表单填写不完整');
       Alert.alert('提示', '请填写完整注册信息');
       return;
     }
 
     if (registerForm.password !== registerForm.confirmPassword) {
+      console.log('两次输入的密码不一致');
       Alert.alert('提示', '两次输入的密码不一致');
       return;
     }
 
     setIsLoading(true);
     try {
+      console.log('发送注册请求到API...');
+      console.log('请求数据:', JSON.stringify({
+        username: registerForm.username,
+        email: registerForm.email,
+        phone: registerForm.phone,
+        company: registerForm.company,
+        department: registerForm.department
+      }));
+      
       const response = await axios.post('https://zziot.jzz77.cn:9003/api/register', {
         username: registerForm.username,
         password: registerForm.password,
@@ -1209,10 +1335,33 @@ const HomeScreen = () => {
         phone: registerForm.phone,
         company: registerForm.company,
         department: registerForm.department
+      }, {
+        timeout: 15000, // 增加超时时间到15秒
+        headers: {
+          'Content-Type': 'application/json'
+        }
       });
 
+      console.log('注册API响应状态:', response.status);
+      
       // 检查响应数据
       if (response.data && response.status === 201) {
+        console.log('注册成功，显示成功提示');
+        
+        // 保存注册成功的邮箱，用于登录页面自动填充
+        const registeredEmail = registerForm.email;
+        
+        // 清空注册表单
+        setRegisterForm({
+          username: '',
+          password: '',
+          confirmPassword: '',
+          email: '',
+          phone: '',
+          company: '',
+          department: ''
+        });
+        
         // 注册成功，显示更明确的成功提示
         Alert.alert(
           '注册成功', 
@@ -1221,31 +1370,45 @@ const HomeScreen = () => {
             {
               text: '确定',
               onPress: () => {
-                // 清空注册表单
-                setRegisterForm({
-                  username: '',
-                  password: '',
-                  confirmPassword: '',
-                  email: '',
-                  phone: '',
-                  company: '',
-                  department: ''
-                });
-                // 关闭注册模态框，打开登录模态框
-                setShowRegisterModal(false);
-                // 预填充登录表单中的邮箱
-                setEmail(registerForm.email);
-                setPassword('');
-                // 显示登录模态框
-                setShowLoginModal(true);
+                console.log('注册成功，准备跳转到登录页面');
+                
+                // 使用新的ensureModalState函数
+                // 延迟执行，确保Alert关闭后再切换界面
+                setTimeout(() => {
+                  // 预填充登录表单中的邮箱 
+                  setEmail(registeredEmail);
+                  setPassword('');
+                  
+                  // 先关闭所有模态框
+                  ensureModalState(false, false);
+                  
+                  // 等待一段时间后再显示登录模态框
+                  setTimeout(() => {
+                    console.log('注册成功后打开登录界面');
+                    ensureModalState(true, false);
+                  }, 500);
+                }, 300);
               }
             }
           ]
         );
       }
     } catch (error) {
-      console.error('注册失败:', error);
-      Alert.alert('错误', error.response?.data?.message || '注册失败，请稍后重试');
+      console.error('注册请求失败:', error);
+      let errorMessage = '注册失败，请稍后重试';
+      
+      if (error.response) {
+        console.error('服务器响应错误:', error.response.status, error.response.data);
+        errorMessage = error.response.data?.message || '服务器返回错误，请稍后重试';
+      } else if (error.request) {
+        console.error('无法连接到服务器:', error.request);
+        errorMessage = '网络连接失败，请检查网络设置';
+      } else {
+        console.error('请求配置错误:', error.message);
+        errorMessage = error.message || '发送注册请求时发生错误';
+      }
+      
+      Alert.alert('注册失败', errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -1637,6 +1800,193 @@ const HomeScreen = () => {
     },
   });
 
+  // HomeScreen组件内
+
+  // 在主要渲染逻辑中添加认证状态检查
+  if (!isAuthenticated && !loading) {
+    // 如果用户未登录且不在加载状态，只显示登录界面，不显示应用内容
+    console.log('HomeScreen - 用户未认证，只显示登录/注册界面');
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
+        {/* 登录模态框 */}
+        <Modal
+          key="loginModal"
+          animationType="slide"
+          transparent={true}
+          visible={showLoginModal}
+          onRequestClose={() => {
+            console.log('防止关闭登录模态框，用户必须登录');
+            // 不允许用户关闭登录模态框
+          }}
+          hardwareAccelerated={true}
+          statusBarTranslucent={false}
+        >
+          <View style={[styles.modalContainer, { backgroundColor: 'rgba(0, 0, 0, 0.5)' }]}>
+            <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>用户登录</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: colors.background, color: colors.text }]}
+                placeholder="邮箱/账号"
+                placeholderTextColor={colors.textSecondary}
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+              />
+              <TextInput
+                style={[styles.input, { backgroundColor: colors.background, color: colors.text }]}
+                placeholder="密码"
+                placeholderTextColor={colors.textSecondary}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+              />
+              <View style={styles.rememberMeContainer}>
+                <TouchableOpacity 
+                  style={[styles.checkbox, rememberMe && styles.checkboxChecked]}
+                  onPress={() => setRememberMe(!rememberMe)}
+                >
+                  {rememberMe && <Ionicons name="checkmark" size={16} color="#fff" />}
+                </TouchableOpacity>
+                <Text style={[styles.rememberMeText, { color: colors.text }]}>记住密码</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.loginButton, { backgroundColor: colors.primary }]}
+                onPress={handleLogin}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.loginButtonText}>登录</Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.registerButton}
+                onPress={handleShowRegister}
+              >
+                <Text style={[styles.registerButtonText, { color: colors.primary }]}>没有账号？立即注册</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+        
+        {/* 注册模态框 */}
+        <Modal
+          key="registerModal"
+          animationType="slide"
+          transparent={true}
+          visible={showRegisterModal}
+          onRequestClose={() => {
+            console.log('用户尝试关闭注册模态框');
+            handleBackToLogin();
+          }}
+          hardwareAccelerated={true}
+          statusBarTranslucent={false}
+        >
+          <View style={[styles.modalContainer, { backgroundColor: 'rgba(0, 0, 0, 0.5)' }]}>
+            <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>注册</Text>
+              
+              <ScrollView style={{ width: '100%' }}>
+                <TextInput
+                  style={[styles.input, { backgroundColor: colors.background, color: colors.text }]}
+                  placeholder="用户名"
+                  placeholderTextColor={colors.textSecondary}
+                  value={registerForm.username}
+                  onChangeText={(text) => setRegisterForm(prev => ({ ...prev, username: text }))}
+                />
+                <TextInput
+                  style={[styles.input, { backgroundColor: colors.background, color: colors.text }]}
+                  placeholder="密码"
+                  placeholderTextColor={colors.textSecondary}
+                  value={registerForm.password}
+                  onChangeText={(text) => setRegisterForm(prev => ({ ...prev, password: text }))}
+                  secureTextEntry
+                />
+                <TextInput
+                  style={[styles.input, { backgroundColor: colors.background, color: colors.text }]}
+                  placeholder="确认密码"
+                  placeholderTextColor={colors.textSecondary}
+                  value={registerForm.confirmPassword}
+                  onChangeText={(text) => setRegisterForm(prev => ({ ...prev, confirmPassword: text }))}
+                  secureTextEntry
+                />
+                <TextInput
+                  style={[styles.input, { backgroundColor: colors.background, color: colors.text }]}
+                  placeholder="邮箱"
+                  placeholderTextColor={colors.textSecondary}
+                  value={registerForm.email}
+                  onChangeText={(text) => setRegisterForm(prev => ({ ...prev, email: text }))}
+                  keyboardType="email-address"
+                />
+                <TextInput
+                  style={[styles.input, { backgroundColor: colors.background, color: colors.text }]}
+                  placeholder="手机号码"
+                  placeholderTextColor={colors.textSecondary}
+                  value={registerForm.phone}
+                  onChangeText={(text) => setRegisterForm(prev => ({ ...prev, phone: text }))}
+                  keyboardType="phone-pad"
+                />
+                
+                {/* 公司选择器 */}
+                <CompanySelector />
+                
+                {/* 部门选择器 */}
+                <DepartmentSelector />
+                
+              </ScrollView>
+              
+              <TouchableOpacity
+                style={[styles.loginButton, { backgroundColor: colors.primary }]}
+                onPress={handleRegister}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.loginButtonText}>注册</Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.registerButton}
+                onPress={handleBackToLogin}
+              >
+                <Text style={[styles.registerButtonText, { color: colors.primary }]}>已有账号？立即登录</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+        
+        {/* 背景视图，当用户未认证时显示 */}
+        <View style={{ 
+          flex: 1, 
+          justifyContent: 'center', 
+          alignItems: 'center',
+          padding: 20,
+          backgroundColor: colors.background
+        }}>
+          <Text style={{ 
+            fontSize: 22, 
+            fontWeight: 'bold', 
+            color: colors.primary,
+            marginBottom: 20,
+            textAlign: 'center'
+          }}>
+            正泽物联系统平台
+          </Text>
+          <Text style={{ 
+            fontSize: 16, 
+            color: colors.text,
+            textAlign: 'center',
+            marginBottom: 30
+          }}>
+            请登录后使用系统功能
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <>
       <Modal
@@ -1644,6 +1994,8 @@ const HomeScreen = () => {
         transparent={true}
         visible={showLoginModal}
         onRequestClose={() => setShowLoginModal(false)}
+        hardwareAccelerated={true} // 启用硬件加速以提高在真机上的性能
+        statusBarTranslucent={false} // 避免状态栏透明导致的布局问题
       >
         <View style={[styles.modalContainer, { backgroundColor: 'rgba(0, 0, 0, 0.5)' }]}>
           <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
@@ -1687,10 +2039,7 @@ const HomeScreen = () => {
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.registerButton}
-              onPress={() => {
-                setShowLoginModal(false);
-                setShowRegisterModal(true);
-              }}
+              onPress={handleShowRegister}
             >
               <Text style={[styles.registerButtonText, { color: colors.primary }]}>没有账号？立即注册</Text>
             </TouchableOpacity>
@@ -1702,6 +2051,8 @@ const HomeScreen = () => {
         transparent={true}
         visible={showRegisterModal}
         onRequestClose={() => setShowRegisterModal(false)}
+        hardwareAccelerated={true} // 启用硬件加速以提高在真机上的性能
+        statusBarTranslucent={false} // 避免状态栏透明导致的布局问题
       >
         <View style={[styles.modalContainer, { backgroundColor: 'rgba(0, 0, 0, 0.5)' }]}>
           <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
@@ -1769,10 +2120,7 @@ const HomeScreen = () => {
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.registerButton}
-              onPress={() => {
-                setShowRegisterModal(false);
-                setShowLoginModal(true);
-              }}
+              onPress={handleBackToLogin}
             >
               <Text style={[styles.registerButtonText, { color: colors.primary }]}>已有账号？立即登录</Text>
             </TouchableOpacity>
@@ -1786,6 +2134,8 @@ const HomeScreen = () => {
         transparent={true}
         visible={showCompanyModal}
         onRequestClose={() => setShowCompanyModal(false)}
+        hardwareAccelerated={true} 
+        statusBarTranslucent={false}
       >
         <View style={styles.pickerModalContainer}>
           <View style={styles.pickerModalContent}>
@@ -1847,6 +2197,8 @@ const HomeScreen = () => {
         transparent={true}
         visible={showDepartmentModal}
         onRequestClose={() => setShowDepartmentModal(false)}
+        hardwareAccelerated={true}
+        statusBarTranslucent={false}
       >
         <View style={styles.pickerModalContainer}>
           <View style={styles.pickerModalContent}>

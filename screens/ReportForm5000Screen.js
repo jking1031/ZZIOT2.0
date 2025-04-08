@@ -220,13 +220,10 @@ const ReportFormScreen = ({ route }) => {
         imageUrls = await uploadImages(reportId);
       }
 
-      // 确保imagesurl值始终唯一
-      let imagesUrlValue;
-      if (imageUrls.length > 0) {
+      // 设置imagesurl值
+      let imagesUrlValue = null; // 默认为null
+      if (imageUrls && imageUrls.length > 0) {
         imagesUrlValue = imageUrls.join(',');
-      } else {
-        // 使用报告ID、时间戳和随机字符串组合确保唯一性
-        imagesUrlValue = `no_images_${reportId}_${randomStr}`;
       }
 
       // 准备提交的数据，确保所有字段都正确映射
@@ -558,6 +555,9 @@ const ReportFormScreen = ({ route }) => {
 
             <View style={styles.card}>
               <Text style={[styles.sectionTitle, { color: colors.text }]}>现场照片</Text>
+              <Text style={[styles.sectionDescription, { color: colors.textSecondary }]}>
+                请上传现场巡查照片及其他记录照片
+              </Text>
               <View style={styles.imageButtonContainer}>
                 <TouchableOpacity 
                   style={[styles.imageButton, { backgroundColor: colors.primary }]}
@@ -782,6 +782,12 @@ const styles = StyleSheet.create({
     color: '#888',
     fontWeight: 'normal',
     marginLeft: 5,
+  },
+  sectionDescription: {
+    fontSize: 14,
+    marginBottom: 15,
+    lineHeight: 20,
+    opacity: 0.8,
   },
 });
 

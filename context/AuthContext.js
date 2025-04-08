@@ -443,7 +443,23 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     try {
       // 清除所有与用户相关的存储数据
-      await AsyncStorage.removeItem('user');
+      const keysToRemove = [
+        'user',             // 用户基本信息
+        'userRoles',        // 用户角色
+        'authToken',        // 认证令牌
+        'loginCredentials', // 登录凭证
+        'lastLogin',        // 上次登录信息
+        'userPreferences',  // 用户偏好设置
+        'userEmail',        // 邮箱/账号 
+        'userPassword',     // 密码
+        'rememberMe',       // 记住登录状态
+        'queriedMessages',  // 查询过的消息缓存
+        'messages',         // 保存的消息
+        'previousMessages'  // 先前的消息
+      ];
+      
+      await AsyncStorage.multiRemove(keysToRemove);
+      
       // 清除令牌
       await clearAuthToken();
       
@@ -451,6 +467,10 @@ export const AuthProvider = ({ children }) => {
       setUser(null);
       setLoading(false);
       
+      // 发送全局事件，通知其他组件用户已登出，需要重置状态
+      EventRegister.emit('USER_LOGGED_OUT');
+      
+      console.log('已成功登出并清理所有用户数据');
       return true;
     } catch (error) {
       console.error('退出登录失败:', error);
@@ -461,6 +481,7 @@ export const AuthProvider = ({ children }) => {
   const loadUser = async () => {
     try {
       setLoading(true);
+      console.log('正在加载用户信息...');
       
       // 首先检查令牌有效性
       const isTokenValid = await checkTokenValidity();
@@ -482,6 +503,17 @@ export const AuthProvider = ({ children }) => {
       if (userData) {
         try {
           const parsedUser = JSON.parse(userData);
+          
+          // 验证用户数据是否完整有效
+          if (!parsedUser.id) {
+            console.log('用户数据缺少ID，视为无效');
+            await AsyncStorage.removeItem('user');
+            await clearAuthToken();
+            setUser(null);
+            setLoading(false);
+            return;
+          }
+          
           console.log('已从本地存储恢复用户会话');
           
           // 将用户数据设置到状态中，但不判断管理员权限
@@ -499,14 +531,22 @@ export const AuthProvider = ({ children }) => {
           console.error('解析用户数据失败:', parseError);
           // 如果解析失败，清除损坏的数据
           await AsyncStorage.removeItem('user');
+          await clearAuthToken();
+          setUser(null);
         }
       } else {
-        console.log('未找到已保存的用户会话');
+        console.log('未找到已保存的用户会话，需要登录');
+        await clearAuthToken();
+        setUser(null);
       }
     } catch (error) {
       console.error('加载用户数据时出错:', error);
+      await clearAuthToken();
+      await AsyncStorage.removeItem('user');
+      setUser(null);
     } finally {
       setLoading(false);
+      console.log('用户加载过程完成，用户状态:', user ? '已登录' : '未登录');
     }
   };
 
