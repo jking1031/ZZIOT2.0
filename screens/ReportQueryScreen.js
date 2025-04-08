@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Alert, Share, Image, Linking, ActivityIndicator, Modal, Dimensions } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Alert, Share, Image, Linking, ActivityIndicator, Modal, Dimensions, Platform } from 'react-native';
 import ViewShot from 'react-native-view-shot';
 import { useTheme } from '../context/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,6 +9,10 @@ import axios from 'axios';
 import { getFileList } from './FileUploadScreen';  // 添加导入
 import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+// 添加用于导出PDF的常量
+const PDFS_DIRECTORY = FileSystem.documentDirectory + 'pdfs/';
 
 const ReportQueryScreen = () => {
   const { colors, isDarkMode } = useTheme();
@@ -32,6 +36,7 @@ const ReportQueryScreen = () => {
   const screenWidth = Dimensions.get('window').width;
   const screenHeight = Dimensions.get('window').height;
   const [selectedDateRange, setSelectedDateRange] = useState('7');
+  const [generatingPdf, setGeneratingPdf] = useState(false);
 
   const dateRangeOptions = [
     { label: '最近7天', value: '7' },
@@ -208,6 +213,331 @@ const ReportQueryScreen = () => {
       if (report && !reportImages[reportId]) {
         await fetchReportImages(report);
       }
+    }
+  };
+
+  // 添加创建PDF目录的函数
+  const ensurePdfDirectoryExists = async () => {
+    const dirInfo = await FileSystem.getInfoAsync(PDFS_DIRECTORY);
+    if (!dirInfo.exists) {
+      await FileSystem.makeDirectoryAsync(PDFS_DIRECTORY, { intermediates: true });
+    }
+  };
+  
+  // 添加导出PDF的函数
+  const exportToPdf = async (report) => {
+    try {
+      setGeneratingPdf(true);
+      
+      // 确保目录存在
+      await ensurePdfDirectoryExists();
+      
+      // 创建HTML内容
+      const reportDate = new Date(report.date).toLocaleDateString('zh-CN');
+      const siteTitle = selectedSite === 'gt' ? '高铁污水厂运行日报' : '5000吨处理站运行日报';
+      
+      // 根据站点类型构建不同的表格内容
+      let tableContent = '';
+      
+      // 获取发布日期 (今天)
+      const today = new Date().toLocaleDateString('zh-CN');
+      
+      // 高铁污水厂报表
+      if (selectedSite === 'gt') {
+        tableContent = `
+          <tr>
+            <td class="label">日期</td>
+            <td class="value">${reportDate}</td>
+          </tr>
+          <tr>
+            <td class="label">操作员</td>
+            <td class="value">${report.operator || ''}</td>
+          </tr>
+          <tr>
+            <td class="label">进水量（立方）</td>
+            <td class="value">${report.inflow || '0.0'}</td>
+          </tr>
+          <tr>
+            <td class="label">出水量（立方）</td>
+            <td class="value">${report.outflow || '0.0'}</td>
+          </tr>
+          <tr>
+            <td class="label">进水水质</td>
+            <td class="value">${report.in_quality || '无数据'}</td>
+          </tr>
+          <tr>
+            <td class="label">出水水质</td>
+            <td class="value">${report.out_quality || '无数据'}</td>
+          </tr>
+          <tr>
+            <td class="label">水质异常</td>
+            <td class="value">${report.water_quality_anomalies || '无'}</td>
+          </tr>
+          <tr>
+            <td class="label">设备状态</td>
+            <td class="value">${report.equipment_status || '正常'}</td>
+          </tr>
+          <tr>
+            <td class="label">设备问题</td>
+            <td class="value">${report.equipment_issues || '无'}</td>
+          </tr>
+          <tr>
+            <td class="label">碳源投加量（L）</td>
+            <td class="value">${report.carbon_source || '0.0'}</td>
+          </tr>
+          <tr>
+            <td class="label">除磷剂投加量（L）</td>
+            <td class="value">${report.phosphorus_removal || '0.0'}</td>
+          </tr>
+          <tr>
+            <td class="label">消毒剂投加量（L）</td>
+            <td class="value">${report.disinfectant || '0.0'}</td>
+          </tr>
+          <tr>
+            <td class="label">药剂效果</td>
+            <td class="value">${report.chemical_effect || '良好'}</td>
+          </tr>
+          <tr>
+            <td class="label">污泥量（吨）</td>
+            <td class="value">${report.sludge_quantity || '0.0'}</td>
+          </tr>
+          <tr>
+            <td class="label">其他备注</td>
+            <td class="value">${report.other_notes || '无'}</td>
+          </tr>
+          <tr>
+            <td class="label">报告编号</td>
+            <td class="value">PROD_REPORT_${reportDate.replace(/\//g, '-')}_${report.id}</td>
+          </tr>
+        `;
+      } else {
+        // 5000吨处理站报表
+        tableContent = `
+          <tr>
+            <td class="label">日期</td>
+            <td class="value">${reportDate}</td>
+          </tr>
+          <tr>
+            <td class="label">操作员</td>
+            <td class="value">${report.operator || ''}</td>
+          </tr>
+          <tr>
+            <td class="label">进水量（立方）</td>
+            <td class="value">${report.inflow || '0.0'}</td>
+          </tr>
+          <tr>
+            <td class="label">出水量（立方）</td>
+            <td class="value">${report.outflow || '0.0'}</td>
+          </tr>
+          <tr>
+            <td class="label">出水水质</td>
+            <td class="value">${report.out_quality || '无数据'}</td>
+          </tr>
+          <tr>
+            <td class="label">水质异常</td>
+            <td class="value">${report.water_quality_anomalies || '无'}</td>
+          </tr>
+          <tr>
+            <td class="label">曝气系统</td>
+            <td class="value">${report.aeration_system_status || '正常'}</td>
+          </tr>
+          <tr>
+            <td class="label">反洗系统</td>
+            <td class="value">${report.backwash_system_status || '正常'}</td>
+          </tr>
+          <tr>
+            <td class="label">进水泵系统</td>
+            <td class="value">${report.inlet_pump_status || '正常'}</td>
+          </tr>
+          <tr>
+            <td class="label">磁混系统</td>
+            <td class="value">${report.magnetic_mixing_status || '正常'}</td>
+          </tr>
+          <tr>
+            <td class="label">水箱状态</td>
+            <td class="value">${report.water_tank_status || '正常'}</td>
+          </tr>
+          <tr>
+            <td class="label">絮凝剂投加量（L）</td>
+            <td class="value">${report.flocculant_dosage || '0.0'}</td>
+          </tr>
+          <tr>
+            <td class="label">磁粉投加量（kg）</td>
+            <td class="value">${report.magnetic_powder_dosage || '0.0'}</td>
+          </tr>
+          <tr>
+            <td class="label">药剂库存</td>
+            <td class="value">${report.chemical_inventory || '充足'}</td>
+          </tr>
+          <tr>
+            <td class="label">其他备注</td>
+            <td class="value">${report.other_notes || '无'}</td>
+          </tr>
+          <tr>
+            <td class="label">报告编号</td>
+            <td class="value">PROD_REPORT_${reportDate.replace(/\//g, '-')}_${report.id}</td>
+          </tr>
+        `;
+      }
+      
+      // 准备图片部分HTML
+      let imagesHtml = '';
+      if (report.images && report.images.length > 0) {
+        imagesHtml = `
+          <div class="images-section">
+            <h3>相关图片</h3>
+            <div class="images-container">
+        `;
+        
+        // 添加最多4张图片
+        for (let i = 0; i < Math.min(report.images.length, 4); i++) {
+          imagesHtml += `<img class="report-image" src="${report.images[i]}" />`;
+        }
+        
+        imagesHtml += `
+            </div>
+          </div>
+        `;
+      }
+      
+      // 创建HTML内容，用于转成PDF
+      let htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>${siteTitle} - ${reportDate}</title>
+          <style>
+            body {
+              font-family: "SimSun", Arial, sans-serif;
+              margin: 0;
+              padding: 0;
+              color: #333;
+              font-size: 14px;
+            }
+            .container {
+              max-width: 800px;
+              margin: 0 auto;
+              padding: 20px;
+            }
+            .report-header {
+              text-align: center;
+              margin-bottom: 20px;
+            }
+            .report-title {
+              font-size: 18px;
+              font-weight: bold;
+              margin-bottom: 10px;
+            }
+            .data-table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-bottom: 20px;
+            }
+            .data-table td {
+              padding: 8px;
+              border: 1px solid #ddd;
+              vertical-align: top;
+            }
+            .label {
+              width: 30%;
+              background-color: #f0f8ff;  /* aliceblue */
+              text-align: right;
+              font-weight: normal;
+            }
+            .value {
+              width: 70%;
+            }
+            .images-section {
+              margin-top: 20px;
+            }
+            .images-section h3 {
+              font-size: 16px;
+              margin-bottom: 10px;
+            }
+            .images-container {
+              display: flex;
+              flex-wrap: wrap;
+              gap: 10px;
+            }
+            .report-image {
+              width: 45%;
+              margin-bottom: 10px;
+              border: 1px solid #ddd;
+            }
+            .footer {
+              margin-top: 30px;
+              text-align: center;
+              font-size: 12px;
+              color: #999;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="report-header">
+              <div class="report-title">${today} ${siteTitle}</div>
+            </div>
+            
+            <table class="data-table">
+              ${tableContent}
+            </table>
+            
+            ${imagesHtml}
+            
+            <div class="footer">
+              报告生成时间: ${new Date().toLocaleString('zh-CN')}
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+      
+      // 使用expo-print生成PDF文件
+      const { uri: pdfUri } = await Print.printToFileAsync({
+        html: htmlContent,
+        base64: false
+      });
+      
+      // 生成更友好的文件名
+      const fileName = `运行报告_${reportDate.replace(/\//g, '-')}_${report.id}.pdf`;
+      const newPdfPath = PDFS_DIRECTORY + fileName;
+      
+      // 复制临时文件到我们的应用目录，以便获得友好的文件名
+      await FileSystem.makeDirectoryAsync(PDFS_DIRECTORY, { intermediates: true });
+      await FileSystem.copyAsync({
+        from: pdfUri,
+        to: newPdfPath
+      });
+      
+      // 检查是否可以分享
+      if (await Sharing.isAvailableAsync()) {
+        // 分享PDF文件
+        await Sharing.shareAsync(newPdfPath, {
+          mimeType: 'application/pdf',
+          dialogTitle: '分享运行报告',
+          UTI: 'com.adobe.pdf' // iOS需要
+        });
+      } else {
+        // 如果分享功能不可用，提示用户
+        Alert.alert(
+          '分享不可用',
+          '您的设备不支持分享功能',
+          [
+            {
+              text: '确定',
+              style: 'cancel'
+            }
+          ]
+        );
+      }
+      
+    } catch (error) {
+      console.error('导出PDF失败:', error);
+      Alert.alert('错误', '导出报告失败，请稍后重试');
+    } finally {
+      setGeneratingPdf(false);
     }
   };
 
@@ -388,7 +718,22 @@ const ReportQueryScreen = () => {
                 }}
               >
                 <Ionicons name="image" size={20} color="#fff" style={styles.buttonIcon} />
-                <Text style={styles.buttonText}>分享报告</Text>
+                <Text style={styles.buttonText}>分享截图</Text>
+              </TouchableOpacity>
+              
+              {/* 添加导出PDF按钮 */}
+              <TouchableOpacity 
+                style={[styles.shareButton, { backgroundColor: '#FF5722', marginLeft: 10 }]}
+                onPress={() => exportToPdf(report)}
+                disabled={generatingPdf}
+              >
+                <Ionicons name="document-text" size={20} color="#fff" style={styles.buttonIcon} />
+                <Text style={styles.buttonText}>
+                  {generatingPdf ? '导出中...' : '导出报告'}
+                </Text>
+                {generatingPdf && (
+                  <ActivityIndicator size="small" color="#fff" style={{marginLeft: 5}} />
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -558,7 +903,22 @@ const ReportQueryScreen = () => {
                 }}
               >
                 <Ionicons name="image" size={20} color="#fff" style={styles.buttonIcon} />
-                <Text style={styles.buttonText}>分享报告</Text>
+                <Text style={styles.buttonText}>分享截图</Text>
+              </TouchableOpacity>
+              
+              {/* 添加导出PDF按钮 */}
+              <TouchableOpacity 
+                style={[styles.shareButton, { backgroundColor: '#FF5722', marginLeft: 10 }]}
+                onPress={() => exportToPdf(report)}
+                disabled={generatingPdf}
+              >
+                <Ionicons name="document-text" size={20} color="#fff" style={styles.buttonIcon} />
+                <Text style={styles.buttonText}>
+                  {generatingPdf ? '导出中...' : '导出报告'}
+                </Text>
+                {generatingPdf && (
+                  <ActivityIndicator size="small" color="#fff" style={{marginLeft: 5}} />
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -871,7 +1231,8 @@ const ReportQueryScreen = () => {
     shareButtonsContainer: {
       flexDirection: 'row',
       justifyContent: 'flex-end',
-      marginTop: 16
+      marginTop: 16,
+      flexWrap: 'wrap',
     },
     shareButton: {
       flexDirection: 'row',
@@ -879,6 +1240,7 @@ const ReportQueryScreen = () => {
       paddingVertical: 8,
       paddingHorizontal: 16,
       borderRadius: 6,
+      marginTop: 5,
     },
     buttonIcon: {
       marginRight: 8,
@@ -949,69 +1311,6 @@ const ReportQueryScreen = () => {
       backgroundColor: 'rgba(0, 0, 0, 0.5)',
       justifyContent: 'center',
       alignItems: 'center'
-    },
-    shareButtonsContainer: {
-      flexDirection: 'row',
-      justifyContent: 'flex-end',
-      marginTop: 16,
-    },
-    shareButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingVertical: 8,
-      paddingHorizontal: 16,
-      borderRadius: 6,
-    },
-    buttonIcon: {
-      marginRight: 8,
-    },
-    buttonText: {
-      color: '#fff',
-      fontSize: 14,
-      fontWeight: '500',
-    },
-    imageContainer: {
-      flexDirection: 'row',
-      marginTop: 10,
-      marginBottom: 10,
-      minHeight: 120,
-    },
-    imageWrapper: {
-      position: 'relative',
-      marginRight: 10,
-      borderRadius: 8,
-      overflow: 'hidden',
-      backgroundColor: '#f0f0f0',
-    },
-    reportImage: {
-      width: 120,
-      height: 120,
-      borderRadius: 8,
-    },
-    imageExpandButton: {
-      position: 'absolute',
-      right: 5,
-      bottom: 5,
-      backgroundColor: 'rgba(0,0,0,0.5)',
-      borderRadius: 15,
-      padding: 5,
-      zIndex: 1,
-    },
-    retryButton: {
-      position: 'absolute',
-      top: '50%',
-      left: '50%',
-      transform: [{translateX: -30}, {translateY: -15}],
-      backgroundColor: 'rgba(0,0,0,0.5)',
-      padding: 8,
-      borderRadius: 8,
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    retryText: {
-      color: '#fff',
-      marginLeft: 4,
-      fontSize: 12,
     },
     dateTimePickerModal: {
       backgroundColor: '#fff',
