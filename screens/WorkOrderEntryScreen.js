@@ -33,7 +33,7 @@ const WorkOrderEntryScreen = () => {
       id: 'createTicket',
       title: '创建工单',
       icon: 'add-circle',
-      description: '报告问题或提交新需求',
+      description: '汇报问题或提交新需求',
       onPress: () => navigation.navigate('TicketNavigator', { screen: 'CreateTicketScreen' }),
     },
     // 仅管理员可见的入口
