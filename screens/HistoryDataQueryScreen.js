@@ -15,38 +15,45 @@ import { useTheme } from '../context/ThemeContext';
 import * as XLSX from 'xlsx';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import DateTimePickerModal from "react-native-modal-datetime-picker";
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 const HistoryDataQueryScreen = () => {
   const { isDarkMode, colors } = useTheme();
-  const [selectedTable, setSelectedTable] = useState('leiji');
-  const [queryType, setQueryType] = useState('raw');
+  const [selectedTable, setSelectedTable] = useState('gt_data');
   const [startDate, setStartDate] = useState(new Date(Date.now() - 24 * 60 * 60 * 1000));
   const [endDate, setEndDate] = useState(new Date());
-  const [showStartDate, setShowStartDate] = useState(false);
-  const [showStartTime, setShowStartTime] = useState(false);
-  const [showEndDate, setShowEndDate] = useState(false);
-  const [showEndTime, setShowEndTime] = useState(false);
+  const [isStartPickerVisible, setStartPickerVisible] = useState(false);
+  const [isEndPickerVisible, setEndPickerVisible] = useState(false);
   const [queryResults, setQueryResults] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const [rowsPerPage] = useState(10);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
   const [columnMappings, setColumnMappings] = useState({});
   const [modalVisible, setModalVisible] = useState(false);
   const [currentSelectType, setCurrentSelectType] = useState(null);
   const [dataInterval, setDataInterval] = useState('5');
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [showRowsPerPageModal, setShowRowsPerPageModal] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [isTableVisible, setIsTableVisible] = useState(false);
+
+  const rowsPerPageOptions = [
+    { label: '10条/页', value: 10 },
+    { label: '20条/页', value: 20 },
+    { label: '50条/页', value: 50 },
+    { label: '100条/页', value: 100 }
+  ];
 
   const handleIntervalChange = (value) => {
     setDataInterval(value);
   };
 
   const tableOptions = [
-    { label: '各设施处理量', value: 'leiji' },
     { label: '高铁厂运行数据', value: 'gt_data' },
+    { label: '各设施处理量', value: 'leiji' },
     { label: '5000吨运行数据', value: 'yj_5000' },
     { label: '化验数据', value: 'huayan_data' },
-  ];
-
-  const queryTypeOptions = [
-    { label: '实时数据', value: 'raw' },
+    { label: '污泥化验数据', value: 'sludge_data' },
   ];
 
   const intervalOptions = [
@@ -55,12 +62,49 @@ const HistoryDataQueryScreen = () => {
     { label: '60分钟', value: '60' }
   ];
 
+  const dateRangeOptions = [
+    { label: '最近7天', value: '7' },
+    { label: '最近15天', value: '15' },
+    { label: '最近30天', value: '30' },
+    { label: '当月', value: 'current_month' },
+    { label: '上月', value: 'last_month' }
+  ];
+
+  const handleDateRangeSelect = (value) => {
+    const today = new Date();
+    let newStartDate = new Date();
+    let newEndDate = new Date();
+
+    switch (value) {
+      case '7':
+        newStartDate.setDate(today.getDate() - 7);
+        break;
+      case '15':
+        newStartDate.setDate(today.getDate() - 15);
+        break;
+      case '30':
+        newStartDate.setDate(today.getDate() - 30);
+        break;
+      case 'current_month':
+        newStartDate = new Date(today.getFullYear(), today.getMonth(), 1);
+        newEndDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        break;
+      case 'last_month':
+        newStartDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        newEndDate = new Date(today.getFullYear(), today.getMonth(), 0);
+        break;
+      default:
+        break;
+    }
+
+    setStartDate(newStartDate);
+    setEndDate(newEndDate);
+  };
+
   const onDateChange = (event, selectedDate, type) => {
     if (event.type === 'dismissed') {
-      setShowStartDate(false);
-      setShowStartTime(false);
-      setShowEndDate(false);
-      setShowEndTime(false);
+      setStartPickerVisible(false);
+      setEndPickerVisible(false);
       return;
     }
 
@@ -68,22 +112,22 @@ const HistoryDataQueryScreen = () => {
 
     if (type === 'startDate') {
       setStartDate(currentDate);
-      setShowStartDate(false);
+      setStartPickerVisible(false);
     } else if (type === 'startTime') {
       const newDate = new Date(startDate);
       newDate.setHours(currentDate.getHours());
       newDate.setMinutes(currentDate.getMinutes());
       setStartDate(newDate);
-      setShowStartTime(false);
+      setStartPickerVisible(false);
     } else if (type === 'endDate') {
       setEndDate(currentDate);
-      setShowEndDate(false);
+      setEndPickerVisible(false);
     } else if (type === 'endTime') {
       const newDate = new Date(endDate);
       newDate.setHours(currentDate.getHours());
       newDate.setMinutes(currentDate.getMinutes());
       setEndDate(newDate);
-      setShowEndTime(false);
+      setEndPickerVisible(false);
     }
   };
 
@@ -102,39 +146,66 @@ const HistoryDataQueryScreen = () => {
 
   const handleQuery = async () => {
     try {
-      // 为开始时间和结束时间增加8小时以适应时区差异
-      const adjustedStartDate = new Date(startDate.getTime() + 8 * 60 * 60 * 1000);
-      const adjustedEndDate = new Date(endDate.getTime() + 8 * 60 * 60 * 1000);
+      if (!selectedTable || !startDate || !endDate) {
+        Alert.alert('请填写完所有字段');
+        return;
+      }
 
-      const response = await fetch('http://112.28.56.235:13100/query', {
+      setLoading(true);
+      
+      const apiEndpoint = 'https://zziot.jzz77.cn:9003/query';
+      
+      const requestBody = {
+        dbName: 'nodered',
+        tableName: selectedTable,
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        queryType: 'raw'
+      };
+      
+      console.log('Query params:', JSON.stringify(requestBody));
+      
+      const response = await fetch(apiEndpoint, {
         method: 'POST',
         headers: {
-          'Accept': 'application/json',
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          dbName: 'nodered',
-          tableName: selectedTable,
-          queryType: queryType,
-          startDate: adjustedStartDate.toISOString(),
-          endDate: adjustedEndDate.toISOString(),
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
-        throw new Error('网络请求失败');
+        console.error('Error response:', response.status, response.statusText);
+        const text = await response.text();
+        console.error('Error details:', text);
+        throw new Error(`Network response was not ok: ${response.status}`);
       }
 
       const data = await response.json();
+      console.log('Query response (length):', data.length);
+      if (data.length > 0) {
+        console.log('First record:', JSON.stringify(data[0]));
+      }
+      
+      // 按照时间间隔过滤数据
       const filteredData = filterDataByInterval(data);
       setQueryResults(filteredData);
       setCurrentPage(1);
+      setIsTableVisible(true);
     } catch (error) {
-      Alert.alert('错误', error.message);
+      console.error('Query failed:', error);
+      Alert.alert('查询失败', error.toString());
+    } finally {
+      setLoading(false);
+      setModalVisible(false);
     }
   };
 
   const filterDataByInterval = (data) => {
+    // 如果是化验数据或污泥化验数据，直接返回原始数据，不进行时间间隔过滤
+    if (selectedTable === 'huayan_data' || selectedTable === 'sludge_data') {
+      return data;
+    }
+
     const intervalMinutes = parseInt(dataInterval);
     const intervalMilliseconds = intervalMinutes * 60 * 1000;
     const filteredData = [];
@@ -177,23 +248,44 @@ const HistoryDataQueryScreen = () => {
     const endIndex = startIndex + rowsPerPage;
     const pageData = queryResults.slice(startIndex, endIndex);
 
-    return pageData.map((row, index) => (
-      <View key={index} style={[styles.tableRow, index % 2 === 0 ? styles.evenRow : styles.oddRow]}>
-        <Text style={[styles.cell, styles.timeCell]}>
-          {new Date(row.time).toLocaleString('zh-CN', { hour12: false })}
-        </Text>
-        {Object.keys(columnMappings[selectedTable] || {}).map(key => {
-          if (key !== 'time') {
-            return (
-              <Text key={key} style={styles.cell}>
-                {typeof row[key] === 'number' ? row[key].toFixed(2) : row[key]}
-              </Text>
-            );
+    return pageData.map((row, index) => {
+      // 处理时间数据的显示
+      let timeDisplay = "";
+      try {
+        if (row.time) {
+          // 确保时间格式正确
+          const timeDate = new Date(row.time);
+          if (!isNaN(timeDate.getTime())) {
+            timeDisplay = timeDate.toLocaleString('zh-CN', { hour12: false });
+          } else {
+            timeDisplay = row.time.toString();
           }
-          return null;
-        })}
-      </View>
-    ));
+        } else {
+          timeDisplay = "无时间数据";
+        }
+      } catch (e) {
+        console.warn("日期解析错误:", e);
+        timeDisplay = row.time ? row.time.toString() : "无时间数据";
+      }
+
+      return (
+        <View key={index} style={[styles.tableRow, index % 2 === 0 ? styles.evenRow : styles.oddRow]}>
+          <Text style={[styles.cell, styles.timeCell]}>
+            {timeDisplay}
+          </Text>
+          {Object.keys(columnMappings[selectedTable] || {}).map(key => {
+            if (key !== 'time') {
+              return (
+                <Text key={key} style={styles.cell}>
+                  {typeof row[key] === 'number' ? row[key].toFixed(2) : row[key]}
+                </Text>
+              );
+            }
+            return null;
+          })}
+        </View>
+      );
+    });
   };
 
   const handlePrevPage = () => {
@@ -250,10 +342,9 @@ const HistoryDataQueryScreen = () => {
       switch (currentSelectType) {
         case 'table':
           return tableOptions;
-        case 'queryType':
-          return queryTypeOptions;
         case 'interval':
-          return intervalOptions;
+          // 如果选择的是化验数据，则不显示时间间隔选项
+          return selectedTable === 'huayan_data' ? [] : intervalOptions;
         default:
           return [];
       }
@@ -263,9 +354,6 @@ const HistoryDataQueryScreen = () => {
       switch (currentSelectType) {
         case 'table':
           setSelectedTable(value);
-          break;
-        case 'queryType':
-          setQueryType(value);
           break;
         case 'interval':
           setDataInterval(value);
@@ -285,7 +373,6 @@ const HistoryDataQueryScreen = () => {
           <View style={styles.modalView}>
             <Text style={styles.modalTitle}>
               {currentSelectType === 'table' ? '选择查询内容' :
-               currentSelectType === 'queryType' ? '选择查询方式' :
                currentSelectType === 'interval' ? '选择数据间隔' : ''}
             </Text>
             <View style={styles.optionsContainer}>
@@ -295,7 +382,6 @@ const HistoryDataQueryScreen = () => {
                   style={[
                     styles.optionButton,
                     (currentSelectType === 'table' && selectedTable === option.value) ||
-                    (currentSelectType === 'queryType' && queryType === option.value) ||
                     (currentSelectType === 'interval' && dataInterval === option.value)
                       ? styles.optionButtonSelected
                       : null
@@ -305,7 +391,6 @@ const HistoryDataQueryScreen = () => {
                   <Text style={[
                     styles.optionButtonText,
                     (currentSelectType === 'table' && selectedTable === option.value) ||
-                    (currentSelectType === 'queryType' && queryType === option.value) ||
                     (currentSelectType === 'interval' && dataInterval === option.value)
                       ? styles.optionButtonTextSelected
                       : null
@@ -332,7 +417,8 @@ const HistoryDataQueryScreen = () => {
       flexDirection: 'row',
       alignItems: 'center',
       marginBottom: 12,
-      gap: 12
+      gap: 12,
+      zIndex: 1,
     },
     displayBox: {
       flex: 1,
@@ -340,7 +426,7 @@ const HistoryDataQueryScreen = () => {
       borderRadius: 8,
       borderWidth: 1,
       borderColor: colors.border,
-      padding: 12
+      padding: 12,
     },
     displayText: {
       color: colors.text,
@@ -351,7 +437,9 @@ const HistoryDataQueryScreen = () => {
       padding: 12,
       borderRadius: 8,
       minWidth: 80,
-      alignItems: 'center'
+      alignItems: 'center',
+      justifyContent: 'center',
+      height: '100%',
     },
     tableContainer: {
       backgroundColor: colors.card,
@@ -420,30 +508,24 @@ const HistoryDataQueryScreen = () => {
       fontSize: 14,
       fontWeight: '500',
     },
-    paginationInfo: {
-      padding: 12,
-      backgroundColor: colors.card,
-      alignItems: 'center',
-      borderTopLeftRadius: 12,
-      borderTopRightRadius: 12,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
     container: {
       flex: 1,
       backgroundColor: colors.background,
-      padding: 16,
     },
     queryCard: {
       backgroundColor: colors.card,
       borderRadius: 12,
       padding: 16,
-      marginBottom: 16,
-      elevation: 2,
+      margin: 16,
+      elevation: 4,
       shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.1,
-      shadowRadius: 4,
+      shadowOffset: {
+        width: 0,
+        height: 2,
+      },
+      shadowOpacity: 0.25,
+      shadowRadius: 3.84,
+      zIndex: 0,
     },
     queryScrollView: {
       maxHeight: 400,
@@ -492,19 +574,26 @@ const HistoryDataQueryScreen = () => {
       flexDirection: 'row',
       justifyContent: 'space-between',
       marginTop: 20,
+      marginBottom: 10,
       gap: 12,
     },
     button: {
       flex: 1,
-      backgroundColor: colors.primary,
-      padding: 12,
+      height: 48,
       borderRadius: 8,
+      justifyContent: 'center',
       alignItems: 'center',
+    },
+    queryButton: {
+      backgroundColor: colors.primary,
+    },
+    exportButton: {
+      backgroundColor: '#4CAF50',
     },
     buttonText: {
       color: colors.white,
-      fontSize: 16,
-      fontWeight: '600',
+      fontSize: 14,
+      fontWeight: '500',
     },
     modalOverlay: {
       flex: 1,
@@ -591,23 +680,173 @@ const HistoryDataQueryScreen = () => {
       marginLeft: 8,
       color: colors.text,
     },
-    buttonText: {
-      color: colors.white,
-      fontSize: 16,
-      fontWeight: '600',
+    dateRangeContainer: {
+      marginBottom: 20,
     },
-    modalButton: {
-      padding: 12,
-      borderRadius: 8,
+    dateInputRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      gap: 12,
+    },
+    dateInputContainer: {
+      flex: 1,
+    },
+    dateTimePickerModal: {
+      backgroundColor: colors.card,
+      borderRadius: 12,
+      marginHorizontal: 20,
+      padding: 16,
+      alignSelf: 'center',
+      justifyContent: 'center',
+      marginVertical: '100%', // 上下边距
+      shadowColor: '#000',
+      shadowOffset: {
+        width: 0,
+        height: 2,
+      },
+      shadowOpacity: 0.25,
+      shadowRadius: 3.84,
+      elevation: 5,
+    },
+    pickerContainer: {
+      backgroundColor: colors.card,
+      borderRadius: 12,
+      padding: 16,
+      flexDirection: 'row',
+      justifyContent: 'space-around',
+      alignItems: 'center',
+      minHeight: 200,
+      maxHeight: 300,
+    },
+    pickerScrollView: {
+      flexGrow: 0,
+    },
+    pickerContent: {
+      flexDirection: 'row',
+      justifyContent: 'space-around',
+      alignItems: 'center',
+      paddingHorizontal: 10,
+    },
+    pickerColumn: {
+      flex: 1,
       alignItems: 'center',
     },
-    modalButtonCancel: {
-      backgroundColor: colors.border,
-    },
-    modalButtonText: {
-      color: colors.white,
+    pickerColumnHeader: {
       fontSize: 16,
+      fontWeight: '600',
+      marginBottom: 8,
+      color: colors.text,
+    },
+    dateButton: {
+      padding: 12,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginTop: 8,
+    },
+    dateButtonContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    dateButtonText: {
+      fontSize: 14,
+      flex: 1,
+    },
+    yearSelectorContainer: {
+      marginBottom: 20,
+    },
+    yearScrollView: {
+      marginTop: 8,
+    },
+    yearButton: {
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 20,
+      borderWidth: 1,
+      marginRight: 8,
+      minWidth: 80,
+      alignItems: 'center',
+    },
+    yearButtonSelected: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    yearButtonText: {
+      fontSize: 14,
       fontWeight: '500',
+    },
+    yearButtonTextSelected: {
+      color: '#fff',
+    },
+    resultsContainer: {
+      marginTop: 16,
+      marginHorizontal: 16,
+      marginBottom: 16,
+    },
+    paginationInfo: {
+      marginBottom: 16,
+    },
+    paginationInfoContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 16,
+    },
+    paginationText: {
+      color: colors.text,
+      fontSize: 14,
+    },
+    rowsPerPageButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.card,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 6,
+      borderWidth: 1,
+      borderColor: colors.border,
+      gap: 4,
+    },
+    rowsPerPageText: {
+      color: colors.text,
+      fontSize: 14,
+    },
+    rowsPerPageOption: {
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      borderRadius: 8,
+      marginVertical: 4,
+    },
+    rowsPerPageOptionSelected: {
+      backgroundColor: colors.primary,
+    },
+    rowsPerPageOptionText: {
+      color: colors.text,
+      fontSize: 16,
+    },
+    rowsPerPageOptionTextSelected: {
+      color: colors.white,
+      fontWeight: '600',
+    },
+    tableBody: {
+      maxHeight: 400, // 设置表格主体的最大高度
+    },
+    mainScrollView: {
+      flex: 1,
+    },
+    dateRangeScrollView: {
+      marginTop: 8,
+    },
+    dateRangeButton: {
+      padding: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 8,
+      marginRight: 8,
+    },
+    dateRangeButtonText: {
+      fontSize: 14,
     },
   });
 
@@ -625,7 +864,7 @@ const HistoryDataQueryScreen = () => {
       const mappings = columnMappings[selectedTable] || {};
       const ws = XLSX.utils.json_to_sheet(dataToExport.map(row => {
         const formattedRow = {};
-        formattedRow['时间'] = new Date(row.time).toLocaleString('zh-CN', { hour12: false });
+        formattedRow['时间'] = new Date(row.time).toLocaleString('zh-CN', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit' });
         Object.keys(mappings).forEach(key => {
           if (key !== 'time') {
             formattedRow[mappings[key]] = typeof row[key] === 'number' ? row[key].toFixed(2) : row[key];
@@ -662,12 +901,49 @@ const HistoryDataQueryScreen = () => {
     }
   };
 
+  const handleStartConfirm = (date) => {
+    setStartDate(date);
+    setStartPickerVisible(false);
+  };
+
+  const handleEndConfirm = (date) => {
+    setEndDate(date);
+    setEndPickerVisible(false);
+  };
+
+  const handleYearSelect = (year) => {
+    const newStartDate = new Date(year, 0, 1); // 所选年份的1月1日
+    const newEndDate = new Date(year, 11, 31); // 所选年份的12月31日
+    setStartDate(newStartDate);
+    setEndDate(newEndDate);
+    setSelectedYear(year);
+  };
+
+  const generateYearOptions = () => {
+    const currentYear = new Date().getFullYear();
+    const years = [];
+    for (let year = 2022; year <= currentYear; year++) {
+      years.push(year);
+    }
+    return years;
+  };
+
+  const handleRowsPerPageChange = (value) => {
+    setRowsPerPage(value);
+    setCurrentPage(1); // 重置到第一页
+    setShowRowsPerPageModal(false);
+  };
+
   return (
-    <ScrollView>
-      <View style={styles.container}>
+    <View style={styles.container}>
+      <ScrollView 
+        style={styles.mainScrollView}
+        nestedScrollEnabled={true}
+      >
         <View style={styles.queryCard}>
-          <ScrollView style={styles.queryScrollView}>
-            {renderModal()}
+          {/* 查询表单内容 */}
+          {renderModal()}
+          
           {/* 查询内容选择 */}
           <View style={styles.rowContainer}>
             <View style={styles.displayBox}>
@@ -679,24 +955,6 @@ const HistoryDataQueryScreen = () => {
               style={styles.selectButton}
               onPress={() => {
                 setCurrentSelectType('table');
-                setModalVisible(true);
-              }}
-            >
-              <Text style={styles.buttonText}>选择</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* 查询方式选择 */}
-          <View style={styles.rowContainer}>
-            <View style={styles.displayBox}>
-              <Text style={styles.displayText}>
-                {queryTypeOptions.find(option => option.value === queryType)?.label || '请选择查询方式'}
-              </Text>
-            </View>
-            <TouchableOpacity
-              style={styles.selectButton}
-              onPress={() => {
-                setCurrentSelectType('queryType');
                 setModalVisible(true);
               }}
             >
@@ -722,165 +980,267 @@ const HistoryDataQueryScreen = () => {
             </TouchableOpacity>
           </View>
 
-          {/* 时间范围选择 */}
-          <View style={styles.timeRangeContainer}>
-            <View style={styles.timeInput}>
-              <Text style={styles.timeLabel}>开始时间</Text>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
+          {/* 快速选择日期范围 */}
+          <View style={styles.dateRangeContainer}>
+            <Text style={[styles.label, { color: colors.text }]}>快速选择日期范围</Text>
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              style={styles.dateRangeScrollView}
+            >
+              {dateRangeOptions.map((option) => (
                 <TouchableOpacity
-                  style={styles.dateButton}
-                  onPress={() => setShowStartDate(true)}
+                  key={option.value}
+                  style={[
+                    styles.dateRangeButton,
+                    { borderColor: colors.border }
+                  ]}
+                  onPress={() => handleDateRangeSelect(option.value)}
                 >
-                  <Text style={styles.dateButtonText}>
-                    {startDate.toLocaleDateString()}
+                  <Text
+                    style={[
+                      styles.dateRangeButtonText,
+                      { color: colors.text }
+                    ]}
+                  >
+                    {option.label}
                   </Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.dateButton}
-                  onPress={() => setShowStartTime(true)}
+              ))}
+            </ScrollView>
+          </View>
+
+          {/* 时间范围选择 */}
+          <View style={styles.dateRangeContainer}>
+            <View style={styles.dateInputRow}>
+              {/* 开始时间 */}
+              <View style={styles.dateInputContainer}>
+                <Text style={[styles.label, { color: colors.text }]}>开始时间</Text>
+                <TouchableOpacity 
+                  style={[styles.dateButton, { backgroundColor: colors.card }]}
+                  onPress={() => setStartPickerVisible(true)}
                 >
-                  <Text style={styles.dateButtonText}>
-                    {startDate.toLocaleTimeString()}
-                  </Text>
+                  <View style={styles.dateButtonContent}>
+                    <Ionicons name="calendar-outline" size={20} color={colors.text} />
+                    <Text style={[styles.dateButtonText, { color: colors.text }]}>
+                      {startDate.toLocaleString('zh-CN', { 
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: false
+                      })}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+
+              {/* 结束时间 */}
+              <View style={styles.dateInputContainer}>
+                <Text style={[styles.label, { color: colors.text }]}>结束时间</Text>
+                <TouchableOpacity 
+                  style={[styles.dateButton, { backgroundColor: colors.card }]}
+                  onPress={() => setEndPickerVisible(true)}
+                >
+                  <View style={styles.dateButtonContent}>
+                    <Ionicons name="calendar-outline" size={20} color={colors.text} />
+                    <Text style={[styles.dateButtonText, { color: colors.text }]}>
+                      {endDate.toLocaleString('zh-CN', { 
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: false
+                      })}
+                    </Text>
+                  </View>
                 </TouchableOpacity>
               </View>
             </View>
 
-            <View style={styles.timeInput}>
-              <Text style={styles.timeLabel}>结束时间</Text>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <TouchableOpacity
-                  style={styles.dateButton}
-                  onPress={() => setShowEndDate(true)}
+            {/* 修改日期选择器的样式和布局 */}
+            <DateTimePickerModal
+              isVisible={isStartPickerVisible}
+              mode="datetime"
+              onConfirm={handleStartConfirm}
+              onCancel={() => setStartPickerVisible(false)}
+              date={startDate}
+              locale="zh_CN"
+              cancelTextIOS="取消"
+              confirmTextIOS="确定"
+              headerTextIOS="选择开始时间"
+              modalStyleIOS={styles.dateTimePickerModal}
+              pickerContainerStyleIOS={styles.pickerContainer}
+              customStyles={{
+                dateIcon: { display: 'none' },
+                dateInput: { marginLeft: 36, borderWidth: 0 },
+                datePickerCon: {
+                  backgroundColor: colors.card,
+                  borderRadius: 12,
+                },
+                datePicker: {
+                  backgroundColor: colors.card,
+                },
+                btnTextConfirm: {
+                  color: colors.primary,
+                },
+                btnTextCancel: {
+                  color: colors.text,
+                },
+              }}
+              isDarkMode={isDarkMode}
+            />
+
+            <DateTimePickerModal
+              isVisible={isEndPickerVisible}
+              mode="datetime"
+              onConfirm={handleEndConfirm}
+              onCancel={() => setEndPickerVisible(false)}
+              date={endDate}
+              locale="zh_CN"
+              cancelTextIOS="取消"
+              confirmTextIOS="确定"
+              headerTextIOS="选择结束时间"
+              modalStyleIOS={styles.dateTimePickerModal}
+              pickerContainerStyleIOS={styles.pickerContainer}
+              customStyles={{
+                dateIcon: { display: 'none' },
+                dateInput: { marginLeft: 36, borderWidth: 0 }
+              }}
+              isDarkMode={isDarkMode}
+            />
+          </View>
+
+          {/* 按钮容器 */}
+          <View style={styles.buttonContainer}>
+            <TouchableOpacity 
+              style={[styles.button, styles.queryButton]} 
+              onPress={handleQuery}
+            >
+              <Text style={styles.buttonText}>查询</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.button, styles.exportButton]} 
+              onPress={handleExportAndShare}
+            >
+              <Text style={styles.buttonText}>导出分享</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* 查询结果显示 */}
+        {queryResults.length > 0 && (
+          <View style={styles.resultsContainer}>
+            <View style={styles.paginationInfo}>
+              <View style={styles.paginationInfoContent}>
+                <Text style={styles.paginationText}>
+                  总记录数: {queryResults.length}
+                </Text>
+                <TouchableOpacity 
+                  style={styles.rowsPerPageButton}
+                  onPress={() => setShowRowsPerPageModal(true)}
                 >
-                  <Text style={styles.dateButtonText}>
-                    {endDate.toLocaleDateString()}
-                  </Text>
+                  <Text style={styles.rowsPerPageText}>{rowsPerPage}条/页</Text>
+                  <Ionicons name="chevron-down" size={16} color={colors.text} />
                 </TouchableOpacity>
+                <Text style={styles.paginationText}>
+                  当前页: {currentPage} / {Math.ceil(queryResults.length / rowsPerPage)}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.tableContainer}>
+              <ScrollView horizontal>
+                <View>
+                  <View style={styles.tableHeader}>
+                    <Text style={[styles.headerCell, styles.timeCell]}>时间</Text>
+                    {Object.keys(columnMappings[selectedTable] || {}).map(key => {
+                      if (key !== 'time') {
+                        return (
+                          <Text key={key} style={styles.headerCell}>
+                            {columnMappings[selectedTable][key]}
+                          </Text>
+                        );
+                      }
+                      return null;
+                    })}
+                  </View>
+                  <ScrollView 
+                    style={styles.tableBody}
+                    nestedScrollEnabled={true}
+                    onScrollEndDrag={({nativeEvent}) => {
+                      const {contentOffset, contentSize, layoutMeasurement} = nativeEvent;
+                      // 当滚动到顶部或底部时，允许外层ScrollView滚动
+                      if (contentOffset.y <= 0 || 
+                          contentOffset.y >= contentSize.height - layoutMeasurement.height) {
+                        // 不做任何处理，允许事件冒泡到外层ScrollView
+                      }
+                    }}
+                  >
+                    {renderTableData()}
+                  </ScrollView>
+                </View>
+              </ScrollView>
+              <View style={styles.paginationContainer}>
                 <TouchableOpacity
-                  style={styles.dateButton}
-                  onPress={() => setShowEndTime(true)}
+                  style={[styles.paginationButton, currentPage === 1 && styles.paginationButtonDisabled]}
+                  onPress={handlePrevPage}
+                  disabled={currentPage === 1}
                 >
-                  <Text style={styles.dateButtonText}>
-                    {endDate.toLocaleTimeString()}
-                  </Text>
+                  <Text style={styles.paginationButtonText}>上一页</Text>
+                </TouchableOpacity>
+                <Text style={[styles.paginationButtonText, { marginHorizontal: 10 }]}>{currentPage} / {Math.ceil(queryResults.length / rowsPerPage)}</Text>
+                <TouchableOpacity
+                  style={[styles.paginationButton, currentPage >= Math.ceil(queryResults.length / rowsPerPage) && styles.paginationButtonDisabled]}
+                  onPress={handleNextPage}
+                  disabled={currentPage >= Math.ceil(queryResults.length / rowsPerPage)}
+                >
+                  <Text style={styles.paginationButtonText}>下一页</Text>
                 </TouchableOpacity>
               </View>
             </View>
           </View>
+        )}
 
-            
-
-            <View style={styles.buttonContainer}>
-              <TouchableOpacity style={styles.button} onPress={handleQuery}>
-                <Text style={styles.buttonText}>查询</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.button} onPress={handleExportAndShare}>
-                <Text style={styles.buttonText}>导出分享</Text>
-              </TouchableOpacity>
+        {/* 添加每页显示数量选择模态框 */}
+        <Modal
+          visible={showRowsPerPageModal}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setShowRowsPerPageModal(false)}
+        >
+          <TouchableOpacity 
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setShowRowsPerPageModal(false)}
+          >
+            <View style={[styles.modalView, { backgroundColor: colors.card }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>
+                选择每页显示数量
+              </Text>
+              {rowsPerPageOptions.map((option) => (
+                <TouchableOpacity
+                  key={option.value}
+                  style={[
+                    styles.rowsPerPageOption,
+                    rowsPerPage === option.value && styles.rowsPerPageOptionSelected
+                  ]}
+                  onPress={() => handleRowsPerPageChange(option.value)}
+                >
+                  <Text style={[
+                    styles.rowsPerPageOptionText,
+                    rowsPerPage === option.value && styles.rowsPerPageOptionTextSelected
+                  ]}>
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
-          </ScrollView>
-        </View>
-
-        {queryResults.length > 0 && (
-          <ScrollView style={styles.dataContainer}>
-            <View>
-              <View style={styles.paginationInfo}>
-                <Text>总记录数: {queryResults.length} | 当前页: {currentPage} / {Math.ceil(queryResults.length / rowsPerPage)}</Text>
-              </View>
-              <View style={styles.tableContainer}>
-                <ScrollView horizontal>
-                  <View>
-                    <View style={styles.tableHeader}>
-                      <Text style={[styles.headerCell, styles.timeCell]}>时间</Text>
-                      {Object.keys(columnMappings[selectedTable] || {}).map(key => {
-                        if (key !== 'time') {
-                          return (
-                            <Text key={key} style={styles.headerCell}>
-                              {columnMappings[selectedTable][key]}
-                            </Text>
-                          );
-                        }
-                        return null;
-                      })}
-                    </View>
-                    <ScrollView style={styles.tableBody}>
-                      {queryResults.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage).map((row, index) => (
-                        <View key={index} style={[styles.tableRow, index % 2 === 0 ? styles.evenRow : styles.oddRow]}>
-                          <Text style={[styles.cell, styles.timeCell]}>
-                            {new Date(row.time).toLocaleString('zh-CN', { hour12: false })}
-                          </Text>
-                          {Object.keys(columnMappings[selectedTable] || {}).map(key => {
-                            if (key !== 'time') {
-                              return (
-                                <Text key={key} style={styles.cell}>
-                                  {typeof row[key] === 'number' ? row[key].toFixed(2) : row[key]}
-                                </Text>
-                              );
-                            }
-                            return null;
-                          })}
-                        </View>
-                      ))}
-                    </ScrollView>
-                  </View>
-                </ScrollView>
-                <View style={styles.paginationContainer}>
-                  <TouchableOpacity
-                    style={[styles.paginationButton, currentPage === 1 && styles.paginationButtonDisabled]}
-                    onPress={handlePrevPage}
-                    disabled={currentPage === 1}
-                  >
-                    <Text style={styles.paginationButtonText}>上一页</Text>
-                  </TouchableOpacity>
-                  <Text style={[styles.paginationButtonText, { marginHorizontal: 10 }]}>{currentPage} / {Math.ceil(queryResults.length / rowsPerPage)}</Text>
-                  <TouchableOpacity
-                    style={[styles.paginationButton, currentPage >= Math.ceil(queryResults.length / rowsPerPage) && styles.paginationButtonDisabled]}
-                    onPress={handleNextPage}
-                    disabled={currentPage >= Math.ceil(queryResults.length / rowsPerPage)}
-                  >
-                    <Text style={styles.paginationButtonText}>下一页</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          </ScrollView>
-        )}
-
-        {showStartDate && (
-          <DateTimePicker
-            value={startDate}
-            mode="date"
-            display="default"
-            onChange={(event, date) => onDateChange(event, date, 'startDate')}
-          />
-        )}
-        {showStartTime && (
-          <DateTimePicker
-            value={startDate}
-            mode="time"
-            display="default"
-            onChange={(event, date) => onDateChange(event, date, 'startTime')}
-          />
-        )}
-        {showEndDate && (
-          <DateTimePicker
-            value={endDate}
-            mode="date"
-            display="default"
-            onChange={(event, date) => onDateChange(event, date, 'endDate')}
-          />
-        )}
-        {showEndTime && (
-          <DateTimePicker
-            value={endDate}
-            mode="time"
-            display="default"
-            onChange={(event, date) => onDateChange(event, date, 'endTime')}
-          />
-        )}
-      </View>
-    </ScrollView>
+          </TouchableOpacity>
+        </Modal>
+      </ScrollView>
+    </View>
   );
 };
 

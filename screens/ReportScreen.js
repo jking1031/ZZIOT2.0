@@ -25,7 +25,7 @@ const ReportScreen = () => {
     },
     {
       id: 'qtrb',
-      title: '其他运行设施日报',
+      title: '泵站运行周报',
       description: '记录其他污水处理设施的运行情况和维护信息',
       icon: 'document-text',
       type: 'daily'
@@ -34,11 +34,19 @@ const ReportScreen = () => {
 
   const handleReportPress = (report) => {
     // 根据报告类型导航到相应的填报页面
-    navigation.navigate('ReportForm', {
-      reportId: report.id,
-      title: report.title,
-      type: report.type
-    });
+    if (report.id === '5000rb') {
+      navigation.navigate('5000吨处理厂日报', {
+        reportId: report.id,
+        title: report.title,
+        type: report.type
+      });
+    } else {
+      navigation.navigate('ReportForm', {
+        reportId: report.id,
+        title: report.title,
+        type: report.type
+      });
+    }
   };
 
   return (

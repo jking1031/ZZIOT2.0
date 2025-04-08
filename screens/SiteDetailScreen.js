@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import { StyleSheet, View, Text, ScrollView, RefreshControl, Modal, TextInput, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { StyleSheet, View, Text, ScrollView, RefreshControl, Modal, TextInput, TouchableOpacity, AppState } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
-import useWebSocket, { WS_CONFIG } from '../hooks/useWebSocket';
+import axios from 'axios';
 
 function SiteDetailScreen({ route, navigation }) {
   const { colors, isDarkMode } = useTheme();
@@ -16,51 +16,171 @@ function SiteDetailScreen({ route, navigation }) {
   const [selectedDevice, setSelectedDevice] = useState(null);
   const [newFrequency, setNewFrequency] = useState('');
   const [isValve, setIsValve] = useState([]);
+  const [updateTimer, setUpdateTimer] = useState(null);
+  const [appState, setAppState] = useState(AppState.currentState);
 
-  // 使用WebSocket连接
-  const { isConnected, sendMessage } = useWebSocket(WS_CONFIG.siteDetailPath, siteId, (data) => {
-    if (data) {
-      if (data.indata) {
-        setInData(data.indata);
+  // 使用 useRef 来存储当前的 appState，避免触发重渲染
+  const currentAppState = useRef(AppState.currentState);
+  const timerRef = useRef(null);
+
+  // 统一的 API 调用函数
+  const controllerRef = useRef(null);
+
+  const fetchSiteDetail = useCallback(async () => {
+    if (controllerRef.current) {
+      controllerRef.current.abort();
+    }
+    
+    const controller = new AbortController();
+    controllerRef.current = controller;
+
+    try {
+      console.log('开始获取站点详情数据...');
+      const response = await axios.get(`https://nodered.jzz77.cn:9003/api/sites/site/${siteId}`, {
+        signal: controller.signal,
+        timeout: 10000
+      });
+
+      if (response.data) {
+        const data = response.data;
+        if (data.indata) setInData(data.indata);
+        if (data.outdata) setOutData(data.outdata);
+        if (data.devices) setDevices(data.devices);
+        if (data.deviceFrequency) setDeviceFrequency(data.deviceFrequency);
+        if (data.isValve) setIsValve(data.isValve);
         setLastUpdateTime(new Date());
       }
-      if (data.outdata) {
-        setOutData(data.outdata);
-        setLastUpdateTime(new Date());
-      }
-      if (data.devices) {
-        setDevices(data.devices);
-      }
-      if (data.deviceFrequency) {
-        setDeviceFrequency(data.deviceFrequency);
-      }
-      if (data.isValve) {
-        setIsValve(data.isValve);
+    } catch (error) {
+      if (axios.isCancel(error)) {
+        console.log('请求被取消');
+      } else {
+        console.error('获取站点数据失败:', error);
       }
     }
-  });
+  }, [siteId]);
 
+  const startDataFetching = useCallback(() => {
+    // 避免重复调用
+    if (!timerRef.current) {
+      fetchSiteDetail();
+      timerRef.current = setInterval(() => fetchSiteDetail(), 30000);
+      setUpdateTimer(timerRef.current);
+    }
+  }, [fetchSiteDetail]);
+
+  const stopDataFetching = useCallback(() => {
+    // 清除定时器
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+      setUpdateTimer(null);
+    }
+    
+    // 取消正在进行的请求
+    if (controllerRef.current) {
+      controllerRef.current.abort();
+      controllerRef.current = null;
+    }
+  }, []);
+
+  // 统一处理组件挂载、页面焦点变化和应用状态变化
   useEffect(() => {
-    // 设置导航标题
+    // 设置页面标题
     navigation.setOptions({
       title: siteName || '站点详情'
     });
 
-    // 发送初始化请求
-    sendMessage({ type: 'getSiteDetail', siteId });
+    // 初始获取数据并开始定时更新
+    startDataFetching();
+    
+    // 处理页面焦点变化
+    const focusUnsubscribe = navigation.addListener('focus', startDataFetching);
+    const blurUnsubscribe = navigation.addListener('blur', stopDataFetching);
 
+    // 处理应用状态变化
+    const appStateSubscription = AppState.addEventListener('change', nextAppState => {
+      if (currentAppState.current.match(/inactive|background/) && nextAppState === 'active') {
+        startDataFetching();
+      } else if (nextAppState.match(/inactive|background/)) {
+        stopDataFetching();
+      }
+      currentAppState.current = nextAppState;
+    });
+
+    // 清理函数
     return () => {
-      // 组件卸载时，确保WebSocket连接被正确关闭
-      // useWebSocket的cleanup会处理连接的关闭
-      // manualDisconnectRef会被设置为true，防止重新连接
+      stopDataFetching();
+      focusUnsubscribe();
+      blurUnsubscribe();
+      appStateSubscription.remove();
     };
-  }, [navigation, siteId, siteName]);
+  }, [navigation, siteName, startDataFetching, stopDataFetching]);
 
-  const onRefresh = React.useCallback(() => {
+  // 新增发送控制命令的函数
+  const sendCommand = async (command) => {
+    try {
+      const response = await axios.post(`https://nodered.jzz77.cn:9003/api/site/${siteId}/command`, command, {
+        timeout: 10000,
+        validateStatus: function (status) {
+          return status >= 200 && status < 300;
+        }
+      });
+      
+      // 发送命令后立即获取最新数据
+      await fetchSiteDetail();
+      return response.data;
+    } catch (error) {
+      console.error('发送控制命令失败:', error);
+      throw error;
+    }
+  };
+
+  // 修改设备控制函数
+  const handleDeviceControl = async (deviceName, action) => {
+    try {
+      await sendCommand({
+        type: 'device_control',
+        deviceName,
+        action
+      });
+    } catch (error) {
+      console.error('设备控制失败:', error);
+    }
+  };
+
+  // 修改阀门控制函数
+  const handleValveControl = async (valveName, action, openKey, closeKey) => {
+    try {
+      await sendCommand({
+        type: 'valve_control',
+        valveName,
+        action,
+        openKey,
+        closeKey
+      });
+    } catch (error) {
+      console.error('阀门控制失败:', error);
+    }
+  };
+
+  // 修改频率设置函数
+  const handleSetFrequency = async (deviceName, frequency) => {
+    try {
+      await sendCommand({
+        type: 'set_frequency',
+        deviceName,
+        frequency: parseFloat(frequency)
+      });
+    } catch (error) {
+      console.error('设置频率失败:', error);
+    }
+  };
+
+  const onRefresh = React.useCallback(async () => {
     setRefreshing(true);
-    sendMessage({ type: 'getSiteDetail', siteId });
+    await fetchSiteDetail();
     setRefreshing(false);
-  }, [sendMessage, siteId]);
+  }, []);
 
   const renderDataCard = (item, index) => (
     <View
@@ -95,9 +215,9 @@ function SiteDetailScreen({ route, navigation }) {
         }
       >
       <View style={styles.connectionStatusContainer}>
-        <View style={[styles.connectionStatus, { backgroundColor: isConnected ? '#4CAF50' : '#FF5252' }]} />
+        <View style={[styles.connectionStatus, { backgroundColor: updateTimer ? '#4CAF50' : '#FF5252' }]} />
         <Text style={[styles.connectionText, { color: colors.text }]}>
-          {isConnected ? '已连接' : '未连接'}
+          {updateTimer ? '自动更新已开启' : '自动更新已关闭'}
         </Text>
         {lastUpdateTime && (
           <Text style={[styles.lastUpdateText, { color: colors.text }]}>
@@ -178,13 +298,7 @@ function SiteDetailScreen({ route, navigation }) {
                   <View style={styles.controlButtonContainer}>
                     <Text
                       style={[styles.controlButton, { backgroundColor: device.run ? '#FF5252' : '#4CAF50' }]}
-                      onPress={() => {
-                        sendMessage({
-                          type: 'deviceControl',
-                          deviceName: device.name,
-                          action: device.run ? 'stop' : 'start'
-                        });
-                      }}
+                      onPress={() => handleDeviceControl(device.name, device.run ? 'stop' : 'start')}
                     >
                       {device.run ? '停止' : '启动'}
                     </Text>
@@ -216,15 +330,12 @@ function SiteDetailScreen({ route, navigation }) {
                   </View>
                   <View style={styles.controlButtonContainer}>
                     <TouchableOpacity
-                      onPress={() => {
-                        sendMessage({
-                          type: 'valveControl',
-                          valveName: valve.name,
-                          action: valve.open ? 'close' : 'open',
-                          openKey: valve.openKey,
-                          closeKey: valve.closeKey
-                        });
-                      }}
+                      onPress={() => handleValveControl(
+                        valve.name,
+                        valve.open ? 'close' : 'open',
+                        valve.openKey,
+                        valve.closeKey
+                      )}
                       disabled={valve.fault === 1}
                     >
                       <Text
@@ -279,11 +390,7 @@ function SiteDetailScreen({ route, navigation }) {
                 style={[styles.modalButton, styles.confirmButton]}
                 onPress={() => {
                   if (selectedDevice && newFrequency) {
-                    sendMessage({
-                      type: 'setFrequency',
-                      deviceName: selectedDevice.name,
-                      frequency: parseFloat(newFrequency)
-                    });
+                    handleSetFrequency(selectedDevice.name, newFrequency);
                     setModalVisible(false);
                   }
                 }}

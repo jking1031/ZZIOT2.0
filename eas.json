@@ -6,7 +6,7 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "channel": "development"
+      "channel": "preview"
     },
     "preview": {
       "ios": {
@@ -27,7 +27,7 @@
       "android": {
         "distribution": "store"
       },
-      "channel": "default"
+      "channel": "production"
     }
   },
   "submit": {

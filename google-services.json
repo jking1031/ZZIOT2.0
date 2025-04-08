@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "990427375632",
+    "project_id": "zziot008027",
+    "storage_bucket": "zziot008027.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:990427375632:android:1a7eaf2311b9f77236c295",
+        "android_client_info": {
+          "package_name": "com.zziot.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBQt6FED5mm74NKvSd2ImYZGvCr4rFU-wM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

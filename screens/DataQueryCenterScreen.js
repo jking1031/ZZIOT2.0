@@ -28,7 +28,13 @@ function DataQueryCenterScreen({ navigation }) {
       description: 'AO池运行数据查询',
       onPress: () => navigation.navigate('AO池数据查询')
     },
-
+    {
+      id: 'messageQuery',
+      title: '消息查询',
+      icon: 'notifications',
+      description: '查询历史消息记录',
+      onPress: () => navigation.navigate('消息查询')
+    }
   ];
 
   const renderMenuItem = (item) => (

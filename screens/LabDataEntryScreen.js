@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import RNPickerSelect from 'react-native-picker-select';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View,
   Text,
@@ -9,6 +10,10 @@ import {
   TouchableOpacity,
   Alert,
   Modal,
+  KeyboardAvoidingView,
+  Keyboard,
+  TouchableWithoutFeedback,
+  Platform
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 
@@ -114,6 +119,7 @@ const LabDataEntryScreen = () => {
   };
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loadingModalVisible, setLoadingModalVisible] = useState(false);
 
   const handleSubmit = async () => {
     // 验证数据
@@ -156,6 +162,7 @@ const LabDataEntryScreen = () => {
     if (!isValid) return;
 
     setIsSubmitting(true);
+    setLoadingModalVisible(true);
 
     try {
       const formattedSamples = samples.map(sample => ({
@@ -170,7 +177,7 @@ const LabDataEntryScreen = () => {
         testDate: sample.time
       }));
 
-      const response = await fetch('http://112.28.56.235:13100/submit', {
+      const response = await fetch('https://zziot.jzz77.cn:9003/submit', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -195,6 +202,7 @@ const LabDataEntryScreen = () => {
         throw new Error(data.error || '提交失败');
       }
 
+      setLoadingModalVisible(false);
       Alert.alert('成功', '数据已成功提交');
       // 重置表单
       setSamples([{
@@ -214,289 +222,311 @@ const LabDataEntryScreen = () => {
       Alert.alert('错误', error.message || '提交失败，请稍后重试');
     } finally {
       setIsSubmitting(false);
+      setLoadingModalVisible(false);
     }
   };
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
-     
-      
-      {samples.map((sample, index) => (
-        <View key={sample.id} style={styles.sampleContainer}>
-          <View style={styles.sampleHeader}>
-            <Text style={[styles.sampleTitle, { color: colors.text }]}>
-              样本 {index + 1}
-            </Text>
-            <TouchableOpacity 
-              onPress={() => removeSample(sample.id)}
-              style={styles.removeButton}
-            >
-              <Text style={styles.removeButtonText}>删除</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={[styles.label, { color: colors.text }]}>水样名称</Text>
-            <TextInput
-              style={[styles.input, { 
-                backgroundColor: colors.background,
-                color: colors.text,
-                borderColor: colors.border,
-                marginBottom: 8
-              }]}
-              value={sample.sample_name}
-              editable={false}
-              placeholder="当前未选择水样"
-              placeholderTextColor={colors.text}
-            />
-            <View style={styles.buttonRow}>
-              <TouchableOpacity 
-                style={[styles.sampleSelectButton, { backgroundColor: colors.primary }]}
-                onPress={() => {
-                  setCurrentSampleId(sample.id);
-                  setShowManualInput(false);
-                  setModalVisible(true);
-                }}
-              >
-                <Text style={styles.buttonText}>选择水样名称</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.sampleSelectButton, { backgroundColor: colors.primary }]}
-                onPress={() => {
-                  setCurrentSampleId(sample.id);
-                  setShowManualInput(true);
-                  setModalVisible(true);
-                }}
-              >
-                <Text style={styles.buttonText}>手动输入</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <View style={styles.inputRow}>
-            <View style={styles.inputGroup}>
-              <Text style={[styles.label, { color: colors.text }]}>COD (mg/L)</Text>
-              <TextInput
-                style={[styles.input, { 
-                  backgroundColor: colors.background,
-                  color: colors.text,
-                  borderColor: colors.border
-                }]}
-                value={sample.cod}
-                onChangeText={(value) => updateSample(sample.id, 'cod', value)}
-                keyboardType="numeric"
-                placeholder="COD"
-                placeholderTextColor={colors.text}
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={[styles.label, { color: colors.text }]}>氨氮 (mg/L)</Text>
-              <TextInput
-                style={[styles.input, { 
-                  backgroundColor: colors.background,
-                  color: colors.text,
-                  borderColor: colors.border
-                }]}
-                value={sample.nh3}
-                onChangeText={(value) => updateSample(sample.id, 'nh3', value)}
-                keyboardType="numeric"
-                placeholder="氨氮"
-                placeholderTextColor={colors.text}
-              />
-            </View>
-          </View>
-
-          <View style={styles.inputRow}>
-            <View style={styles.inputGroup}>
-              <Text style={[styles.label, { color: colors.text }]}>总氮 (mg/L)</Text>
-              <TextInput
-                style={[styles.input, { 
-                  backgroundColor: colors.background,
-                  color: colors.text,
-                  borderColor: colors.border
-                }]}
-                value={sample.tn}
-                onChangeText={(value) => updateSample(sample.id, 'tn', value)}
-                keyboardType="numeric"
-                placeholder="总氮"
-                placeholderTextColor={colors.text}
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={[styles.label, { color: colors.text }]}>总磷 (mg/L)</Text>
-              <TextInput
-                style={[styles.input, { 
-                  backgroundColor: colors.background,
-                  color: colors.text,
-                  borderColor: colors.border
-                }]}
-                value={sample.tp}
-                onChangeText={(value) => updateSample(sample.id, 'tp', value)}
-                keyboardType="numeric"
-                placeholder="总磷"
-                placeholderTextColor={colors.text}
-              />
-            </View>
-          </View>
-
-          <View style={styles.inputRow}>
-            <View style={styles.inputGroup}>
-              <Text style={[styles.label, { color: colors.text }]}>pH</Text>
-              <TextInput
-                style={[styles.input, { 
-                  backgroundColor: colors.background,
-                  color: colors.text,
-                  borderColor: colors.border
-                }]}
-                value={sample.ph}
-                onChangeText={(value) => updateSample(sample.id, 'ph', value)}
-                keyboardType="numeric"
-                placeholder="pH"
-                placeholderTextColor={colors.text}
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={[styles.label, { color: colors.text }]}>SS (mg/L)</Text>
-              <TextInput
-                style={[styles.input, { 
-                  backgroundColor: colors.background,
-                  color: colors.text,
-                  borderColor: colors.border
-                }]}
-                value={sample.ss}
-                onChangeText={(value) => updateSample(sample.id, 'ss', value)}
-                keyboardType="numeric"
-                placeholder="SS"
-                placeholderTextColor={colors.text}
-              />
-            </View>
-          </View>
-
-          <View style={styles.inputRow}>
-            <View style={styles.inputGroup}>
-              <Text style={[styles.label, { color: colors.text }]}>水温 (℃)</Text>
-              <TextInput
-                style={[styles.input, { 
-                  backgroundColor: colors.background,
-                  color: colors.text,
-                  borderColor: colors.border
-                }]}
-                value={sample.sw}
-                onChangeText={(value) => updateSample(sample.id, 'sw', value)}
-                keyboardType="numeric"
-                placeholder="水温"
-                placeholderTextColor={colors.text}
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={[styles.label, { color: colors.text }]}>采样日期</Text>
-              <TextInput
-                style={[styles.input, { 
-                  backgroundColor: colors.background,
-                  color: colors.text,
-                  borderColor: colors.border
-                }]}
-                value={sample.time}
-                onChangeText={(value) => updateSample(sample.id, 'time', value)}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={colors.text}
-              />
-            </View>
-          </View>
-        </View>
-      ))}
-
-      <View style={styles.buttonContainer}>
-        <TouchableOpacity 
-          style={[styles.button, { backgroundColor: colors.primary }]}
-          onPress={addSample}
+    <KeyboardAvoidingView 
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={{ flex: 1 }}
+    >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <ScrollView 
+          style={[styles.container, { backgroundColor: colors.background }]}
+          keyboardShouldPersistTaps="handled"
         >
-          <Text style={styles.buttonText}>添加样本</Text>
-        </TouchableOpacity>
+          {samples.map((sample, index) => (
+            <View key={sample.id} style={styles.sampleContainer}>
+              <View style={styles.sampleHeader}>
+                <Text style={[styles.sampleTitle, { color: colors.text }]}>
+                  样本 {index + 1}
+                </Text>
+                <TouchableOpacity 
+                  onPress={() => removeSample(sample.id)}
+                  style={styles.removeButton}
+                >
+                  <Text style={styles.removeButtonText}>删除</Text>
+                </TouchableOpacity>
+              </View>
 
-        <TouchableOpacity 
-          style={[styles.button, { backgroundColor: colors.primary }]}
-          onPress={handleSubmit}
-        >
-          <Text style={styles.buttonText}>提交数据</Text>
-        </TouchableOpacity>
-      </View>
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={modalVisible}
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalView, { backgroundColor: colors.background }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>
-              {showManualInput ? '手动输入水样名称' : '选择水样名称'}
-            </Text>
-            {showManualInput ? (
-              <TextInput
-                style={[styles.modalInput, { 
-                  backgroundColor: colors.background,
-                  color: colors.text,
-                  borderColor: colors.border
-                }]}
-                value={tempSampleName}
-                onChangeText={setTempSampleName}
-                placeholder="请输入水样名称"
-                placeholderTextColor={colors.text}
-              />
-            ) : (
-              <View style={styles.sampleButtonsGrid}>
-                {sampleOptions.map((option) => (
-                  <TouchableOpacity
-                    key={option}
-                    style={[styles.sampleButton, { borderColor: colors.border }]}
+              <View style={styles.inputGroup}>
+                <Text style={[styles.label, { color: colors.text }]}>水样名称</Text>
+                <TextInput
+                  style={[styles.input, { 
+                    backgroundColor: colors.background,
+                    color: colors.text,
+                    borderColor: colors.border,
+                    marginBottom: 8
+                  }]}
+                  value={sample.sample_name}
+                  editable={false}
+                  placeholder="当前未选择水样"
+                  placeholderTextColor={colors.text}
+                />
+                <View style={styles.buttonRow}>
+                  <TouchableOpacity 
+                    style={[styles.sampleSelectButton, { backgroundColor: colors.primary }]}
                     onPress={() => {
-                      updateSample(currentSampleId, 'sample_name', option);
-                      setModalVisible(false);
+                      setCurrentSampleId(sample.id);
+                      setShowManualInput(false);
+                      setModalVisible(true);
                     }}
                   >
-                    <Text style={[styles.sampleButtonText, { color: colors.text }]}>
-                      {option}
-                    </Text>
+                    <Text style={styles.buttonText}>选择水样名称</Text>
                   </TouchableOpacity>
-                ))}
+                  <TouchableOpacity 
+                    style={[styles.sampleSelectButton, { backgroundColor: colors.primary }]}
+                    onPress={() => {
+                      setCurrentSampleId(sample.id);
+                      setShowManualInput(true);
+                      setModalVisible(true);
+                    }}
+                  >
+                    <Text style={styles.buttonText}>手动输入</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-            )}
-            <View style={styles.modalButtons}>
-              {showManualInput && (
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.modalButtonConfirm]}
-                  onPress={() => {
-                    if (tempSampleName.trim()) {
-                      updateSample(currentSampleId, 'sample_name', tempSampleName.trim());
+
+              <View style={styles.inputRow}>
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.label, { color: colors.text }]}>COD (mg/L)</Text>
+                  <TextInput
+                    style={[styles.input, { 
+                      backgroundColor: colors.background,
+                      color: colors.text,
+                      borderColor: colors.border
+                    }]}
+                    value={sample.cod}
+                    onChangeText={(value) => updateSample(sample.id, 'cod', value)}
+                    keyboardType="numeric"
+                    placeholder="COD"
+                    placeholderTextColor={colors.text}
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.label, { color: colors.text }]}>氨氮 (mg/L)</Text>
+                  <TextInput
+                    style={[styles.input, { 
+                      backgroundColor: colors.background,
+                      color: colors.text,
+                      borderColor: colors.border
+                    }]}
+                    value={sample.nh3}
+                    onChangeText={(value) => updateSample(sample.id, 'nh3', value)}
+                    keyboardType="numeric"
+                    placeholder="氨氮"
+                    placeholderTextColor={colors.text}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.inputRow}>
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.label, { color: colors.text }]}>总氮 (mg/L)</Text>
+                  <TextInput
+                    style={[styles.input, { 
+                      backgroundColor: colors.background,
+                      color: colors.text,
+                      borderColor: colors.border
+                    }]}
+                    value={sample.tn}
+                    onChangeText={(value) => updateSample(sample.id, 'tn', value)}
+                    keyboardType="numeric"
+                    placeholder="总氮"
+                    placeholderTextColor={colors.text}
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.label, { color: colors.text }]}>总磷 (mg/L)</Text>
+                  <TextInput
+                    style={[styles.input, { 
+                      backgroundColor: colors.background,
+                      color: colors.text,
+                      borderColor: colors.border
+                    }]}
+                    value={sample.tp}
+                    onChangeText={(value) => updateSample(sample.id, 'tp', value)}
+                    keyboardType="numeric"
+                    placeholder="总磷"
+                    placeholderTextColor={colors.text}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.inputRow}>
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.label, { color: colors.text }]}>pH</Text>
+                  <TextInput
+                    style={[styles.input, { 
+                      backgroundColor: colors.background,
+                      color: colors.text,
+                      borderColor: colors.border
+                    }]}
+                    value={sample.ph}
+                    onChangeText={(value) => updateSample(sample.id, 'ph', value)}
+                    keyboardType="numeric"
+                    placeholder="pH"
+                    placeholderTextColor={colors.text}
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.label, { color: colors.text }]}>SS (mg/L)</Text>
+                  <TextInput
+                    style={[styles.input, { 
+                      backgroundColor: colors.background,
+                      color: colors.text,
+                      borderColor: colors.border
+                    }]}
+                    value={sample.ss}
+                    onChangeText={(value) => updateSample(sample.id, 'ss', value)}
+                    keyboardType="numeric"
+                    placeholder="SS"
+                    placeholderTextColor={colors.text}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.inputRow}>
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.label, { color: colors.text }]}>水温 (℃)</Text>
+                  <TextInput
+                    style={[styles.input, { 
+                      backgroundColor: colors.background,
+                      color: colors.text,
+                      borderColor: colors.border
+                    }]}
+                    value={sample.sw}
+                    onChangeText={(value) => updateSample(sample.id, 'sw', value)}
+                    keyboardType="numeric"
+                    placeholder="水温"
+                    placeholderTextColor={colors.text}
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.label, { color: colors.text }]}>采样日期</Text>
+                  <TextInput
+                    style={[styles.input, { 
+                      backgroundColor: colors.background,
+                      color: colors.text,
+                      borderColor: colors.border
+                    }]}
+                    value={sample.time}
+                    onChangeText={(value) => updateSample(sample.id, 'time', value)}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor={colors.text}
+                  />
+                </View>
+              </View>
+            </View>
+          ))}
+
+          <View style={styles.buttonContainer}>
+            <TouchableOpacity 
+              style={[styles.button, { backgroundColor: colors.primary }]}
+              onPress={addSample}
+            >
+              <Text style={styles.buttonText}>添加样本</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.button, { backgroundColor: colors.primary }]}
+              onPress={handleSubmit}
+            >
+              <Text style={styles.buttonText}>提交数据</Text>
+            </TouchableOpacity>
+          </View>
+          <Modal
+            animationType="slide"
+            transparent={true}
+            visible={modalVisible}
+            onRequestClose={() => setModalVisible(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={[styles.modalView, { backgroundColor: colors.background }]}>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>
+                  {showManualInput ? '手动输入水样名称' : '选择水样名称'}
+                </Text>
+                {showManualInput ? (
+                  <TextInput
+                    style={[styles.modalInput, { 
+                      backgroundColor: colors.background,
+                      color: colors.text,
+                      borderColor: colors.border
+                    }]}
+                    value={tempSampleName}
+                    onChangeText={setTempSampleName}
+                    placeholder="请输入水样名称"
+                    placeholderTextColor={colors.text}
+                  />
+                ) : (
+                  <View style={styles.sampleButtonsGrid}>
+                    {sampleOptions.map((option) => (
+                      <TouchableOpacity
+                        key={option}
+                        style={[styles.sampleButton, { borderColor: colors.border }]}
+                        onPress={() => {
+                          updateSample(currentSampleId, 'sample_name', option);
+                          setModalVisible(false);
+                        }}
+                      >
+                        <Text style={[styles.sampleButtonText, { color: colors.text }]}>
+                          {option}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+                <View style={styles.modalButtons}>
+                  {showManualInput && (
+                    <TouchableOpacity
+                      style={[styles.modalButton, styles.modalButtonConfirm]}
+                      onPress={() => {
+                        if (tempSampleName.trim()) {
+                          updateSample(currentSampleId, 'sample_name', tempSampleName.trim());
+                          setModalVisible(false);
+                          setTempSampleName('');
+                        } else {
+                          Alert.alert('提示', '请输入水样名称');
+                        }
+                      }}
+                    >
+                      <Text style={styles.modalButtonText}>确认</Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.modalButtonCancel]}
+                    onPress={() => {
                       setModalVisible(false);
                       setTempSampleName('');
-                    } else {
-                      Alert.alert('提示', '请输入水样名称');
-                    }
-                  }}
-                >
-                  <Text style={styles.modalButtonText}>确认</Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalButtonCancel]}
-                onPress={() => {
-                  setModalVisible(false);
-                  setTempSampleName('');
-                }}
-              >
-                <Text style={styles.modalButtonText}>取消</Text>
-              </TouchableOpacity>
+                    }}
+                  >
+                    <Text style={styles.modalButtonText}>取消</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
             </View>
-          </View>
-        </View>
-      </Modal>
-    </ScrollView>
+          </Modal>
+
+          {/* 加载提示 Modal */}
+          <Modal
+            animationType="fade"
+            transparent={true}
+            visible={loadingModalVisible}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={[styles.loadingModalView, { backgroundColor: colors.card }]}>
+                <Text style={[styles.loadingText, { color: colors.text }]}>正在提交...</Text>
+              </View>
+            </View>
+          </Modal>
+        </ScrollView>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -732,6 +762,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
     fontWeight: 'bold',
+  },
+  loadingModalView: {
+    borderRadius: 10,
+    padding: 20,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  loadingText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 

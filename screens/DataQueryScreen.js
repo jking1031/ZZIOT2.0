@@ -55,7 +55,7 @@ const DataQueryScreen = () => {
       const adjustedStartDate = new Date(startDate.getTime() + 8 * 60 * 60 * 1000);
       const adjustedEndDate = new Date(endDate.getTime() + 8 * 60 * 60 * 1000);
 
-      const response = await fetch(`http://112.28.56.235:13100/api/query-data/${selectedTable}?startDate=${adjustedStartDate.toISOString()}&endDate=${adjustedEndDate.toISOString()}&interval=${interval}`, {
+      const response = await fetch(`https://zziot.jzz77.cn:9003/api/query-data/${selectedTable}?startDate=${adjustedStartDate.toISOString()}&endDate=${adjustedEndDate.toISOString()}&interval=${interval}`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
