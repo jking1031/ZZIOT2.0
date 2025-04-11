@@ -16,7 +16,7 @@ const globalConnected = { current: false };
 function SiteDetailScreen({ route, navigation }) {
   const { colors, isDarkMode } = useTheme();
   const { siteId, siteName, departments = [] } = route.params;
-  const { user, userRoles } = useAuth();
+  const { user, userRoles = [], getUserRoles } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const [inData, setInData] = useState([]);
   const [outData, setOutData] = useState([]);
@@ -32,6 +32,9 @@ function SiteDetailScreen({ route, navigation }) {
   const [siteDepartments, setSiteDepartments] = useState(departments);
   const [hasControlPermission, setHasControlPermission] = useState(false);
   const [manualRefreshing, setManualRefreshing] = useState(false); // 添加手动刷新状态
+  
+  // 添加数据分组状态
+  const [dataGroups, setDataGroups] = useState([]);
   
   // WebSocket相关状态
   const [wsConnected, setWsConnected] = useState(globalConnected.current);
@@ -49,66 +52,395 @@ function SiteDetailScreen({ route, navigation }) {
   // 添加flow引用作为组件状态
   const [wsStatusTimeout, setWsStatusTimeout] = useState(null);
 
-  // 检查用户是否有权限控制设备
-  const checkControlPermission = useCallback(() => {
-    // 检查是否有userRoles和siteDepartments
-    if (!userRoles || !siteDepartments || siteDepartments.length === 0) {
-      console.log('无法检查权限: 缺少角色或部门信息');
+  // 添加检查权限的ref，防止重复检查
+  const checkingPermissionRef = useRef(false);
+  const permissionRetryCountRef = useRef(0);
+  
+  // 添加一个时间戳跟踪上次权限检查的时间
+  const lastPermissionCheckRef = useRef(0);
+  
+  // 添加本地存储的角色数据，用于直接访问
+  const [localUserRoles, setLocalUserRoles] = useState(userRoles);
+  
+  // 添加一个权限已检查完成的标志
+  const permissionCheckedRef = useRef(false);
+  
+  // 监听全局userRoles变化，更新本地状态
+  useEffect(() => {
+    if (userRoles && userRoles.length > 0) {
+      setLocalUserRoles(userRoles);
+      
+      // 重要：当角色信息发生变化时，重置权限检查完成标志
+      if (permissionCheckedRef.current) {
+        permissionCheckedRef.current = false;
+        permissionRetryCountRef.current = 0;
+      }
+    }
+  }, [userRoles]);
+  
+  // 监听部门数据变化，在变化时重置权限检查状态
+  useEffect(() => {
+    // 仅在有实际部门数据时执行，避免组件初始化时的无效触发
+    if (siteDepartments && siteDepartments.length > 0 && permissionCheckedRef.current) {
+      permissionCheckedRef.current = false;
+      permissionRetryCountRef.current = 0;
+    }
+  }, [siteDepartments]);
+  
+  // 检查用户是否有权限控制设备 - 增强版本，避免重复检查
+  const checkControlPermission = useCallback(async (forceCheck = false) => {
+    // 如果已经检查完成且有权限，非强制模式下直接返回
+    if (!forceCheck && permissionCheckedRef.current && hasControlPermission) {
+      // 去掉冗余日志
+      return hasControlPermission;
+    }
+    
+    // 如果正在检查权限，则返回
+    if (checkingPermissionRef.current) {
+      // 去掉冗余日志
+      return hasControlPermission; // 直接返回当前状态
+    }
+    
+    // 非强制检查时，如果权限已经有了，且距离上次检查不超过3秒，则跳过
+    const now = Date.now();
+    if (!forceCheck && hasControlPermission && (now - lastPermissionCheckRef.current < 3000)) {
+      return hasControlPermission;
+    }
+    
+    // 最多重试3次
+    if (permissionRetryCountRef.current >= 3) {
+      console.log('已达到最大权限检查重试次数');
+      return hasControlPermission;
+    }
+    
+    checkingPermissionRef.current = true;
+    permissionRetryCountRef.current++;
+    lastPermissionCheckRef.current = now;
+    
+    try {
+      // 简化第N次开始日志
+      if (permissionRetryCountRef.current > 1) {
+        console.log(`权限检查 (第${permissionRetryCountRef.current}次)`);
+      }
+      
+      // 首先尝试从缓存直接获取角色信息
+      let currentRoles = localUserRoles;
+      
+      // 如果没有本地数据，尝试从AsyncStorage获取
+      if ((!currentRoles || currentRoles.length === 0) && user?.id) {
+        try {
+          const cachedRoles = await AsyncStorage.getItem('userRoles_cache');
+          if (cachedRoles) {
+            const rolesData = JSON.parse(cachedRoles);
+            if (rolesData.userId === user.id && rolesData.roles && rolesData.roles.length > 0) {
+              currentRoles = rolesData.roles;
+              setLocalUserRoles(currentRoles);
+              // 去掉缓存加载日志
+            }
+          }
+        } catch (cacheError) {
+          // 简化错误日志
+          console.log('获取角色缓存失败');
+        }
+      }
+      
+      // 检查是否有角色信息
+      if (!currentRoles || currentRoles.length === 0) {
+        console.log('无法检查权限: 缺少角色信息');
+        
+        // 使用getUserRoles获取最新角色信息
+        if (getUserRoles && user && user.id) {
+          try {
+            const roles = await getUserRoles(user.id, true); // 强制刷新
+            if (roles && roles.length > 0) {
+              setLocalUserRoles(roles); // 更新本地角色
+              currentRoles = roles;
+              // 去掉成功获取角色的日志
+            } else {
+              console.log('获取角色信息成功但为空');
+            }
+          } catch (roleError) {
+            console.error('获取用户角色失败');
+          }
+        }
+        
+        // 如果仍然没有角色，返回失败
+        if (!currentRoles || currentRoles.length === 0) {
+          setHasControlPermission(false);
+          checkingPermissionRef.current = false;
+          return false;
+        }
+      }
+      
+      // 检查是否有siteDepartments
+      let currentDepartments = siteDepartments;
+      if (!currentDepartments || currentDepartments.length === 0) {
+        console.log('无法检查权限: 缺少站点部门信息');
+        
+        // 尝试从缓存获取站点部门信息
+        try {
+          const cachedDepartments = await AsyncStorage.getItem(`site_departments_${siteId}`);
+          if (cachedDepartments) {
+            const deptData = JSON.parse(cachedDepartments);
+            if (deptData.departments && deptData.departments.length > 0) {
+              // 简化部门信息日志
+              setSiteDepartments(deptData.departments);
+              currentDepartments = deptData.departments;
+            }
+          }
+        } catch (cacheError) {
+          console.log('获取站点部门缓存失败');
+        }
+        
+        // 如果仍然没有部门信息，尝试重新获取站点详情
+        if (!currentDepartments || currentDepartments.length === 0) {
+          console.log('正在尝试重新获取站点详情...');
+          try {
+            await fetchSiteDetail();
+            
+            // 直接检查是否有了新数据
+            if (siteDepartments && siteDepartments.length > 0) {
+              currentDepartments = siteDepartments;
+            } else {
+              // 使用传入的部门数据作为最后的备份
+              if (departments && departments.length > 0) {
+                setSiteDepartments(departments);
+                currentDepartments = departments;
+                // 去掉使用路由参数的日志
+              }
+            }
+          } catch (fetchError) {
+            console.error('获取站点详情失败');
+            // 使用传入的部门数据作为最后的备份
+            if (departments && departments.length > 0) {
+              setSiteDepartments(departments);
+              currentDepartments = departments;
+              // 去掉使用路由参数的日志
+            }
+          }
+        }
+        
+        // 如果仍然没有部门信息
+        if (!currentDepartments || currentDepartments.length === 0) {
+          setHasControlPermission(false);
+          checkingPermissionRef.current = false;
+          return false;
+        }
+      }
+      
+      // 管理员始终有权限
+      if (user && (user.is_admin === 1 || user.isAdmin === true)) {
+        console.log('管理员拥有完全控制权限');
+        setHasControlPermission(true);
+        checkingPermissionRef.current = false;
+        return true;
+      }
+      
+      // 从userRoles中提取角色名称
+      const userRoleNames = currentRoles.map(role => {
+        // role可能是对象或直接是ID
+        if (typeof role === 'object' && role !== null) {
+          // 从roleMap中获取角色名称
+          const roleId = role.id || role.role_id;
+          // 在这里确保通过ID找到正确的角色名
+          if (roleId) {
+            // 角色映射示例（在实际实现中，这应该是从Context或API获取）
+            const roleMap = {
+              1: '管理员',
+              2: '部门管理员',
+              3: '运行班组',
+              4: '化验班组',
+              5: '机电班组',
+              6: '污泥车间',
+              7: '5000吨处理站',
+              8: '附属设施',
+              9: '备用权限'
+            };
+            return roleMap[roleId] || role.name;
+          }
+          return role.name;
+        }
+        return role; // 如果role直接是名称字符串
+      }).filter(name => name); // 移除undefined或null
+      
+      // 简化角色和部门日志，只保留权限检查结果
+      /*console.log('用户角色:', userRoleNames);
+      console.log('站点部门:', currentDepartments);*/
+      
+      // 检查用户角色是否与站点部门匹配
+      const hasPermission = userRoleNames.some(roleName => 
+        currentDepartments.includes(roleName)
+      );
+      
+      console.log('权限检查结果:', hasPermission ? '有权限' : '无权限');
+      setHasControlPermission(hasPermission);
+      checkingPermissionRef.current = false;
+      
+      // 最后重置重试计数，设置检查完成标志
+      if (hasPermission) {
+        permissionRetryCountRef.current = 0;
+        permissionCheckedRef.current = true; // 标记为已完成成功检查
+      }
+      
+      return hasPermission;
+    } catch (error) {
+      console.error('检查权限出错:', error);
       setHasControlPermission(false);
+      checkingPermissionRef.current = false;
       return false;
     }
-    
-    // 管理员始终有权限
-    if (user && (user.is_admin === 1 || user.isAdmin === true)) {
-      console.log('管理员拥有完全控制权限');
-      setHasControlPermission(true);
-      return true;
+  }, [user, localUserRoles, userRoles, siteDepartments, fetchSiteDetail, siteId, hasControlPermission, getUserRoles, departments]);
+
+  // 在siteDepartments改变时检查权限，但不重复检查
+  useEffect(() => {
+    // 不需要每次都检查，只有当状态关键值改变且未完成检查时才检查
+    if (siteDepartments?.length > 0 && userRoles?.length > 0 && !permissionCheckedRef.current) {
+      // 使用setTimeout确保其他状态更新已完成
+      const timer = setTimeout(() => checkControlPermission(), 500);
+      return () => clearTimeout(timer);
+    }
+  }, [siteDepartments, userRoles, checkControlPermission]);
+
+  // 优化初始加载权限检查
+  useEffect(() => {
+    // 重置权限检查计数器，避免重复初始化
+    if (permissionRetryCountRef.current > 0) {
+      return; // 如果已经开始检查过，就不再重复执行初始检查
     }
     
-    // 从userRoles中提取角色名称
-    const userRoleNames = userRoles.map(role => {
-      // role可能是对象或直接是ID
-      if (typeof role === 'object' && role !== null) {
-        // 从roleMap中获取角色名称
-        const roleId = role.id || role.role_id;
-        // 在这里确保通过ID找到正确的角色名
-        if (roleId) {
-          // 角色映射示例（在实际实现中，这应该是从Context或API获取）
-          const roleMap = {
-            1: '管理员',
-            2: '部门管理员',
-            3: '运行班组',
-            4: '化验班组',
-            5: '机电班组',
-            6: '污泥车间',
-            7: '5000吨处理站',
-            8: '附属设施',
-            9: '备用权限'
-          };
-          return roleMap[roleId] || role.name;
+    permissionRetryCountRef.current = 0;
+    checkingPermissionRef.current = false;
+    
+    // 设置一个递增的延迟检查序列
+    const initialPermissionCheck = async () => {
+      // 简化初始检查日志
+      
+      // 首先检查是否有部门信息，如果没有则直接使用路由参数的部门数据
+      if (!siteDepartments || siteDepartments.length === 0) {
+        if (departments && departments.length > 0) {
+          setSiteDepartments(departments);
+          // 去掉初始化部门数据的日志
         }
-        return role.name;
       }
-      return role; // 如果role直接是名称字符串
-    }).filter(name => name); // 移除undefined或null
+      
+      // 尝试预先确保有角色信息
+      if ((!localUserRoles || localUserRoles.length === 0) && getUserRoles && user?.id) {
+        try {
+          // 去掉预先获取角色信息的日志
+          const roles = await getUserRoles(user.id, true); // 使用强制刷新模式
+          if (roles && roles.length > 0) {
+            setLocalUserRoles(roles);
+            // 去掉成功获取角色的日志
+          }
+          // 不管获取结果如何，等待短暂时间让状态更新
+          await new Promise(resolve => setTimeout(resolve, 500));
+        } catch (error) {
+          console.log('预加载角色失败');
+        }
+      }
+      
+      // 立即执行一次权限检查
+      try {
+        const hasPermission = await checkControlPermission(true); // 强制执行初始检查
+        
+        // 如果获取到了权限，就不需要继续了
+        if (hasPermission) {
+          // 去掉初始权限检查成功的日志
+          permissionCheckedRef.current = true;
+          return;
+        }
+        
+        // 如果没有权限并且没有提前返回，只做一次最终检查
+        if (!permissionCheckedRef.current) {
+          // 去掉安排最终检查的日志
+          
+          // 延迟5秒进行最后一次检查
+          setTimeout(async () => {
+            // 如果在这段时间内已经获取到权限，跳过最终检查
+            if (permissionCheckedRef.current || hasControlPermission) {
+              // 去掉已获取权限跳过检查的日志
+              return;
+            }
+            
+            try {
+              // 重置标志以确保可以进行新的检查
+              checkingPermissionRef.current = false;
+              permissionRetryCountRef.current = 0; // 重置以便可以再尝试3次
+              
+              // 去掉执行最终权限检查的日志
+              await checkControlPermission(true);
+            } catch (error) {
+              console.error('权限检查出错');
+            }
+          }, 5000);
+        }
+      } catch (error) {
+        console.error('权限检查过程出错');
+      }
+    };
     
-    console.log('用户角色:', userRoleNames);
-    console.log('站点部门:', siteDepartments);
-    
-    // 检查用户角色是否与站点部门匹配
-    const hasPermission = userRoleNames.some(roleName => 
-      siteDepartments.includes(roleName)
-    );
-    
-    console.log('控制权限检查结果:', hasPermission);
-    setHasControlPermission(hasPermission);
-    return hasPermission;
-  }, [user, userRoles, siteDepartments]);
+    // 延迟执行初始检查，避免与其他useEffect中的检查冲突
+    const timer = setTimeout(initialPermissionCheck, 300);
+    return () => clearTimeout(timer);
+  }, []);  // 减少依赖，只在组件挂载时执行一次
 
-  // 在siteDepartments改变时检查权限
+  // 优化页面焦点变化时的权限检查
   useEffect(() => {
-    checkControlPermission();
-  }, [siteDepartments, userRoles, checkControlPermission]);
+    const focusListener = navigation.addListener('focus', () => {
+      // 简化焦点变化日志
+      
+      // 如果已经有权限，就不再重复检查
+      if (hasControlPermission || permissionCheckedRef.current) {
+        // 去掉已有权限的日志
+        return;
+      }
+      
+      // 优先尝试加载角色数据
+      const loadRolesAndCheck = async () => {
+        try {
+          // 重置检查标志
+          checkingPermissionRef.current = false;
+          
+          // 如果没有角色数据，先尝试获取
+          if ((!localUserRoles || localUserRoles.length === 0) && getUserRoles && user?.id) {
+            // 去掉焦点检查预加载日志
+            const roles = await getUserRoles(user.id);
+            if (roles && roles.length > 0) {
+              setLocalUserRoles(roles);
+              // 去掉焦点检查成功获取日志
+            }
+          }
+          
+          // 如果已经完成了权限检查，跳过
+          if (permissionCheckedRef.current) {
+            // 去掉焦点检查已完成的日志
+            return;
+          }
+          
+          // 延迟检查权限以确保数据已更新
+          setTimeout(() => {
+            // 再次检查当前是否已经完成权限验证
+            if (!permissionCheckedRef.current && !hasControlPermission) {
+              checkControlPermission(true);
+            }
+          }, 800);
+        } catch (error) {
+          console.error('焦点变化权限检查错误');
+          // 尽管出错，仍尝试检查权限
+          if (!permissionCheckedRef.current) {
+            setTimeout(() => checkControlPermission(true), 800);
+          }
+        }
+      };
+      
+      // 执行加载和检查
+      loadRolesAndCheck();
+    });
+    
+    return () => {
+      focusListener();
+    };
+  }, [navigation, checkControlPermission, hasControlPermission, user, getUserRoles, localUserRoles]);
 
   // 首先声明fetchSiteDetailHttp函数
   const fetchSiteDetailHttp = useCallback(async () => {
@@ -133,6 +465,63 @@ function SiteDetailScreen({ route, navigation }) {
         if (data.deviceFrequency) setDeviceFrequency(data.deviceFrequency);
         if (data.isValve) setIsValve(data.isValve);
         if (data.departments) setSiteDepartments(data.departments);
+        
+        // 处理数据分组定义
+        if (data.dataGroups) {
+          // 如果后端直接提供了分组定义，直接使用
+          setDataGroups(data.dataGroups);
+        } else {
+          // 如果后端没有提供分组，则构建默认分组
+          const defaultGroups = [];
+          
+          if (data.indata && data.indata.length > 0) {
+            defaultGroups.push({
+              id: 'indata',
+              name: '进水数据',
+              type: 'sensor',
+              data: data.indata
+            });
+          }
+          
+          if (data.outdata && data.outdata.length > 0) {
+            defaultGroups.push({
+              id: 'outdata',
+              name: '出水数据',
+              type: 'sensor',
+              data: data.outdata
+            });
+          }
+          
+          if (data.deviceFrequency && data.deviceFrequency.length > 0) {
+            defaultGroups.push({
+              id: 'deviceFrequency',
+              name: '设备频率',
+              type: 'frequency',
+              data: data.deviceFrequency
+            });
+          }
+          
+          if (data.devices && data.devices.length > 0) {
+            defaultGroups.push({
+              id: 'devices',
+              name: '设备控制',
+              type: 'device',
+              data: data.devices
+            });
+          }
+          
+          if (data.isValve && data.isValve.length > 0) {
+            defaultGroups.push({
+              id: 'isValve',
+              name: '阀门控制',
+              type: 'valve',
+              data: data.isValve
+            });
+          }
+          
+          setDataGroups(defaultGroups);
+        }
+        
         setLastUpdateTime(new Date());
       }
     } catch (error) {
@@ -172,8 +561,19 @@ function SiteDetailScreen({ route, navigation }) {
     }
     
     // WebSocket不可用或请求失败时，使用HTTP API
-    fetchSiteDetailHttp();
-  }, [siteId, wsConnected, wsRef, fetchSiteDetailHttp]);
+    await fetchSiteDetailHttp();
+    
+    // 只有当没有权限且未完成权限检查时才在获取数据后检查权限
+    if (!hasControlPermission && !permissionCheckedRef.current && siteDepartments && siteDepartments.length > 0) {
+      // 延迟检查以确保状态已更新，但不添加日志
+      setTimeout(() => {
+        // 再次检查，确保仍然需要检查权限
+        if (!hasControlPermission && !permissionCheckedRef.current) {
+          checkControlPermission();
+        }
+      }, 500);
+    }
+  }, [siteId, wsConnected, wsRef, fetchSiteDetailHttp, hasControlPermission, siteDepartments, checkControlPermission, permissionCheckedRef]);
 
   const startDataFetching = useCallback(() => {
     // 避免重复调用
@@ -412,6 +812,80 @@ function SiteDetailScreen({ route, navigation }) {
         });
         
         return Object.values(dataMap);
+      });
+    }
+    
+    // 如果有数据分组更新，处理数据分组
+    if (data.dataGroups) {
+      setDataGroups(data.dataGroups);
+    } else {
+      // 如果没有分组更新，但有单独数据更新，则更新对应分组的数据
+      setDataGroups(prevGroups => {
+        if (!prevGroups || prevGroups.length === 0) return prevGroups;
+        
+        // 创建分组的深拷贝
+        const updatedGroups = JSON.parse(JSON.stringify(prevGroups));
+        
+        // 更新每个分组内的数据
+        updatedGroups.forEach(group => {
+          // 根据分组类型和ID更新数据
+          if (group.type === 'sensor') {
+            if (group.id === 'indata' && data.indata) {
+              // 更新进水数据
+              group.data = data.indata;
+            } else if (group.id === 'outdata' && data.outdata) {
+              // 更新出水数据
+              group.data = data.outdata;
+            }
+          } else if (group.type === 'frequency' && data.frequencies) {
+            // 更新频率数据
+            group.data = data.frequencies;
+          } else if (group.type === 'device' && data.devices) {
+            // 更新设备数据
+            group.data = data.devices;
+          } else if (group.type === 'valve' && data.valves) {
+            // 更新阀门数据
+            group.data = data.valves;
+          }
+          // 添加工业数据类型的更新逻辑
+          else if (group.type === 'energy' && data.energy) {
+            // 更新能耗数据
+            group.data = data.energy;
+          } 
+          else if (group.type === 'runtime' && data.runtime) {
+            // 更新运行时间数据
+            group.data = data.runtime;
+          }
+          else if (group.type === 'process' && data.process) {
+            // 更新工艺参数数据
+            group.data = data.process;
+          }
+          else if (group.type === 'alarm' && data.alarms) {
+            // 更新报警信息数据
+            group.data = data.alarms;
+          }
+          else if (group.type === 'laboratory' && data.laboratory) {
+            // 更新化验数据
+            group.data = data.laboratory;
+          }
+          else if (group.type === 'health' && data.health) {
+            // 更新设备健康状态
+            group.data = data.health;
+          }
+          else if (group.type === 'production' && data.production) {
+            // 更新生产指标
+            group.data = data.production;
+          }
+          
+          // 对于兼容原有格式，同样处理deviceFrequency和isValve
+          if (group.id === 'deviceFrequency' && data.deviceFrequency) {
+            group.data = data.deviceFrequency;
+          } else if (group.id === 'isValve' && data.isValve) {
+            group.data = data.isValve;
+          }
+        });
+        
+        return updatedGroups;
       });
     }
     
@@ -761,7 +1235,7 @@ function SiteDetailScreen({ route, navigation }) {
         // 应用从后台恢复
         
         if (navigation.isFocused()) {
-          startDataFetching();
+        startDataFetching();
           
           // 只有在WebSocket未连接且页面曾经获得过焦点时才尝试连接
           if (!globalConnected.current && !globalWSRef.current && hadFocus) {
@@ -974,7 +1448,7 @@ function SiteDetailScreen({ route, navigation }) {
     await fetchSiteDetail();
     setRefreshing(false);
   }, []);
-  
+
   // 添加手动刷新函数，与下拉刷新功能区分
   const handleManualRefresh = useCallback(async () => {
     if (manualRefreshing) return; // 防止重复刷新
@@ -1044,6 +1518,7 @@ function SiteDetailScreen({ route, navigation }) {
     </View>
   );
 
+  // 渲染数据点卡片
   const renderDataCard = (item, index) => (
     <View
       key={`${item.name}-${index}`}
@@ -1062,6 +1537,624 @@ function SiteDetailScreen({ route, navigation }) {
       </View>
     </View>
   );
+  
+  // 渲染频率设备卡片
+  const renderFrequencyCard = (item) => (
+    <TouchableOpacity
+      key={item.name}
+      style={[styles.card, { backgroundColor: colors.card }]}
+      onPress={() => {
+        if (!hasControlPermission) {
+          Alert.alert('权限不足', '您没有设置此设备频率的权限');
+          return;
+        }
+        setSelectedDevice(item);
+        setNewFrequency(item.sethz?.toString() || '');
+        setModalVisible(true);
+      }}
+      disabled={pendingCommands[item.name]?.status === 'pending' || !hasControlPermission}
+    >
+      <Text style={[styles.cardTitle, { color: colors.text }]}>{item.name}</Text>
+      <View style={styles.dataContainer}>
+        <Text style={[styles.dataValue, { color: colors.text }]}>
+          {item.hz?.toFixed(2) || '0.00'}
+        </Text>
+        <Text style={[styles.dataUnit, { color: colors.text }]}>Hz</Text>
+      </View>
+      {item.sethz !== undefined && (
+        <Text style={[styles.frequencySetpoint, { color: colors.text }]}>
+          设定值: {item.sethz?.toFixed(2) || '0.00'} Hz
+        </Text>
+      )}
+      <CommandStatusDisplay deviceId={item.name} />
+      {!hasControlPermission && (
+        <View style={styles.noPermissionBadge}>
+          <Text style={styles.noPermissionText}>无控制权限</Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+  
+  // 渲染设备控制卡片
+  const renderDeviceCard = (device) => (
+    <View
+      key={device.name}
+      style={[styles.card, { backgroundColor: colors.card }, device.fault === 1 && styles.alarmCard]}
+    >
+      <Text style={[styles.cardTitle, { color: colors.text }]}>{device.name}</Text>
+      <View style={styles.deviceControlContainer}>
+        <View style={styles.statusContainer}>
+          <Text style={[styles.deviceStatus, { color: device.run ? '#4CAF50' : '#FF5252' }]}>
+            {device.run ? '运行中' : '已停止'}
+          </Text>
+          {device.fault === 1 && (
+            <Text style={styles.alarmStatus}>报警</Text>
+          )}
+        </View>
+        <View style={styles.controlButtonContainer}>
+          <TouchableOpacity
+            onPress={() => handleDeviceControl(device.name, device.run ? 'stop' : 'start')}
+            disabled={pendingCommands[device.name]?.status === 'pending' || !hasControlPermission}
+          >
+            <Text
+              style={[
+                styles.controlButton, 
+                { backgroundColor: device.run ? '#FF5252' : '#4CAF50' },
+                (pendingCommands[device.name]?.status === 'pending' || !hasControlPermission) && { opacity: 0.6 }
+              ]}
+            >
+              {pendingCommands[device.name]?.status === 'pending' 
+                ? '处理中...' 
+                : device.run ? '停止' : '启动'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+      <CommandStatusDisplay deviceId={device.name} />
+      {!hasControlPermission && (
+        <View style={styles.noPermissionBadge}>
+          <Text style={styles.noPermissionText}>无控制权限</Text>
+        </View>
+      )}
+    </View>
+  );
+  
+  // 渲染阀门控制卡片
+  const renderValveCard = (valve) => (
+    <View
+      key={valve.name}
+      style={[styles.card, { backgroundColor: colors.card }, valve.fault === 1 && styles.alarmCard]}
+    >
+      <Text style={[styles.cardTitle, { color: colors.text }]}>{valve.name}</Text>
+      <View style={styles.deviceControlContainer}>
+        <View style={styles.statusContainer}>
+          <Text style={[styles.deviceStatus, { color: valve.open ? '#4CAF50' : valve.close ? '#FF5252' : '#FFA000' }]}>
+            {valve.open ? '开到位' : valve.close ? '关到位' : '状态未知'}
+          </Text>
+          {valve.fault === 1 && (
+            <Text style={styles.alarmStatus}>故障</Text>
+          )}
+        </View>
+        <View style={styles.controlButtonContainer}>
+          <TouchableOpacity
+            onPress={() => handleValveControl(
+              valve.name,
+              valve.open ? 'close' : 'open',
+              valve.openKey,
+              valve.closeKey
+            )}
+            disabled={valve.fault === 1 || pendingCommands[valve.name]?.status === 'pending' || !hasControlPermission}
+          >
+            <Text
+              style={[
+                styles.controlButton,
+                { backgroundColor: valve.open ? '#FF5252' : '#4CAF50' },
+                (valve.fault === 1 || pendingCommands[valve.name]?.status === 'pending' || !hasControlPermission) && { opacity: 0.5 }
+              ]}
+            >
+              {pendingCommands[valve.name]?.status === 'pending' 
+                ? '处理中...' 
+                : valve.open ? '关闭' : '开启'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+      <CommandStatusDisplay deviceId={valve.name} />
+      {!hasControlPermission && (
+        <View style={styles.noPermissionBadge}>
+          <Text style={styles.noPermissionText}>无控制权限</Text>
+        </View>
+      )}
+    </View>
+  );
+  
+  // 渲染能耗监测卡片
+  const renderEnergyCard = (item) => (
+    <View
+      key={item.name}
+      style={[styles.card, { backgroundColor: colors.card }]}
+    >
+      <Text style={[styles.cardTitle, { color: colors.text }]}>{item.name}</Text>
+      <View style={styles.dataContainer}>
+        <Text style={[styles.dataValue, { color: colors.text }]}>
+          {item.value.toFixed(2)}
+        </Text>
+        <Text style={[styles.dataUnit, { color: colors.text }]}>{item.unit || 'kWh'}</Text>
+      </View>
+      {item.trend && (
+        <View style={[
+          styles.trendBadge, 
+          { backgroundColor: item.trend > 0 ? 'rgba(255, 82, 82, 0.1)' : 'rgba(76, 175, 80, 0.1)' }
+        ]}>
+          <Text style={{ 
+            color: item.trend > 0 ? '#FF5252' : '#4CAF50',
+            fontSize: 12 
+          }}>
+            {item.trend > 0 ? '↑' : '↓'} {Math.abs(item.trend).toFixed(1)}%
+          </Text>
+        </View>
+      )}
+      {item.threshold && item.value > item.threshold && (
+        <View style={styles.warningBadge}>
+          <Text style={styles.warningText}>超出预警值</Text>
+        </View>
+      )}
+    </View>
+  );
+
+  // 设备运行时间卡片
+  const renderRuntimeCard = (item) => (
+    <View
+      key={item.name}
+      style={[styles.card, { backgroundColor: colors.card }]}
+    >
+      <Text style={[styles.cardTitle, { color: colors.text }]}>{item.name}</Text>
+      <View style={styles.runtimeContainer}>
+        <View style={styles.runtimeItem}>
+          <Text style={styles.runtimeValue}>{item.dailyHours || 0}</Text>
+          <Text style={styles.runtimeLabel}>今日运行(小时)</Text>
+        </View>
+        <View style={styles.runtimeDivider} />
+        <View style={styles.runtimeItem}>
+          <Text style={styles.runtimeValue}>{item.totalHours || 0}</Text>
+          <Text style={styles.runtimeLabel}>总运行(小时)</Text>
+        </View>
+      </View>
+      {item.nextMaintenance && (
+        <View style={[
+          styles.maintenanceBadge, 
+          { backgroundColor: item.nextMaintenance < 100 ? 'rgba(255, 152, 0, 0.1)' : 'rgba(33, 150, 243, 0.1)' }
+        ]}>
+          <Text style={{ 
+            color: item.nextMaintenance < 100 ? '#FF9800' : '#2196F3',
+            fontSize: 12 
+          }}>
+            距下次维护: {item.nextMaintenance}小时
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+
+  // 工艺参数监控卡片的优化
+  const renderProcessCard = (item) => (
+    <View
+      key={item.name}
+      style={[
+        styles.card, 
+        { backgroundColor: colors.card },
+        item.status === 'abnormal' && styles.abnormalCard
+      ]}
+    >
+      <Text style={[styles.cardTitle, { color: colors.text }]}>{item.name}</Text>
+      <View style={styles.processDataRow}>
+        <Text style={styles.processLabel}>当前值：</Text>
+        <Text style={[
+          styles.processValue, 
+          { 
+            color: item.status === 'abnormal' ? '#FF5252' : 
+                  item.value > item.upperLimit || item.value < item.lowerLimit ? '#FF9800' : '#2196F3',
+            marginLeft: 0, // 减少空隙
+            fontWeight: '700' // 更粗的字体
+          }
+        ]}>
+          {item.value.toFixed(2)}{item.unit}
+        </Text>
+      </View>
+      
+      <View style={styles.processDataRow}>
+        <Text style={styles.processLabel}>正常范围：</Text>
+        <Text style={styles.processRange}>
+          {item.lowerLimit.toFixed(1)}-{item.upperLimit.toFixed(1)}{item.unit}
+        </Text>
+      </View>
+      
+      {item.status === 'abnormal' && (
+        <View style={styles.alarmBadge}>
+          <Text style={styles.alarmText}>工艺参数异常</Text>
+        </View>
+      )}
+    </View>
+  );
+
+  // 报警信息卡片
+  const renderAlarmCard = (item) => (
+    <View
+      key={item.id || item.name}
+      style={[styles.card, { backgroundColor: colors.card }, styles.alarmCard]}
+    >
+      <View style={styles.alarmHeader}>
+        <View style={[styles.alarmDot, { 
+          backgroundColor: item.level === 'high' ? '#FF5252' : 
+                           item.level === 'medium' ? '#FF9800' : '#2196F3' 
+        }]} />
+        <Text style={[styles.cardTitle, { color: colors.text }]}>{item.name}</Text>
+      </View>
+      
+      <Text style={styles.alarmMessage}>{item.message}</Text>
+      
+      <View style={styles.alarmFooter}>
+        <Text style={styles.alarmTime}>
+          {new Date(item.timestamp).toLocaleString('zh-CN', { hour12: false })}
+        </Text>
+        
+        {item.status === 'unconfirmed' && hasControlPermission && (
+          <TouchableOpacity 
+            style={styles.confirmButton}
+            onPress={() => handleAlarmConfirm(item.id)}
+          >
+            <Text style={styles.confirmButtonText}>确认</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+      
+      <View style={[styles.alarmLevelBadge, { 
+        backgroundColor: item.level === 'high' ? 'rgba(255, 82, 82, 0.1)' : 
+                          item.level === 'medium' ? 'rgba(255, 152, 0, 0.1)' : 'rgba(33, 150, 243, 0.1)',
+        borderColor: item.level === 'high' ? '#FF5252' : 
+                      item.level === 'medium' ? '#FF9800' : '#2196F3'
+      }]}>
+        <Text style={[styles.alarmLevelText, { 
+          color: item.level === 'high' ? '#FF5252' : 
+                 item.level === 'medium' ? '#FF9800' : '#2196F3' 
+        }]}>
+          {item.level === 'high' ? '高级报警' : item.level === 'medium' ? '中级报警' : '低级报警'}
+        </Text>
+      </View>
+    </View>
+  );
+
+  // 化验数据卡片的优化
+  const renderLabCard = (item) => (
+    <View
+      key={item.name}
+      style={[styles.card, { backgroundColor: colors.card }]}
+    >
+      <Text style={[styles.cardTitle, { color: colors.text }]}>{item.name}</Text>
+      <View style={styles.labDataContainer}>
+        <View style={styles.labDataRow}>
+          <Text style={styles.labDataLabel}>检测值：</Text>
+          <Text style={[
+            styles.labDataValue, 
+            { 
+              color: item.isQualified ? '#4CAF50' : '#FF5252',
+              fontWeight: '700' // 更粗的字体
+            }
+          ]}>
+            {item.value.toFixed(2)}{item.unit}
+          </Text>
+        </View>
+        
+        <View style={styles.labDataRow}>
+          <Text style={styles.labDataLabel}>标准值：</Text>
+          <Text style={styles.labDataStandard}>
+            {item.standard}
+          </Text>
+        </View>
+        
+        <View style={styles.labDataRow}>
+          <Text style={styles.labDataLabel}>采样时间：</Text>
+          <Text style={styles.labDataTime}>
+            {new Date(item.sampleTime).toLocaleString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' })}
+          </Text>
+        </View>
+      </View>
+      
+      <View style={[
+        styles.qualificationBadge, 
+        { backgroundColor: item.isQualified ? 'rgba(76, 175, 80, 0.1)' : 'rgba(255, 82, 82, 0.1)' }
+      ]}>
+        <Text style={{ 
+          color: item.isQualified ? '#4CAF50' : '#FF5252',
+          fontSize: 12,
+          fontWeight: '600'
+        }}>
+          {item.isQualified ? '合格' : '不合格'}
+        </Text>
+      </View>
+    </View>
+  );
+
+  // 设备健康状态卡片
+  const renderHealthCard = (item) => {
+    // 计算健康状态百分比
+    const healthPercent = item.healthScore || 0;
+    let healthColor = '#4CAF50'; // 绿色 (良好)
+    let statusText = '状态良好';
+    
+    if (healthPercent < 50) {
+      healthColor = '#FF5252'; // 红色 (差)
+      statusText = '需要维修';
+    } else if (healthPercent < 80) {
+      healthColor = '#FF9800'; // 橙色 (一般)
+      statusText = '需要关注';
+    }
+    
+    // 格式化上次维护时间
+    const formatMaintenanceDate = (timestamp) => {
+      if (!timestamp) return '无记录';
+      try {
+        return new Date(timestamp).toLocaleDateString('zh-CN');
+      } catch (e) {
+        return '日期错误';
+      }
+    };
+    
+    return (
+      <View
+        key={item.name}
+        style={[styles.card, { backgroundColor: colors.card }]}
+      >
+        <Text style={[styles.cardTitle, { color: colors.text }]}>{item.name}</Text>
+        
+        <View style={styles.healthContainer}>
+          <View style={[styles.healthCircle, { borderColor: healthColor }]}>
+            <Text style={[styles.healthPercent, { color: healthColor }]}>
+              {healthPercent}%
+            </Text>
+          </View>
+          
+          <View style={styles.healthInfo}>
+            <Text style={[styles.healthStatus, { color: healthColor }]}>
+              {statusText}
+            </Text>
+            
+            {item.lastMaintenance && (
+              <Text style={styles.healthDetail}>
+                上次维护: {formatMaintenanceDate(item.lastMaintenance)}
+              </Text>
+            )}
+            
+            {item.issues && item.issues.length > 0 && (
+              <Text style={styles.healthIssue}>
+                存在 {item.issues.length} 个问题
+              </Text>
+            )}
+          </View>
+        </View>
+        
+        {hasControlPermission && (
+          <TouchableOpacity 
+            style={[styles.maintenanceButton, { backgroundColor: '#2196F3' }]}
+            onPress={() => handleShowMaintenanceDetail(item)}
+          >
+            <Text style={styles.maintenanceButtonText}>查看详情</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
+
+  // 生产指标卡片
+  const renderProductionCard = (item) => {
+    // 安全处理数值
+    const current = Number(item.current) || 0;
+    const target = Number(item.target) || 1; // 避免除以零
+    const efficiency = Number(item.efficiency) || 0;
+    
+    // 计算完成百分比，限制最大值为100
+    const completionPercent = Math.min(100, (current / target) * 100);
+    
+    // 确定效率文本颜色
+    let efficiencyColor = '#FF9800'; // 默认橙色(低效率)
+    if (efficiency >= 90) {
+      efficiencyColor = '#4CAF50'; // 绿色(高效率) 
+    } else if (efficiency >= 70) {
+      efficiencyColor = '#2196F3'; // 蓝色(中等效率)
+    }
+    
+    return (
+      <View
+        key={item.name}
+        style={[styles.card, { backgroundColor: colors.card }]}
+      >
+        <Text style={[styles.cardTitle, { color: colors.text }]}>{item.name}</Text>
+        
+        <View style={styles.productionRow}>
+          <View style={styles.productionItem}>
+            <Text style={styles.productionValue}>{current}</Text>
+            <Text style={styles.productionLabel}>当前产量</Text>
+          </View>
+          
+          <View style={styles.productionDivider} />
+          
+          <View style={styles.productionItem}>
+            <Text style={styles.productionValue}>{target}</Text>
+            <Text style={styles.productionLabel}>目标产量</Text>
+          </View>
+        </View>
+        
+        <View style={styles.progressContainer}>
+          <View style={styles.progressBar}>
+            <View 
+              style={[
+                styles.progressFill, 
+                { 
+                  width: `${completionPercent}%`,
+                  backgroundColor: completionPercent >= 100 ? '#4CAF50' : '#2196F3'
+                }
+              ]} 
+            />
+          </View>
+          <Text style={styles.progressText}>
+            {completionPercent.toFixed(1)}%
+          </Text>
+        </View>
+        
+        {efficiency > 0 && (
+          <View style={[
+            styles.efficiencyBadge, 
+            { backgroundColor: `${efficiencyColor}20` } // 20是透明度16进制
+          ]}>
+            <Text style={{ 
+              color: efficiencyColor,
+              fontSize: 12,
+              fontWeight: '600'
+            }}>
+              生产效率: {efficiency}%
+            </Text>
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  // 报警确认处理函数
+  const handleAlarmConfirm = useCallback(async (alarmId) => {
+    if (!hasControlPermission) {
+      Alert.alert('权限不足', '您没有确认报警的权限');
+      return;
+    }
+
+    try {
+      // 记录操作日志
+      logOperation(alarmId, '报警管理', '确认报警');
+      
+      // 使用WebSocket发送确认命令
+      await sendCommandWs({
+        type: 'alarm_control',
+        action: 'confirm',
+        alarmId
+      });
+    } catch (error) {
+      console.error('报警确认失败:', error);
+      try {
+        // 回退到HTTP
+        await sendCommand({
+          type: 'alarm_control',
+          action: 'confirm',
+          alarmId
+        });
+      } catch (httpError) {
+        console.error('HTTP报警确认也失败:', httpError);
+      }
+    }
+  }, [hasControlPermission, sendCommandWs, sendCommand, logOperation]);
+
+  // 设备维护详情处理函数
+  const handleShowMaintenanceDetail = useCallback((device) => {
+    // 可以显示一个详情模态框
+    Alert.alert(
+      `${device.name} 维护信息`, 
+      `健康得分: ${device.healthScore}%\n` +
+      `上次维护: ${device.lastMaintenance ? new Date(device.lastMaintenance).toLocaleDateString('zh-CN') : '无记录'}\n` +
+      `${device.issues && device.issues.length > 0 ? 
+        `问题列表:\n${device.issues.map((issue, index) => ` - ${issue}`).join('\n')}` : 
+        '当前无问题记录'}`
+    );
+  }, []);
+  
+  // 根据组类型渲染对应的卡片组件
+  const renderGroupContent = (group) => {
+    if (!group || !group.data || group.data.length === 0) {
+      return null;
+    }
+
+    switch (group.type) {
+      case 'sensor':
+        return (
+          <View style={styles.cardGrid}>
+            {group.data.map(renderDataCard)}
+          </View>
+        );
+      case 'frequency':
+        return (
+          <View style={styles.cardGrid}>
+            {group.data.map(renderFrequencyCard)}
+          </View>
+        );
+      case 'device':
+        return (
+          <View style={styles.cardGrid}>
+            {group.data.map(renderDeviceCard)}
+          </View>
+        );
+      case 'valve':
+        return (
+          <View style={styles.cardGrid}>
+            {group.data.map(renderValveCard)}
+          </View>
+        );
+      // 添加工业数据类型的渲染支持
+      case 'energy':
+        return (
+          <View style={styles.cardGrid}>
+            {group.data.map(renderEnergyCard)}
+          </View>
+        );
+      case 'runtime':
+        return (
+          <View style={styles.cardGrid}>
+            {group.data.map(renderRuntimeCard)}
+          </View>
+        );
+      case 'process':
+        return (
+          <View style={styles.cardGrid}>
+            {group.data.map(renderProcessCard)}
+          </View>
+        );
+      case 'alarm':
+        return (
+          <View style={styles.cardGrid}>
+            {group.data.map(renderAlarmCard)}
+          </View>
+        );
+      case 'laboratory':
+        return (
+          <View style={styles.cardGrid}>
+            {group.data.map(renderLabCard)}
+          </View>
+        );
+      case 'health':
+        return (
+          <View style={styles.cardGrid}>
+            {group.data.map(renderHealthCard)}
+          </View>
+        );
+      case 'production':
+        return (
+          <View style={styles.cardGrid}>
+            {group.data.map(renderProductionCard)}
+          </View>
+        );
+      // 添加通用处理器，用于未知类型
+      default:
+        return (
+          <View style={styles.cardGrid}>
+            {group.data.map((item, index) => (
+              <View key={`unknown-${index}`} style={[styles.card, { backgroundColor: colors.card }]}>
+                <Text style={[styles.cardTitle, { color: colors.text }]}>{item.name || `数据项 ${index+1}`}</Text>
+                <Text style={{ fontSize: 12, color: colors.text }}>未识别的数据类型: {group.type}</Text>
+                <Text style={{ fontSize: 10, color: colors.secondaryText || '#666666', marginTop: 5 }}>
+                  {JSON.stringify(item)}
+                </Text>
+              </View>
+            ))}
+          </View>
+        );
+    }
+  };
 
   return (
     <View style={{ flex: 1 }}>
@@ -1080,21 +2173,21 @@ function SiteDetailScreen({ route, navigation }) {
         <View style={styles.connectionHeader}>
           <View style={styles.statusGroup}>
             <View style={styles.connectionRow}>
-              <View style={[styles.connectionStatus, { backgroundColor: updateTimer ? '#4CAF50' : '#FF5252' }]} />
-              <Text style={[styles.connectionText, { color: colors.text }]}>
-                {updateTimer ? '自动更新已开启' : '自动更新已关闭'}
-              </Text>
+        <View style={[styles.connectionStatus, { backgroundColor: updateTimer ? '#4CAF50' : '#FF5252' }]} />
+        <Text style={[styles.connectionText, { color: colors.text }]}>
+          {updateTimer ? '自动更新已开启' : '自动更新已关闭'}
+        </Text>
             </View>
             
             <ConnectionStatus />
           </View>
           
           <View style={styles.timeAndRefreshContainer}>
-            {lastUpdateTime && (
-              <Text style={[styles.lastUpdateText, { color: colors.text }]}>
+        {lastUpdateTime && (
+          <Text style={[styles.lastUpdateText, { color: colors.text }]}>
                 更新时间：{lastUpdateTime.toLocaleString('zh-CN', { hour12: false })}
-              </Text>
-            )}
+          </Text>
+        )}
             
             <TouchableOpacity 
               style={[styles.refreshButton, manualRefreshing && styles.refreshingButton]}
@@ -1111,6 +2204,18 @@ function SiteDetailScreen({ route, navigation }) {
         </View>
       </View>
 
+      {/* 使用动态分组渲染数据 */}
+      {dataGroups.length > 0 ? (
+        // 如果有分组数据，使用分组渲染
+        dataGroups.map((group, index) => (
+          <View key={`group-${group.id}-${index}`} style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>{group.name}</Text>
+            {renderGroupContent(group)}
+          </View>
+        ))
+      ) : (
+        // 如果没有分组数据，回退到原来的渲染方式
+        <>
       {inData.length > 0 && (
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>进水数据</Text>
@@ -1138,15 +2243,15 @@ function SiteDetailScreen({ route, navigation }) {
                 key={item.name}
                 style={[styles.card, { backgroundColor: colors.card }]}
                 onPress={() => {
-                  if (!hasControlPermission) {
-                    Alert.alert('权限不足', '您没有设置此设备频率的权限');
-                    return;
-                  }
+                      if (!hasControlPermission) {
+                        Alert.alert('权限不足', '您没有设置此设备频率的权限');
+                        return;
+                      }
                   setSelectedDevice(item);
                   setNewFrequency(item.sethz?.toString() || '');
                   setModalVisible(true);
                 }}
-                disabled={pendingCommands[item.name]?.status === 'pending' || !hasControlPermission}
+                    disabled={pendingCommands[item.name]?.status === 'pending' || !hasControlPermission}
               >
                 <Text style={[styles.cardTitle, { color: colors.text }]}>{item.name}</Text>
                 <View style={styles.dataContainer}>
@@ -1160,12 +2265,12 @@ function SiteDetailScreen({ route, navigation }) {
                     设定值: {item.sethz?.toFixed(2) || '0.00'} Hz
                   </Text>
                 )}
-                <CommandStatusDisplay deviceId={item.name} />
-                {!hasControlPermission && (
-                  <View style={styles.noPermissionBadge}>
-                    <Text style={styles.noPermissionText}>无控制权限</Text>
-                  </View>
-                )}
+                    <CommandStatusDisplay deviceId={item.name} />
+                    {!hasControlPermission && (
+                      <View style={styles.noPermissionBadge}>
+                        <Text style={styles.noPermissionText}>无控制权限</Text>
+                      </View>
+                    )}
               </TouchableOpacity>
             ))}
           </View>
@@ -1192,30 +2297,30 @@ function SiteDetailScreen({ route, navigation }) {
                     )}
                   </View>
                   <View style={styles.controlButtonContainer}>
-                    <TouchableOpacity
+                        <TouchableOpacity
                       onPress={() => handleDeviceControl(device.name, device.run ? 'stop' : 'start')}
-                      disabled={pendingCommands[device.name]?.status === 'pending' || !hasControlPermission}
-                    >
-                      <Text
-                        style={[
-                          styles.controlButton, 
-                          { backgroundColor: device.run ? '#FF5252' : '#4CAF50' },
-                          (pendingCommands[device.name]?.status === 'pending' || !hasControlPermission) && { opacity: 0.6 }
-                        ]}
-                      >
-                        {pendingCommands[device.name]?.status === 'pending' 
-                          ? '处理中...' 
-                          : device.run ? '停止' : '启动'}
-                      </Text>
-                    </TouchableOpacity>
+                          disabled={pendingCommands[device.name]?.status === 'pending' || !hasControlPermission}
+                        >
+                          <Text
+                            style={[
+                              styles.controlButton, 
+                              { backgroundColor: device.run ? '#FF5252' : '#4CAF50' },
+                              (pendingCommands[device.name]?.status === 'pending' || !hasControlPermission) && { opacity: 0.6 }
+                            ]}
+                          >
+                            {pendingCommands[device.name]?.status === 'pending' 
+                              ? '处理中...' 
+                              : device.run ? '停止' : '启动'}
+                    </Text>
+                        </TouchableOpacity>
                   </View>
                 </View>
-                <CommandStatusDisplay deviceId={device.name} />
-                {!hasControlPermission && (
-                  <View style={styles.noPermissionBadge}>
-                    <Text style={styles.noPermissionText}>无控制权限</Text>
-                  </View>
-                )}
+                    <CommandStatusDisplay deviceId={device.name} />
+                    {!hasControlPermission && (
+                      <View style={styles.noPermissionBadge}>
+                        <Text style={styles.noPermissionText}>无控制权限</Text>
+                      </View>
+                    )}
               </View>
             ))}
           </View>
@@ -1248,32 +2353,34 @@ function SiteDetailScreen({ route, navigation }) {
                         valve.openKey,
                         valve.closeKey
                       )}
-                      disabled={valve.fault === 1 || pendingCommands[valve.name]?.status === 'pending' || !hasControlPermission}
+                          disabled={valve.fault === 1 || pendingCommands[valve.name]?.status === 'pending' || !hasControlPermission}
                     >
                       <Text
                         style={[
                           styles.controlButton,
                           { backgroundColor: valve.open ? '#FF5252' : '#4CAF50' },
-                          (valve.fault === 1 || pendingCommands[valve.name]?.status === 'pending' || !hasControlPermission) && { opacity: 0.5 }
+                              (valve.fault === 1 || pendingCommands[valve.name]?.status === 'pending' || !hasControlPermission) && { opacity: 0.5 }
                         ]}
                       >
-                        {pendingCommands[valve.name]?.status === 'pending' 
-                          ? '处理中...' 
-                          : valve.open ? '关闭' : '开启'}
+                            {pendingCommands[valve.name]?.status === 'pending' 
+                              ? '处理中...' 
+                              : valve.open ? '关闭' : '开启'}
                       </Text>
                     </TouchableOpacity>
                   </View>
                 </View>
-                <CommandStatusDisplay deviceId={valve.name} />
-                {!hasControlPermission && (
-                  <View style={styles.noPermissionBadge}>
-                    <Text style={styles.noPermissionText}>无控制权限</Text>
-                  </View>
-                )}
+                    <CommandStatusDisplay deviceId={valve.name} />
+                    {!hasControlPermission && (
+                      <View style={styles.noPermissionBadge}>
+                        <Text style={styles.noPermissionText}>无控制权限</Text>
+                      </View>
+                    )}
               </View>
             ))}
           </View>
         </View>
+          )}
+        </>
       )}
       </ScrollView>
       <Modal
@@ -1566,6 +2673,266 @@ const styles = StyleSheet.create({
   timeAndRefreshContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  trendBadge: {
+    marginTop: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+  },
+  warningBadge: {
+    marginTop: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#FF9800',
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255, 152, 0, 0.1)'
+  },
+  warningText: {
+    color: '#FF9800',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  runtimeContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  runtimeItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  runtimeValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2196F3',
+  },
+  runtimeLabel: {
+    fontSize: 11,
+    color: '#666666',
+    marginTop: 2,
+  },
+  runtimeDivider: {
+    width: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+    marginHorizontal: 8,
+    height: 30,
+  },
+  maintenanceBadge: {
+    marginTop: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+  },
+  abnormalCard: {
+    borderColor: '#FF5252',
+    borderWidth: 1,
+  },
+  processDataRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  processLabel: {
+    fontSize: 12,
+    color: '#666666',
+  },
+  processValue: {
+    fontSize: 16, // 更大的字体
+    fontWeight: '600',
+    marginLeft: 4, // 轻微间隔
+  },
+  processRange: {
+    fontSize: 12,
+    color: '#666666',
+    marginLeft: 4,
+  },
+  alarmBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginTop: 4,
+    backgroundColor: 'rgba(255, 82, 82, 0.1)',
+  },
+  alarmText: {
+    color: '#FF5252',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  alarmHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  alarmDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  alarmMessage: {
+    fontSize: 13,
+    marginTop: 4,
+    color: '#FF5252',
+  },
+  alarmFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  alarmTime: {
+    fontSize: 11,
+    color: '#666666',
+  },
+  alarmLevelBadge: {
+    marginTop: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    borderWidth: 1,
+    alignSelf: 'flex-start',
+  },
+  alarmLevelText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  labDataContainer: {
+    marginTop: 4,
+  },
+  labDataRow: {
+    flexDirection: 'row',
+    marginTop: 2,
+    alignItems: 'center',
+  },
+  labDataLabel: {
+    fontSize: 12,
+    color: '#666666',
+  },
+  labDataValue: {
+    fontSize: 16, // 更大的字体
+    fontWeight: '600',
+    marginLeft: 4, // 轻微间隔
+  },
+  labDataStandard: {
+    fontSize: 12,
+    color: '#666666',
+    marginLeft: 4,
+  },
+  labDataTime: {
+    fontSize: 11,
+    color: '#666666',
+    marginLeft: 4,
+  },
+  qualificationBadge: {
+    marginTop: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+  },
+  healthContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  healthCircle: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    borderWidth: 2,
+    borderColor: '#DDDDDD',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  healthPercent: {
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  healthInfo: {
+    flex: 1,
+  },
+  healthStatus: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  healthDetail: {
+    fontSize: 11,
+    color: '#666666',
+    marginTop: 2,
+  },
+  healthIssue: {
+    fontSize: 11,
+    color: '#FF5252',
+    marginTop: 2,
+  },
+  maintenanceButton: {
+    marginTop: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: '#2196F3',
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+  },
+  maintenanceButtonText: {
+    fontSize: 12,
+    color: 'white',
+  },
+  productionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 4,
+  },
+  productionItem: {
+    alignItems: 'center',
+  },
+  productionValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#2196F3',
+  },
+  productionLabel: {
+    fontSize: 10,
+    color: '#666666',
+    marginTop: 2,
+  },
+  productionDivider: {
+    width: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+    marginHorizontal: 10,
+    height: 30,
+  },
+  progressContainer: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  progressBar: {
+    flex: 1,
+    height: 6,
+    backgroundColor: '#EEEEEE',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+  },
+  progressText: {
+    marginLeft: 8,
+    fontSize: 11,
+    color: '#666666',
+    width: 40,
+  },
+  efficiencyBadge: {
+    marginTop: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
   },
 });
 

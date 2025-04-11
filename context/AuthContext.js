@@ -478,6 +478,35 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // 添加预加载用户角色的函数
+  const preloadUserRoles = async (forceRefresh = false) => {
+    try {
+      if (!user || !user.id) {
+        console.log('预加载角色: 用户未登录');
+        return null;
+      }
+      
+      console.log('开始预加载用户角色信息...');
+      
+      // 使用现有函数获取用户角色，可选择强制刷新
+      const roles = await getUserRoles(user.id, forceRefresh);
+      
+      // 如果没有获取到角色，重试一次
+      if (!roles || roles.length === 0) {
+        console.log('未获取到角色，1秒后重试并强制刷新');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        return await getUserRoles(user.id, true);  // 强制刷新重试
+      }
+      
+      console.log('用户角色预加载完成, 角色数量:', roles.length);
+      return roles;
+    } catch (error) {
+      console.error('预加载用户角色失败:', error);
+      // 预加载失败不应影响其他功能
+      return null;
+    }
+  };
+  
   const loadUser = async () => {
     try {
       setLoading(true);
@@ -526,6 +555,27 @@ export const AuthProvider = ({ children }) => {
           } else {
             setIsAdmin(false);
             console.log('本地存储中用户被标记为非管理员');
+          }
+          
+          // 立即预加载用户角色信息，而不是使用setTimeout
+          try {
+            // 设置一个较短的超时来加载角色，避免阻塞UI
+            const roleLoadPromise = Promise.race([
+              preloadUserRoles(),
+              new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('角色加载超时')), 3000)
+              )
+            ]);
+            
+            roleLoadPromise.catch(error => {
+              console.log('角色预加载受限:', error.message);
+              // 如果是超时，在后台继续加载
+              if (error.message === '角色加载超时') {
+                setTimeout(() => preloadUserRoles(), 100);
+              }
+            });
+          } catch (roleError) {
+            console.log('角色预加载失败，但不影响用户登录:', roleError);
           }
         } catch (parseError) {
           console.error('解析用户数据失败:', parseError);
@@ -744,11 +794,34 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const getUserRoles = async (userId) => {
+  const getUserRoles = async (userId, forceRefresh = false) => {
     try {
       if (!userId) {
         console.log('获取角色: 未提供用户ID');
         return [];
+      }
+      
+      // 首先尝试从缓存获取角色信息，除非强制刷新
+      if (!forceRefresh) {
+        try {
+          const cachedRoles = await AsyncStorage.getItem('userRoles_cache');
+          if (cachedRoles) {
+            const rolesData = JSON.parse(cachedRoles);
+            const timestamp = rolesData.timestamp || 0;
+            const currentTime = Date.now();
+            
+            // 如果缓存不超过5分钟，直接使用缓存
+            if (rolesData.userId === userId && (currentTime - timestamp) < 5 * 60 * 1000) {
+              console.log('使用角色信息缓存:', rolesData.roles);
+              setUserRoles(rolesData.roles);
+              return rolesData.roles;
+            }
+          }
+        } catch (cacheError) {
+          console.log('读取角色缓存失败:', cacheError);
+        }
+      } else {
+        console.log('强制刷新角色信息，跳过缓存');
       }
       
       // 获取存储的用户数据
@@ -763,45 +836,86 @@ export const AuthProvider = ({ children }) => {
       
       // 用于存储用户角色的数组
       let userRoles = [];
+      let fetchError = null;
       
       // 检查是否是当前用户的角色查询
       const isCurrentUser = userId === userData.id;
       
       // 如果查询的是当前用户角色
       if (isCurrentUser) {
-        // 1. 检查is_admin_value或is_admin字段的值
-        const adminValue = userData.is_admin_value !== undefined ? userData.is_admin_value : userData.is_admin;
-        
-        console.log('用户is_admin值:', adminValue, '类型:', typeof adminValue);
-        
-        // 根据is_admin值确定角色
-        if (adminValue !== undefined) {
-          // 转换为数字，如果可能的话
-          const roleId = typeof adminValue === 'number' ? 
-              adminValue : 
-              (adminValue === '1' || adminValue === true) ? 
-                1 : parseInt(adminValue);
-              
-          if (!isNaN(roleId) && roleId > 0 && roleId <= 9) {
-            userRoles.push({ id: roleId });
-            console.log(`根据is_admin值=${adminValue}添加角色ID:${roleId}`);
-          } 
-          // 特殊处理值为true的情况（管理员）
-          else if (adminValue === true) {
-            userRoles.push({ id: 1 });
-            console.log('用户is_admin为true，添加管理员角色');
+        // 尝试从API获取角色 (最多重试2次)
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            if (attempt > 0) {
+              console.log(`尝试第${attempt + 1}次获取用户角色...`);
+              // 重试前短暂延迟
+              await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+            }
+            
+            // 这里添加API调用来获取用户角色
+            // 如果API不可用，则回退到本地角色推断
+            break; // 如果成功，跳出重试循环
+          } catch (apiError) {
+            console.error(`第${attempt + 1}次获取角色失败:`, apiError);
+            fetchError = apiError;
+            // 继续下一次重试或回退到本地角色推断
           }
         }
         
-        // 2. 如果没有找到有效角色但用户是管理员
-        if (userRoles.length === 0 && userData.is_admin) {
-          userRoles.push({ id: 1 });
-          console.log('根据is_admin标志添加管理员角色');
+        // 如果API获取失败，从本地数据推断角色
+        if (userRoles.length === 0) {
+          // 1. 检查is_admin_value或is_admin字段的值
+          const adminValue = userData.is_admin_value !== undefined ? userData.is_admin_value : userData.is_admin;
+          
+          console.log('用户is_admin值:', adminValue, '类型:', typeof adminValue);
+          
+          // 根据is_admin值确定角色
+          if (adminValue !== undefined) {
+            // 转换为数字，如果可能的话
+            const roleId = typeof adminValue === 'number' ? 
+                adminValue : 
+                (adminValue === '1' || adminValue === true) ? 
+                  1 : parseInt(adminValue);
+                
+            if (!isNaN(roleId) && roleId > 0 && roleId <= 9) {
+              userRoles.push({ id: roleId });
+              console.log(`根据is_admin值=${adminValue}添加角色ID:${roleId}`);
+            } 
+            // 特殊处理值为true的情况（管理员）
+            else if (adminValue === true) {
+              userRoles.push({ id: 1 });
+              console.log('用户is_admin为true，添加管理员角色');
+            }
+          }
+          
+          // 2. 如果没有找到有效角色但用户是管理员
+          if (userRoles.length === 0 && userData.is_admin) {
+            userRoles.push({ id: 1 });
+            console.log('根据is_admin标志添加管理员角色');
+          }
+          
+          // 如果仍然没有角色，分配默认角色
+          if (userRoles.length === 0) {
+            userRoles.push({ id: 3 }); // 默认给运行班组角色
+            console.log('未找到角色，分配默认角色ID:3');
+          }
         }
         
         // 3. 更新全局状态
         setUserRoles(userRoles);
         console.log('最终确定的用户角色:', userRoles);
+        
+        // 缓存角色信息
+        try {
+          await AsyncStorage.setItem('userRoles_cache', JSON.stringify({
+            userId,
+            roles: userRoles,
+            timestamp: Date.now()
+          }));
+          console.log('已缓存角色信息');
+        } catch (cacheError) {
+          console.log('缓存角色信息失败:', cacheError);
+        }
       } else {
         // 如果查询的不是当前用户，暂不支持
         console.log('非当前用户的角色查询暂不支持');
@@ -811,6 +925,7 @@ export const AuthProvider = ({ children }) => {
       return userRoles;
     } catch (error) {
       console.error('获取用户角色失败:', error);
+      // 即使发生错误，也确保返回一个有效的数组
       return [];
     }
   };
@@ -889,7 +1004,8 @@ export const AuthProvider = ({ children }) => {
       checkAdminStatus, 
       getAllUsers, 
       getAllRoles, 
-      getUserRoles, 
+      getUserRoles,
+      preloadUserRoles, 
       assignRole, 
       removeRole, 
       toggleAdmin, 

@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { StyleSheet, View, Text, FlatList, TextInput, TouchableOpacity, RefreshControl, AppState } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
@@ -7,7 +8,7 @@ import axios from 'axios';
 
 function SiteListScreen({ navigation }) {
   const { colors, isDarkMode } = useTheme();
-  const { user } = useAuth();
+  const { user, getUserRoles } = useAuth();
   const [sites, setSites] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdateTime, setLastUpdateTime] = useState(null);
@@ -20,6 +21,9 @@ function SiteListScreen({ navigation }) {
 
   // 添加一个 ref 来跟踪是否正在获取数据
   const isFetchingRef = useRef(false);
+  
+  // 创建一个映射来缓存最后一次预加载的时间戳
+  const lastPreloadTimeMap = useRef({}).current;
 
   const fetchSites = useCallback(async (retryCount = 3, retryDelay = 5000) => {
     // 如果正在获取数据，则返回
@@ -170,11 +174,66 @@ function SiteListScreen({ navigation }) {
   // 渲染站点卡片
   const renderSiteCard = ({ item }) => (
     <TouchableOpacity
-      onPress={() => navigation.navigate('站点详情', { 
-        siteId: item.id, 
-        siteName: item.name,
-        departments: item.departments
-      })}
+      onPress={async () => {
+        try {
+          // 确保departments存在，并且是数组
+          const departments = Array.isArray(item.departments) ? item.departments : [];
+          
+          console.log('准备进入站点详情页，站点ID:', item.id, '站点名称:', item.name);
+          console.log('部门信息:', JSON.stringify(departments));
+          
+          // 先缓存部门信息，以便在站点详情页中可以更快获取
+          try {
+            await AsyncStorage.setItem(`site_departments_${item.id}`, 
+              JSON.stringify({
+                departments,
+                timestamp: Date.now()
+              })
+            );
+            console.log('已缓存站点部门信息');
+          } catch (cacheError) {
+            console.log('缓存站点部门信息失败:', cacheError);
+          }
+          
+          // 提前尝试加载用户角色信息 - 使用从组件级获取的getUserRoles
+          // 使用站点ID作为缓存键，确保每个站点都能正确预加载一次
+          const now = Date.now();
+          const cacheKey = `site_${item.id}`;
+          const lastTime = lastPreloadTimeMap[cacheKey] || 0;
+          
+          // 确保距离上次预加载超过5秒
+          if (getUserRoles && user?.id && (now - lastTime > 5000)) {
+            // 更新时间戳
+            lastPreloadTimeMap[cacheKey] = now;
+            
+            // 启动角色预加载，但不阻塞导航
+            Promise.resolve().then(async () => {
+              try {
+                console.log('预加载用户角色信息...');
+                await getUserRoles(user.id);
+                console.log('用户角色预加载完成');
+              } catch (roleError) {
+                console.log('预加载用户角色失败:', roleError);
+              }
+            });
+          }
+          
+          // 导航到站点详情页
+          navigation.navigate('站点详情', { 
+            siteId: item.id, 
+            siteName: item.name,
+            departments: departments
+          });
+        } catch (navigationError) {
+          console.error('导航过程中出现错误:', navigationError);
+          // 仍然尝试导航，确保用户体验
+          navigation.navigate('站点详情', { 
+            siteId: item.id || '0', 
+            siteName: item.name || '未知站点',
+            departments: []
+          });
+        }
+      }}
     >
       <View style={[
         styles.card,
