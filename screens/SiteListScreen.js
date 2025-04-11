@@ -55,6 +55,9 @@ function SiteListScreen({ navigation }) {
             alarm: site.alarm || '设施正常',
             address: site.address || '地址未知',
             totalInflow: site.totalInflow || 0,
+            departments: site.departments || [],
+            designedCapacity: site.designedCapacity || '未知',
+            totalProcessing: site.totalProcessing || '0',
             rawInfo: JSON.stringify(site, null, 2)
           })) : [];
           
@@ -167,7 +170,11 @@ function SiteListScreen({ navigation }) {
   // 渲染站点卡片
   const renderSiteCard = ({ item }) => (
     <TouchableOpacity
-      onPress={() => navigation.navigate('站点详情', { siteId: item.id, siteName: item.name })}
+      onPress={() => navigation.navigate('站点详情', { 
+        siteId: item.id, 
+        siteName: item.name,
+        departments: item.departments
+      })}
     >
       <View style={[
         styles.card,

@@ -1,7 +1,11 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { StyleSheet, View, Text, ScrollView, RefreshControl, Modal, TextInput, TouchableOpacity, AppState, Platform } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, RefreshControl, Modal, TextInput, TouchableOpacity, AppState, Platform, Alert, ActivityIndicator } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
+import { Ionicons } from '@expo/vector-icons'; // 导入Ionicons图标
 import axios from 'axios';
+import * as Device from 'expo-device'; // 导入设备信息模块
+import AsyncStorage from '@react-native-async-storage/async-storage'; // 导入AsyncStorage
 
 // 添加全局引用，解决组件重复挂载问题
 const globalWSRef = { current: null };
@@ -11,7 +15,8 @@ const globalConnected = { current: false };
 
 function SiteDetailScreen({ route, navigation }) {
   const { colors, isDarkMode } = useTheme();
-  const { siteId, siteName } = route.params;
+  const { siteId, siteName, departments = [] } = route.params;
+  const { user, userRoles } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const [inData, setInData] = useState([]);
   const [outData, setOutData] = useState([]);
@@ -24,6 +29,9 @@ function SiteDetailScreen({ route, navigation }) {
   const [isValve, setIsValve] = useState([]);
   const [updateTimer, setUpdateTimer] = useState(null);
   const [appState, setAppState] = useState(AppState.currentState);
+  const [siteDepartments, setSiteDepartments] = useState(departments);
+  const [hasControlPermission, setHasControlPermission] = useState(false);
+  const [manualRefreshing, setManualRefreshing] = useState(false); // 添加手动刷新状态
   
   // WebSocket相关状态
   const [wsConnected, setWsConnected] = useState(globalConnected.current);
@@ -40,6 +48,67 @@ function SiteDetailScreen({ route, navigation }) {
 
   // 添加flow引用作为组件状态
   const [wsStatusTimeout, setWsStatusTimeout] = useState(null);
+
+  // 检查用户是否有权限控制设备
+  const checkControlPermission = useCallback(() => {
+    // 检查是否有userRoles和siteDepartments
+    if (!userRoles || !siteDepartments || siteDepartments.length === 0) {
+      console.log('无法检查权限: 缺少角色或部门信息');
+      setHasControlPermission(false);
+      return false;
+    }
+    
+    // 管理员始终有权限
+    if (user && (user.is_admin === 1 || user.isAdmin === true)) {
+      console.log('管理员拥有完全控制权限');
+      setHasControlPermission(true);
+      return true;
+    }
+    
+    // 从userRoles中提取角色名称
+    const userRoleNames = userRoles.map(role => {
+      // role可能是对象或直接是ID
+      if (typeof role === 'object' && role !== null) {
+        // 从roleMap中获取角色名称
+        const roleId = role.id || role.role_id;
+        // 在这里确保通过ID找到正确的角色名
+        if (roleId) {
+          // 角色映射示例（在实际实现中，这应该是从Context或API获取）
+          const roleMap = {
+            1: '管理员',
+            2: '部门管理员',
+            3: '运行班组',
+            4: '化验班组',
+            5: '机电班组',
+            6: '污泥车间',
+            7: '5000吨处理站',
+            8: '附属设施',
+            9: '备用权限'
+          };
+          return roleMap[roleId] || role.name;
+        }
+        return role.name;
+      }
+      return role; // 如果role直接是名称字符串
+    }).filter(name => name); // 移除undefined或null
+    
+    console.log('用户角色:', userRoleNames);
+    console.log('站点部门:', siteDepartments);
+    
+    // 检查用户角色是否与站点部门匹配
+    const hasPermission = userRoleNames.some(roleName => 
+      siteDepartments.includes(roleName)
+    );
+    
+    console.log('控制权限检查结果:', hasPermission);
+    setHasControlPermission(hasPermission);
+    return hasPermission;
+  }, [user, userRoles, siteDepartments]);
+
+  // 在siteDepartments改变时检查权限
+  useEffect(() => {
+    checkControlPermission();
+  }, [siteDepartments, userRoles, checkControlPermission]);
 
   // 首先声明fetchSiteDetailHttp函数
   const fetchSiteDetailHttp = useCallback(async () => {
@@ -63,6 +132,7 @@ function SiteDetailScreen({ route, navigation }) {
         if (data.devices) setDevices(data.devices);
         if (data.deviceFrequency) setDeviceFrequency(data.deviceFrequency);
         if (data.isValve) setIsValve(data.isValve);
+        if (data.departments) setSiteDepartments(data.departments);
         setLastUpdateTime(new Date());
       }
     } catch (error) {
@@ -128,6 +198,85 @@ function SiteDetailScreen({ route, navigation }) {
       controllerRef.current = null;
     }
   }, []);
+
+  // 添加操作日志记录函数
+  const logOperation = useCallback(async (deviceName, operationType, operationContent) => {
+    try {
+      // 准备客户端信息
+      let deviceInfo = "Unknown Device";
+      try {
+        if (Device && typeof Device.getDeviceTypeAsync === 'function') {
+          const deviceType = await Device.getDeviceTypeAsync();
+          const brand = Device.brand || '';
+          deviceInfo = `${brand} (${deviceType})`;
+        }
+      } catch (deviceError) {
+        console.log('获取设备信息失败:', deviceError);
+      }
+      
+      const osVersion = `${Platform.OS} ${Platform.Version}`;
+      const clientInfo = `${deviceInfo} - ${osVersion}`;
+      
+      // 准备日志数据
+      const logData = {
+        user_id: user?.id || 0,
+        username: user?.username || '未知用户',
+        site_id: siteId,
+        site_name: siteName,
+        device_name: deviceName,
+        operation_type: operationType,
+        operation_content: operationContent,
+        operation_time: new Date().toISOString(), // 添加客户端时间
+        client_info: clientInfo
+      };
+      
+      console.log('准备发送日志数据:', JSON.stringify(logData));
+      
+      // 发送日志到服务器
+      try {
+        const response = await axios.post('https://nodered.jzz77.cn:9003/api/logs', logData, {
+          timeout: 10000, // 增加超时时间
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
+        });
+        console.log('操作日志已记录:', response.status);
+      } catch (apiError) {
+        console.error('发送日志到服务器失败:', apiError.message);
+        
+        // 将失败的日志保存到本地，后续可以实现自动重发机制
+        try {
+          // 获取现有失败日志
+          const existingLogsStr = await AsyncStorage.getItem('failed_operation_logs');
+          let existingLogs = [];
+          if (existingLogsStr) {
+            existingLogs = JSON.parse(existingLogsStr);
+          }
+          
+          // 添加新的失败日志
+          existingLogs.push({
+            ...logData,
+            failed_at: new Date().toISOString()
+          });
+          
+          // 只保留最近的50条记录，避免存储过多
+          if (existingLogs.length > 50) {
+            existingLogs = existingLogs.slice(existingLogs.length - 50);
+          }
+          
+          // 保存回本地存储
+          await AsyncStorage.setItem('failed_operation_logs', JSON.stringify(existingLogs));
+          console.log('已将失败的日志保存到本地');
+        } catch (storageError) {
+          console.error('保存日志到本地存储失败:', storageError);
+        }
+      }
+    } catch (error) {
+      // 记录日志失败不应影响主要功能
+      console.error('记录操作日志失败:', error);
+    }
+  }, [user, siteId, siteName]);
 
   // 修改心跳机制使用全局引用
   const setupHeartbeat = useCallback(() => {
@@ -574,6 +723,9 @@ function SiteDetailScreen({ route, navigation }) {
       setWsConnected(true);
     }
     
+    // 初始检查权限
+    checkControlPermission();
+    
     // 仅当页面获得焦点时处理WebSocket连接
     let hadFocus = false; // 记录是否曾经获得过焦点
     
@@ -713,7 +865,17 @@ function SiteDetailScreen({ route, navigation }) {
 
   // 修改设备控制函数使用WebSocket
   const handleDeviceControl = async (deviceName, action) => {
+    // 权限检查
+    if (!hasControlPermission) {
+      Alert.alert('权限不足', '您没有控制此设备的权限');
+      return;
+    }
+
     try {
+      // 记录操作日志
+      const operationContent = `${action === 'start' ? '启动' : '停止'}设备`;
+      logOperation(deviceName, '设备控制', operationContent);
+      
       // 使用WebSocket发送命令
       await sendCommandWs({
         type: 'device_control',
@@ -737,7 +899,17 @@ function SiteDetailScreen({ route, navigation }) {
 
   // 修改阀门控制函数使用WebSocket
   const handleValveControl = async (valveName, action, openKey, closeKey) => {
+    // 权限检查
+    if (!hasControlPermission) {
+      Alert.alert('权限不足', '您没有控制此阀门的权限');
+      return;
+    }
+
     try {
+      // 记录操作日志
+      const operationContent = `${action === 'open' ? '打开' : '关闭'}阀门`;
+      logOperation(valveName, '阀门控制', operationContent);
+      
       // 使用WebSocket发送命令
       await sendCommandWs({
         type: 'valve_control',
@@ -765,7 +937,17 @@ function SiteDetailScreen({ route, navigation }) {
 
   // 修改频率设置函数使用WebSocket
   const handleSetFrequency = async (deviceName, frequency) => {
+    // 权限检查
+    if (!hasControlPermission) {
+      Alert.alert('权限不足', '您没有设置此设备频率的权限');
+      return;
+    }
+
     try {
+      // 记录操作日志
+      const operationContent = `设置频率为 ${frequency} Hz`;
+      logOperation(deviceName, '频率设置', operationContent);
+      
       // 使用WebSocket发送命令
       await sendCommandWs({
         type: 'set_frequency',
@@ -792,6 +974,23 @@ function SiteDetailScreen({ route, navigation }) {
     await fetchSiteDetail();
     setRefreshing(false);
   }, []);
+  
+  // 添加手动刷新函数，与下拉刷新功能区分
+  const handleManualRefresh = useCallback(async () => {
+    if (manualRefreshing) return; // 防止重复刷新
+    
+    setManualRefreshing(true);
+    try {
+      await fetchSiteDetail();
+    } catch (error) {
+      console.error('手动刷新数据失败:', error);
+    } finally {
+      // 延迟关闭刷新状态，提供更好的视觉反馈
+      setTimeout(() => {
+        setManualRefreshing(false);
+      }, 600);
+    }
+  }, [manualRefreshing, fetchSiteDetail]);
 
   // 操作状态显示组件
   const CommandStatusDisplay = ({ deviceId }) => {
@@ -835,15 +1034,12 @@ function SiteDetailScreen({ route, navigation }) {
 
   // 连接状态组件
   const ConnectionStatus = () => (
-    <View style={styles.wsStatusContainer}>
-      <View style={[
-        styles.statusIndicator, 
-        { backgroundColor: wsConnected ? '#4CAF50' : '#FF5252' }
-      ]} />
-      <Text style={[styles.statusText, { color: colors.text }]}>
+    <View style={styles.connectionRow}>
+      <View style={[styles.connectionStatus, { backgroundColor: wsConnected ? '#4CAF50' : '#FF5252' }]} />
+      <Text style={[styles.connectionText, { color: colors.text }]}>
         {wsConnected 
-          ? '设备控制协议已连接' 
-          : '设备控制协议未连接'}
+          ? '设备控制已连接' 
+          : '设备控制未连接'}
       </Text>
     </View>
   );
@@ -880,21 +1076,38 @@ function SiteDetailScreen({ route, navigation }) {
           />
         }
       >
-      <View style={styles.connectionStatusContainer}>
-        <View style={styles.connectionRow}>
-          <View style={[styles.connectionStatus, { backgroundColor: updateTimer ? '#4CAF50' : '#FF5252' }]} />
-          <Text style={[styles.connectionText, { color: colors.text }]}>
-            {updateTimer ? '自动更新已开启' : '自动更新已关闭'}
-          </Text>
-        </View>
-        
-        <View style={styles.connectionRow}>
-          <ConnectionStatus />
-          {lastUpdateTime && (
-            <Text style={[styles.lastUpdateText, { color: colors.text }]}>
-              最后更新：{lastUpdateTime.toLocaleString('zh-CN', { hour12: false })}
-            </Text>
-          )}
+      <View style={[styles.connectionStatusContainer, { backgroundColor: colors.card }]}>
+        <View style={styles.connectionHeader}>
+          <View style={styles.statusGroup}>
+            <View style={styles.connectionRow}>
+              <View style={[styles.connectionStatus, { backgroundColor: updateTimer ? '#4CAF50' : '#FF5252' }]} />
+              <Text style={[styles.connectionText, { color: colors.text }]}>
+                {updateTimer ? '自动更新已开启' : '自动更新已关闭'}
+              </Text>
+            </View>
+            
+            <ConnectionStatus />
+          </View>
+          
+          <View style={styles.timeAndRefreshContainer}>
+            {lastUpdateTime && (
+              <Text style={[styles.lastUpdateText, { color: colors.text }]}>
+                更新时间：{lastUpdateTime.toLocaleString('zh-CN', { hour12: false })}
+              </Text>
+            )}
+            
+            <TouchableOpacity 
+              style={[styles.refreshButton, manualRefreshing && styles.refreshingButton]}
+              onPress={handleManualRefresh}
+              disabled={manualRefreshing}
+            >
+              {manualRefreshing ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Ionicons name="refresh" size={18} color="#2196F3" />
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
@@ -925,11 +1138,15 @@ function SiteDetailScreen({ route, navigation }) {
                 key={item.name}
                 style={[styles.card, { backgroundColor: colors.card }]}
                 onPress={() => {
+                  if (!hasControlPermission) {
+                    Alert.alert('权限不足', '您没有设置此设备频率的权限');
+                    return;
+                  }
                   setSelectedDevice(item);
                   setNewFrequency(item.sethz?.toString() || '');
                   setModalVisible(true);
                 }}
-                disabled={pendingCommands[item.name]?.status === 'pending'}
+                disabled={pendingCommands[item.name]?.status === 'pending' || !hasControlPermission}
               >
                 <Text style={[styles.cardTitle, { color: colors.text }]}>{item.name}</Text>
                 <View style={styles.dataContainer}>
@@ -944,6 +1161,11 @@ function SiteDetailScreen({ route, navigation }) {
                   </Text>
                 )}
                 <CommandStatusDisplay deviceId={item.name} />
+                {!hasControlPermission && (
+                  <View style={styles.noPermissionBadge}>
+                    <Text style={styles.noPermissionText}>无控制权限</Text>
+                  </View>
+                )}
               </TouchableOpacity>
             ))}
           </View>
@@ -972,13 +1194,13 @@ function SiteDetailScreen({ route, navigation }) {
                   <View style={styles.controlButtonContainer}>
                     <TouchableOpacity
                       onPress={() => handleDeviceControl(device.name, device.run ? 'stop' : 'start')}
-                      disabled={pendingCommands[device.name]?.status === 'pending'}
+                      disabled={pendingCommands[device.name]?.status === 'pending' || !hasControlPermission}
                     >
                       <Text
                         style={[
                           styles.controlButton, 
                           { backgroundColor: device.run ? '#FF5252' : '#4CAF50' },
-                          pendingCommands[device.name]?.status === 'pending' && { opacity: 0.6 }
+                          (pendingCommands[device.name]?.status === 'pending' || !hasControlPermission) && { opacity: 0.6 }
                         ]}
                       >
                         {pendingCommands[device.name]?.status === 'pending' 
@@ -989,6 +1211,11 @@ function SiteDetailScreen({ route, navigation }) {
                   </View>
                 </View>
                 <CommandStatusDisplay deviceId={device.name} />
+                {!hasControlPermission && (
+                  <View style={styles.noPermissionBadge}>
+                    <Text style={styles.noPermissionText}>无控制权限</Text>
+                  </View>
+                )}
               </View>
             ))}
           </View>
@@ -1021,13 +1248,13 @@ function SiteDetailScreen({ route, navigation }) {
                         valve.openKey,
                         valve.closeKey
                       )}
-                      disabled={valve.fault === 1 || pendingCommands[valve.name]?.status === 'pending'}
+                      disabled={valve.fault === 1 || pendingCommands[valve.name]?.status === 'pending' || !hasControlPermission}
                     >
                       <Text
                         style={[
                           styles.controlButton,
                           { backgroundColor: valve.open ? '#FF5252' : '#4CAF50' },
-                          (valve.fault === 1 || pendingCommands[valve.name]?.status === 'pending') && { opacity: 0.5 }
+                          (valve.fault === 1 || pendingCommands[valve.name]?.status === 'pending' || !hasControlPermission) && { opacity: 0.5 }
                         ]}
                       >
                         {pendingCommands[valve.name]?.status === 'pending' 
@@ -1038,6 +1265,11 @@ function SiteDetailScreen({ route, navigation }) {
                   </View>
                 </View>
                 <CommandStatusDisplay deviceId={valve.name} />
+                {!hasControlPermission && (
+                  <View style={styles.noPermissionBadge}>
+                    <Text style={styles.noPermissionText}>无控制权限</Text>
+                  </View>
+                )}
               </View>
             ))}
           </View>
@@ -1103,14 +1335,22 @@ const styles = StyleSheet.create({
   },
   connectionStatusContainer: {
     marginBottom: 15,
-    backgroundColor: '#FFFFFF',
-    padding: 10,
-    borderRadius: 8,
+    padding: 12,
+    borderRadius: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+  },
+  connectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  statusGroup: {
+    flex: 1,
   },
   connectionRow: {
     flexDirection: 'row',
@@ -1126,11 +1366,11 @@ const styles = StyleSheet.create({
   connectionText: {
     fontSize: 14,
     fontWeight: '500',
-    marginRight: 'auto',
   },
   lastUpdateText: {
     fontSize: 12,
     color: '#666666',
+    marginRight: 8,
   },
   section: {
     marginBottom: 20,
@@ -1281,11 +1521,11 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    marginRight: 6
+    marginRight: 6,
   },
   statusText: {
     fontSize: 12,
-    fontWeight: '500'
+    fontWeight: '500',
   },
   statusBadge: {
     marginTop: 8,
@@ -1295,7 +1535,38 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignSelf: 'flex-start',
     backgroundColor: 'rgba(255, 255, 255, 0.8)'
-  }
+  },
+  noPermissionBadge: {
+    marginTop: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#FF5252',
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255, 82, 82, 0.1)'
+  },
+  noPermissionText: {
+    color: '#FF5252',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  refreshButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(33, 150, 243, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 36,
+    width: 36,
+  },
+  refreshingButton: {
+    backgroundColor: 'rgba(33, 150, 243, 0.6)',
+  },
+  timeAndRefreshContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
 });
 
 export default SiteDetailScreen;
