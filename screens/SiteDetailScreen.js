@@ -36,6 +36,9 @@ function SiteDetailScreen({ route, navigation }) {
   // 添加数据分组状态
   const [dataGroups, setDataGroups] = useState([]);
   
+  // 添加分组可见性状态
+  const [visibleGroups, setVisibleGroups] = useState({});
+  
   // WebSocket相关状态
   const [wsConnected, setWsConnected] = useState(globalConnected.current);
   const [pendingCommands, setPendingCommands] = useState({});
@@ -2156,6 +2159,74 @@ function SiteDetailScreen({ route, navigation }) {
     }
   };
 
+  // 从AsyncStorage加载分组可见性设置
+  const loadVisibilitySettings = useCallback(async () => {
+    try {
+      const savedSettings = await AsyncStorage.getItem(`site_visibility_${siteId}`);
+      if (savedSettings) {
+        const parsedSettings = JSON.parse(savedSettings);
+        setVisibleGroups(parsedSettings);
+      }
+    } catch (error) {
+      console.error('加载分组可见性设置失败:', error);
+    }
+  }, [siteId]);
+
+  // 保存分组可见性设置到AsyncStorage
+  const saveVisibilitySettings = useCallback(async (newSettings) => {
+    try {
+      await AsyncStorage.setItem(`site_visibility_${siteId}`, JSON.stringify(newSettings));
+    } catch (error) {
+      console.error('保存分组可见性设置失败:', error);
+    }
+  }, [siteId]);
+
+  // 切换分组可见性
+  const toggleGroupVisibility = useCallback((groupId) => {
+    setVisibleGroups(prev => {
+      const newVisibility = {
+        ...prev,
+        [groupId]: prev[groupId] === false ? undefined : false
+      };
+      
+      // 保存到AsyncStorage
+      saveVisibilitySettings(newVisibility);
+      
+      return newVisibility;
+    });
+  }, [saveVisibilitySettings]);
+  
+  // 检查分组是否有报警数据，有报警时不允许隐藏
+  const hasGroupAlarm = useCallback((group) => {
+    if (group.type === 'alarm' && group.data && group.data.length > 0) {
+      return true;
+    }
+    
+    if (group.data && Array.isArray(group.data)) {
+      // 检查sensor类型是否有alarm=1的数据
+      if (group.type === 'sensor') {
+        return group.data.some(item => item.alarm === 1);
+      }
+      
+      // 检查process类型是否有status=abnormal的数据
+      if (group.type === 'process') {
+        return group.data.some(item => item.status === 'abnormal');
+      }
+      
+      // 检查device和valve类型是否有fault=1的数据
+      if (group.type === 'device' || group.type === 'valve') {
+        return group.data.some(item => item.fault === 1);
+      }
+    }
+    
+    return false;
+  }, []);
+
+  // 组件挂载时加载可见性设置
+  useEffect(() => {
+    loadVisibilitySettings();
+  }, [loadVisibilitySettings]);
+
   return (
     <View style={{ flex: 1 }}>
       <ScrollView
@@ -2207,12 +2278,31 @@ function SiteDetailScreen({ route, navigation }) {
       {/* 使用动态分组渲染数据 */}
       {dataGroups.length > 0 ? (
         // 如果有分组数据，使用分组渲染
-        dataGroups.map((group, index) => (
-          <View key={`group-${group.id}-${index}`} style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>{group.name}</Text>
-            {renderGroupContent(group)}
-          </View>
-        ))
+        dataGroups.map((group, index) => {
+          // 为每个分组生成唯一key
+          const groupKey = `group-section-${group.id}-${index}-${Math.random().toString(36).substring(2, 9)}`;
+          
+          return (
+            <View key={groupKey} style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>{group.name}</Text>
+                <TouchableOpacity
+                  onPress={() => toggleGroupVisibility(group.id)}
+                  disabled={hasGroupAlarm(group)}
+                  style={styles.visibilityToggle}
+                >
+                  <Text style={[
+                    styles.visibilityText,
+                    hasGroupAlarm(group) ? styles.visibilityTextDisabled : null
+                  ]}>
+                    {visibleGroups[group.id] === false ? "显示" : "隐藏"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {visibleGroups[group.id] !== false && renderGroupContent(group)}
+            </View>
+          );
+        })
       ) : (
         // 如果没有分组数据，回退到原来的渲染方式
         <>
@@ -2933,6 +3023,28 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 4,
     alignSelf: 'flex-start',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  visibilityToggle: {
+    padding: 4,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#2196F3',
+    alignItems: 'center',
+  },
+  visibilityText: {
+    fontSize: 12,
+    color: '#2196F3',
+    fontWeight: '600',
+  },
+  visibilityTextDisabled: {
+    color: '#FF5252',
+    fontWeight: '600',
   },
 });
 
