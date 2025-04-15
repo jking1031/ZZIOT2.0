@@ -34,6 +34,9 @@ import TicketDetailScreen from './screens/TicketDetailScreen';
 import CreateTicketScreen from './screens/CreateTicketScreen';
 import LabDataScreen from './screens/LabDataScreen';
 import SludgeDataEntryScreen from './screens/SludgeDataEntryScreen';
+// 导入推送相关功能
+import { registerForPushNotificationsAsync } from './utils/notifications';
+import { initJPush, registerJPushDevice } from './utils/jpushNotifications';
 
 // 添加错误边界组件
 class ErrorBoundary extends React.Component {
@@ -119,6 +122,34 @@ export default function App() {
     };
     
     checkForUpdates();
+  }, []);
+
+  // 初始化推送功能
+  useEffect(() => {
+    const setupPushNotifications = async () => {
+      try {
+        // 初始化极光推送
+        if (Platform.OS === 'android') {
+          const initResult = initJPush();
+          console.log('初始化极光推送结果:', initResult);
+        }
+        
+        // 请求通知权限并注册设备
+        const token = await registerForPushNotificationsAsync();
+        console.log('Expo推送令牌:', token);
+        
+        // 如果有登录信息，注册极光推送设备
+        const userId = await AsyncStorage.getItem('userId');
+        if (userId && Platform.OS === 'android') {
+          const registrationId = await registerJPushDevice(userId);
+          console.log('极光推送注册ID:', registrationId);
+        }
+      } catch (error) {
+        console.error('初始化推送功能失败:', error);
+      }
+    };
+    
+    setupPushNotifications();
   }, []);
 
   // 设置全局状态栏配置

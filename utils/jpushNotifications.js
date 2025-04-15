@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
+import pushConfig from '../config/pushConfig';
 
 // 动态导入极光推送SDK，仅在Android上使用
 let JPush = null;
@@ -14,7 +15,12 @@ export const initJPush = () => {
   if (!JPush) return false;
   
   try {
-    JPush.init();
+    // 使用配置文件中的设置
+    JPush.init({
+      appKey: pushConfig.jpush.appKey,
+      channel: pushConfig.jpush.channel,
+      production: pushConfig.jpush.production
+    });
     
     // 连接状态回调
     JPush.addConnectEventListener((result) => {
@@ -86,7 +92,7 @@ export const registerJPushDevice = async (userId) => {
 // 将注册ID发送到服务器
 const sendTokenToServer = async (registrationId, userId) => {
   try {
-    await axios.post('https://nodered.jzz77.cn:9003/api/register-device', {
+    await axios.post(pushConfig.api.registerEndpoint, {
       token: registrationId,
       userId,
       platform: Platform.OS,

@@ -33,7 +33,8 @@
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true,
           "NSAllowsArbitraryLoadsInWebContent": true
-        }
+        },
+        "UIBackgroundModes": ["remote-notification"]
       },
       "config": {
         "usesNonExemptEncryption": false
@@ -100,6 +101,13 @@
           "android": {
             "networkSecurityConfig": "./android/app/src/main/res/xml/network_security_config.xml"
           }
+        }
+      ],
+      [
+        "./plugins/withJPushPlugin.cjs",
+        {
+          "appKey": "47d2b236e7f7169296e9e1a9",
+          "channel": "production"
         }
       ]
     ]

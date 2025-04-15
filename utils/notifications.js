@@ -3,6 +3,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
+import pushConfig from '../config/pushConfig';
 
 // 配置通知行为
 Notifications.setNotificationHandler({
@@ -41,7 +42,7 @@ export async function registerForPushNotificationsAsync() {
     }
     
     token = (await Notifications.getExpoPushTokenAsync({
-      projectId: 'a96d138c-2d47-49b1-845e-fd69f0d70c2a', // 替换为app.json中的eas.projectId值
+      projectId: pushConfig.expo.projectId,
     })).data;
     
     // 保存令牌到本地存储
@@ -61,10 +62,11 @@ async function sendTokenToServer(token) {
   try {
     const userId = await AsyncStorage.getItem('userId'); // 从存储中获取用户ID
     
-    await axios.post('https://nodered.jzz77.cn:9003/api/register-device', {
+    await axios.post(pushConfig.api.registerEndpoint, {
       token,
       userId,
       platform: Platform.OS,
+      pushService: 'expo',
       deviceInfo: {
         brand: Device.brand,
         modelName: Device.modelName,
