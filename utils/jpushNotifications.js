@@ -52,6 +52,14 @@ export const initJPush = () => {
       console.log("收到本地通知:", notification);
     });
     
+    // 获取并保存注册ID
+    JPush.getRegistrationID(async (registrationId) => {
+      if (registrationId) {
+        console.log("初始化时获取到RegistrationID:", registrationId);
+        await AsyncStorage.setItem('jpushRegistrationId', registrationId);
+      }
+    });
+    
     console.log("JPush初始化完成");
     return true;
   } catch (error) {
@@ -76,6 +84,9 @@ export const registerJPushDevice = async (userId) => {
         console.log("获取到RegistrationID:", registrationId);
         
         if (registrationId) {
+          // 保存到本地存储
+          await AsyncStorage.setItem('jpushRegistrationId', registrationId);
+          
           // 将注册ID发送到服务器
           await sendTokenToServer(registrationId, userId);
         }

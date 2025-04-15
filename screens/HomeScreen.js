@@ -15,6 +15,9 @@ import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import { Picker } from '@react-native-picker/picker';
 import { ActionSheetIOS } from 'react-native';
+import { sendLocalNotification } from '../utils/notifications';
+import { sendLocalNotification as sendJPushNotification } from '../utils/jpushNotifications';
+import { testLocalPush, testServerPush } from '../utils/pushTest';
 const Tab = createBottomTabNavigator();
 
 // 主页面组件
@@ -940,6 +943,40 @@ const MainTab = () => {
                 >
                   <Ionicons name="analytics" size={22} color="white" />
                   <Text style={styles.adminMenuItemText}>数据统计</Text>
+                </TouchableOpacity>
+                
+                {/* 添加测试推送通知的按钮 */}
+                <TouchableOpacity 
+                  style={styles.adminMenuItem}
+                  onPress={() => {
+                    // 测试本地推送
+                    testLocalPush();
+                    Alert.alert('已发送', `已通过${Platform.OS === 'android' ? '极光推送' : 'Expo推送'}发送本地测试通知`);
+                  }}
+                >
+                  <Ionicons name="notifications" size={22} color="white" />
+                  <Text style={styles.adminMenuItemText}>测试本地推送</Text>
+                </TouchableOpacity>
+                
+                {/* 添加服务器推送测试按钮 */}
+                <TouchableOpacity 
+                  style={styles.adminMenuItem}
+                  onPress={async () => {
+                    try {
+                      Alert.alert('正在处理', '正在请求服务器发送推送通知...');
+                      const result = await testServerPush();
+                      if (result) {
+                        Alert.alert('已发送', '已请求服务器发送推送通知，稍后将收到推送');
+                      } else {
+                        Alert.alert('发送失败', '服务器推送请求失败，请检查网络连接和推送配置');
+                      }
+                    } catch (error) {
+                      Alert.alert('发送失败', `服务器推送请求出错: ${error.message}`);
+                    }
+                  }}
+                >
+                  <Ionicons name="cloud" size={22} color="white" />
+                  <Text style={styles.adminMenuItemText}>测试服务器推送</Text>
                 </TouchableOpacity>
               </View>
             </View>
