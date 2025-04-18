@@ -2360,7 +2360,7 @@ function SiteDetailScreen({ route, navigation }) {
                       <View style={styles.noPermissionBadge}>
                         <Text style={styles.noPermissionText}>无控制权限</Text>
                       </View>
-                    )}
+                )}
               </TouchableOpacity>
             ))}
           </View>

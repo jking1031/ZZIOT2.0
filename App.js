@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Alert, Platform, StatusBar, SafeAreaView, Text, View } from 'react-native';
+import { Alert, Platform, StatusBar, SafeAreaView, Text, View, Modal, TouchableOpacity, StyleSheet } from 'react-native';
 import * as Updates from 'expo-updates';
 import * as FileSystem from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -26,6 +26,7 @@ import CarbonCalcScreen from './screens/CarbonCalcScreen';
 import BoxScreen from './screens/BoxScreen';
 import MessageQueryScreen from './screens/MessageQueryScreen';
 import ReportForm5000Screen from './screens/ReportForm5000Screen';
+import ReportFormSludgeScreen from './screens/ReportFormSludgeScreen';
 import FileUploadTestScreen from './screens/FileUploadTestScreen';
 import UserManagementScreen from './screens/UserManagementScreen';
 // 导入工单相关页面
@@ -34,6 +35,7 @@ import TicketDetailScreen from './screens/TicketDetailScreen';
 import CreateTicketScreen from './screens/CreateTicketScreen';
 import LabDataScreen from './screens/LabDataScreen';
 import SludgeDataEntryScreen from './screens/SludgeDataEntryScreen';
+import ReportFormPumpStationScreen from './screens/ReportFormPumpStationScreen';
 
 // 添加错误边界组件
 class ErrorBoundary extends React.Component {
@@ -80,6 +82,8 @@ const Stack = createNativeStackNavigator();
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [updateReady, setUpdateReady] = useState(false);
 
   const handleSplashFinish = () => {
     setShowSplash(false);
@@ -95,23 +99,9 @@ export default function App() {
         
         if (update.isAvailable) {
           console.log('发现更新，开始下载...');
+          setUpdateAvailable(true);
           await Updates.fetchUpdateAsync();
-          Alert.alert(
-            '更新就绪',
-            '新版本已下载完成，是否立即重启应用以应用更新？',
-            [
-              {
-                text: '稍后',
-                style: 'cancel'
-              },
-              {
-                text: '立即更新',
-                onPress: async () => {
-                  await Updates.reloadAsync();
-                }
-              }
-            ]
-          );
+          setUpdateReady(true);
         }
       } catch (error) {
         console.error('更新检查错误:', error);
@@ -120,6 +110,15 @@ export default function App() {
     
     checkForUpdates();
   }, []);
+
+  const applyUpdate = async () => {
+    try {
+      await Updates.reloadAsync();
+    } catch (error) {
+      console.error('应用更新失败:', error);
+      Alert.alert('更新失败', '应用更新失败，请重启应用后重试。');
+    }
+  };
 
   // 设置全局状态栏配置
   useEffect(() => {
@@ -130,6 +129,25 @@ export default function App() {
       StatusBar.setTranslucent(true); // 设置为透明，使得内容可以延伸到状态栏下方
     }
   }, []);
+
+  // 如果有更新准备就绪，显示强制更新模态框
+  if (updateReady) {
+    return (
+      <View style={styles.modalContainer}>
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>更新提示</Text>
+          <Text style={styles.modalText}>检测到新版本，请立即更新</Text>
+          <Text style={styles.modalDescription}>您必须更新到最新版本才能使用最新的功能</Text>
+          <TouchableOpacity 
+            style={styles.updateButton}
+            onPress={applyUpdate}
+          >
+            <Text style={styles.updateButtonText}>立即更新</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <ErrorBoundary>
@@ -147,6 +165,53 @@ export default function App() {
     </ErrorBoundary>
   );
 }
+
+// 添加样式
+const styles = StyleSheet.create({
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: 10,
+    padding: 20,
+    width: '80%',
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 15,
+    color: '#2196F3',
+  },
+  modalText: {
+    fontSize: 16,
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  modalDescription: {
+    fontSize: 14,
+    marginBottom: 20,
+    textAlign: 'center',
+    color: '#666',
+  },
+  updateButton: {
+    backgroundColor: '#2196F3',
+    paddingVertical: 12,
+    paddingHorizontal: 30,
+    borderRadius: 25,
+    elevation: 2,
+  },
+  updateButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+});
 
 function AppContent({ showSplash, onSplashFinish }) {
 
@@ -258,18 +323,34 @@ function AppContent({ showSplash, onSplashFinish }) {
           <Stack.Screen
             name="5000吨处理厂日报"
             component={ReportForm5000Screen}
-            options={{
-              title: '5000吨处理厂日报',
+            options={({ route }) => ({
+              title: route.params.title || '5000吨处理厂日报',
               headerShown: true
-            }}
+            })}
+          />
+          <Stack.Screen
+            name="污泥车间日报"
+            component={ReportFormSludgeScreen}
+            options={({ route }) => ({
+              title: route.params.title || '高铁厂污泥车间日报',
+              headerShown: true
+            })}
+          />
+          <Stack.Screen
+            name="泵站运行周报"
+            component={ReportFormPumpStationScreen}
+            options={({ route }) => ({
+              title: route.params.title || '泵站运行周报',
+              headerShown: true
+            })}
           />
           <Stack.Screen
             name="ReportForm"
             component={ReportFormScreen}
-            options={{ 
-              title: '填写报告',
+            options={({ route }) => ({
+              title: route.params.title || '填写报告',
               headerShown: true
-            }}
+            })}
           />
           <Stack.Screen
             name="化验数据中心"
