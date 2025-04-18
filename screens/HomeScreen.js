@@ -468,6 +468,7 @@ const MainTab = () => {
     { name: '告警信息', icon: 'warning', color: '#FF4444', route: '告警信息' },
     { name: '个人中心', icon: 'person', color: '#2196F3', route: '个人中心' },
     { name: '工单系统', icon: 'clipboard', color: '#9C27B0', route: '工单列表' },
+    { name: '数据填报', icon: 'document-text-outline', color: '#009688', route: '数据填报中心' },
   ];
 
   // 为选择快捷方式模态框添加样式
@@ -855,6 +856,19 @@ const MainTab = () => {
             <View style={[styles.statsCardContainer, { width: '31%' }]}>
               <TouchableOpacity 
                 style={[styles.statsCard, styles.functionCard]} 
+                onPress={() => navigation.navigate('数据填报中心')}
+              >
+                <View style={[styles.iconContainer, { backgroundColor: 'rgba(0, 150, 136, 0.15)' }]}>
+                  <Ionicons name="document-text-outline" size={26} color="#009688" />
+                </View>
+                <Text style={styles.statsValue} numberOfLines={1}>数据填报</Text>
+                <Text style={styles.statsLabel} numberOfLines={2}>填报数据</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <View style={[styles.statsCardContainer, { width: '31%' }]}>
+              <TouchableOpacity 
+                style={[styles.statsCard, styles.functionCard]} 
                 onPress={() => navigation.navigate('工具箱')}
               >
                 <View style={[styles.iconContainer, { backgroundColor: 'rgba(255, 152, 0, 0.15)' }]}>
@@ -888,19 +902,6 @@ const MainTab = () => {
                 </View>
                 <Text style={styles.statsValue} numberOfLines={1}>报告查询</Text>
                 <Text style={styles.statsLabel} numberOfLines={2}>查看报告</Text>
-              </TouchableOpacity>
-            </View>
-            
-            <View style={[styles.statsCardContainer, { width: '31%' }]}>
-              <TouchableOpacity 
-                style={[styles.statsCard, styles.functionCard]} 
-                onPress={() => navigation.navigate('文件上传')}
-              >
-                <View style={[styles.iconContainer, { backgroundColor: 'rgba(156, 39, 176, 0.15)' }]}>
-                  <Ionicons name="cloud-upload" size={26} color="#9C27B0" />
-                </View>
-                <Text style={styles.statsValue} numberOfLines={1}>文件上传</Text>
-                <Text style={styles.statsLabel} numberOfLines={2}>上传文件</Text>
               </TouchableOpacity>
             </View>
           </View>

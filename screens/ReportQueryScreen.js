@@ -148,9 +148,22 @@ const ReportQueryScreen = () => {
 
       const adjustedStartDate = new Date(startDate.getTime() + 8 * 60 * 60 * 1000);
       const adjustedEndDate = new Date(endDate.getTime() + 8 * 60 * 60 * 1000);
-      const apiUrl = selectedSite === 'gt' ? 
-        'https://nodered.jzz77.cn:9003/api/reports/query' : 
-        'https://nodered.jzz77.cn:9003/api/reports5000t';
+      
+      // 根据选择的站点类型确定API URL
+      let apiUrl;
+      switch(selectedSite) {
+        case 'gt':
+          apiUrl = 'https://nodered.jzz77.cn:9003/api/reports/query';
+          break;
+        case '5000':
+          apiUrl = 'https://nodered.jzz77.cn:9003/api/reports5000t';
+          break;
+        case 'sludge':
+          apiUrl = 'https://nodered.jzz77.cn:9003/api/ReportsSludge/query';
+          break;
+        default:
+          apiUrl = 'https://nodered.jzz77.cn:9003/api/reports/query';
+      }
       
       const response = await axios.get(apiUrl, {
         params: {
@@ -262,7 +275,22 @@ const ReportQueryScreen = () => {
       
       // 创建HTML内容
       const reportDate = new Date(report.date).toLocaleDateString('zh-CN');
-      const siteTitle = selectedSite === 'gt' ? '高铁污水厂运行日报' : '5000吨处理站运行日报';
+      
+      // 根据站点类型确定标题
+      let siteTitle;
+      switch(selectedSite) {
+        case 'gt':
+          siteTitle = '高铁污水厂运行日报';
+          break;
+        case '5000':
+          siteTitle = '5000吨处理站运行日报';
+          break;
+        case 'sludge':
+          siteTitle = '高铁厂污泥车间日报';
+          break;
+        default:
+          siteTitle = '运行日报';
+      }
       
       // 根据站点类型构建不同的表格内容
       let tableContent = '';
@@ -270,7 +298,7 @@ const ReportQueryScreen = () => {
       // 获取发布日期 (今天)
       const today = new Date().toLocaleDateString('zh-CN');
       
-      // 高铁污水厂报表
+      // 根据不同站点类型构建表格内容
       if (selectedSite === 'gt') {
         tableContent = `
           <tr>
@@ -338,8 +366,7 @@ const ReportQueryScreen = () => {
             <td class="value">PROD_REPORT_${reportDate.replace(/\//g, '-')}_${report.id}</td>
           </tr>
         `;
-      } else {
-        // 5000吨处理站报表
+      } else if (selectedSite === '5000') {
         tableContent = `
           <tr>
             <td class="label">日期</td>
@@ -404,6 +431,66 @@ const ReportQueryScreen = () => {
           <tr>
             <td class="label">报告编号</td>
             <td class="value">PROD_REPORT_${reportDate.replace(/\//g, '-')}_${report.id}</td>
+          </tr>
+        `;
+      } else if (selectedSite === 'sludge') {
+        // 污泥车间日报表格内容
+        tableContent = `
+          <tr>
+            <td class="label">日期</td>
+            <td class="value">${reportDate}</td>
+          </tr>
+          <tr>
+            <td class="label">值班员</td>
+            <td class="value">${report.operator || ''}</td>
+          </tr>
+          <tr>
+            <td class="label">污泥产量(吨)</td>
+            <td class="value">${report.sludge_production || '0.0'}</td>
+          </tr>
+          <tr>
+            <td class="label">PAC用量(千克)</td>
+            <td class="value">${report.pac_dosage || '0.0'}</td>
+          </tr>
+          <tr>
+            <td class="label">PAM用量(千克)</td>
+            <td class="value">${report.pam_dosage || '0.0'}</td>
+          </tr>
+          <tr>
+            <td class="label">1号AO池污泥浓度(g/L)</td>
+            <td class="value">${report.ao_pool_1_concentration || '无数据'}</td>
+          </tr>
+          <tr>
+            <td class="label">2号AO池污泥浓度(g/L)</td>
+            <td class="value">${report.ao_pool_2_concentration || '无数据'}</td>
+          </tr>
+          <tr>
+            <td class="label">3号AO池污泥浓度(g/L)</td>
+            <td class="value">${report.ao_pool_3_concentration || '无数据'}</td>
+          </tr>
+          <tr>
+            <td class="label">污泥压榨含水率(%)</td>
+            <td class="value">${report.water_content || '无数据'}</td>
+          </tr>
+          <tr>
+            <td class="label">板框压滤机运行状态</td>
+            <td class="value">${report.dehydrator_status || '正常'}</td>
+          </tr>
+          <tr>
+            <td class="label">污泥螺杆泵运行状态</td>
+            <td class="value">${report.belt_filter_status || '正常'}</td>
+          </tr>
+          <tr>
+            <td class="label">其他设备运行状态</td>
+            <td class="value">${report.equipment_status || '正常'}</td>
+          </tr>
+          <tr>
+            <td class="label">其他备注</td>
+            <td class="value">${report.other_notes || '无'}</td>
+          </tr>
+          <tr>
+            <td class="label">报告编号</td>
+            <td class="value">${report.id || ''}</td>
           </tr>
         `;
       }
@@ -935,6 +1022,194 @@ const ReportQueryScreen = () => {
               </TouchableOpacity>
               
               {/* 添加导出PDF按钮 */}
+              <TouchableOpacity 
+                style={[styles.shareButton, { backgroundColor: '#FF5722', marginLeft: 10 }]}
+                onPress={() => exportToPdf(report)}
+                disabled={generatingPdf}
+              >
+                <Ionicons name="document-text" size={20} color="#fff" style={styles.buttonIcon} />
+                <Text style={styles.buttonText}>
+                  {generatingPdf ? '导出中...' : '导出报告'}
+                </Text>
+                {generatingPdf && (
+                  <ActivityIndicator size="small" color="#fff" style={{marginLeft: 5}} />
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+      </ViewShot>
+    );
+  };
+
+  // 添加渲染污泥车间报告卡片的函数
+  const renderSludgeReportCard = (report) => {
+    const isExpanded = expandedReportId === report.id;
+    const reportDate = new Date(report.date).toLocaleDateString('zh-CN');
+
+    return (
+      <ViewShot
+        key={report.id}
+        ref={ref => viewShotRefs[report.id] = ref}
+        options={{
+          format: 'jpg',
+          quality: 0.9,
+          result: 'data-uri'
+        }}
+        style={[styles.card, { backgroundColor: colors.card }]}>
+        <TouchableOpacity 
+          style={styles.cardHeader} 
+          onPress={() => toggleReportExpand(report.id)}
+        >
+          <View style={styles.cardHeaderLeft}>
+            <Text style={[styles.cardDate, { color: colors.text }]}>{reportDate}</Text>
+            <Text style={[styles.cardOperator, { color: colors.textSecondary }]}>
+              值班员: {report.operator}
+            </Text>
+          </View>
+          <Ionicons 
+            name={isExpanded ? 'chevron-up' : 'chevron-down'} 
+            size={24} 
+            color={colors.text} 
+          />
+        </TouchableOpacity>
+
+        {isExpanded && (
+          <View style={styles.cardContent}>
+            <View style={styles.infoSection}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>污泥生产数据</Text>
+              <Text style={[styles.infoText, { color: colors.text }]}>污泥产量: {report.sludge_production || '0.0'} 吨</Text>
+              <Text style={[styles.infoText, { color: colors.text }]}>PAC用量: {report.pac_dosage || '0.0'} 千克</Text>
+              <Text style={[styles.infoText, { color: colors.text }]}>PAM用量: {report.pam_dosage || '0.0'} 千克</Text>
+            </View>
+
+            <View style={styles.infoSection}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>污泥数据</Text>
+              <Text style={[styles.infoText, { color: colors.text }]}>
+                1号AO池污泥浓度: {report.ao_pool_1_concentration || '无数据'} g/L
+              </Text>
+              <Text style={[styles.infoText, { color: colors.text }]}>
+                2号AO池污泥浓度: {report.ao_pool_2_concentration || '无数据'} g/L
+              </Text>
+              <Text style={[styles.infoText, { color: colors.text }]}>
+                3号AO池污泥浓度: {report.ao_pool_3_concentration || '无数据'} g/L
+              </Text>
+              <Text style={[styles.infoText, { color: colors.text }]}>
+                污泥压榨含水率: {report.water_content || '无数据'} %
+              </Text>
+            </View>
+
+            <View style={styles.infoSection}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>设备运行情况</Text>
+              <Text style={[styles.infoText, { color: colors.text }]}>
+                板框压滤机状态: {report.dehydrator_status || '正常'}
+              </Text>
+              <Text style={[styles.infoText, { color: colors.text }]}>
+                污泥螺杆泵状态: {report.belt_filter_status || '正常'}
+              </Text>
+              <Text style={[styles.infoText, { color: colors.text }]}>
+                其他设备状态: {report.equipment_status || '正常'}
+              </Text>
+            </View>
+
+            {report.other_notes && (
+              <View style={styles.infoSection}>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>其他备注</Text>
+                <Text style={[styles.infoText, { color: colors.text }]}>{report.other_notes}</Text>
+              </View>
+            )}
+
+            {loadingImages[report.id] ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={[styles.loadingText, { color: colors.text }]}>正在加载图片...</Text>
+              </View>
+            ) : report.images?.length > 0 && (
+              <View style={styles.infoSection}>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>现场图片</Text>
+                <ScrollView horizontal style={styles.imageContainer}>
+                  {report.images.map((url, index) => (
+                    <View key={index} style={styles.imageWrapper}>
+                      <TouchableOpacity
+                        onPress={() => {
+                          setSelectedImage(url);
+                          setModalVisible(true);
+                        }}
+                      >
+                        <Image
+                          source={{
+                            uri: url,
+                            headers: {
+                              'Authorization': 'Basic ' + btoa('jzz7777:12101108'),
+                              'OCS-APIRequest': 'true',
+                              'Cache-Control': 'no-cache',
+                              'Pragma': 'no-cache'
+                            }
+                          }}
+                          style={styles.reportImage}
+                          resizeMode="cover"
+                          onLoadStart={() => {
+                            setLoadingImages(prev => ({ ...prev, [url]: true }));
+                            setImageLoadErrors(prev => ({ ...prev, [url]: 0 }));
+                          }}
+                          onLoadEnd={() => {
+                            setLoadingImages(prev => ({ ...prev, [url]: false }));
+                          }}
+                          onError={(error) => {
+                            console.error(`Image loading error for ${url}:`, error);
+                            setImageLoadErrors(prev => ({
+                              ...prev,
+                              [url]: (prev[url] || 0) + 1
+                            }));
+                            setLoadingImages(prev => ({ ...prev, [url]: false }));
+                            Alert.alert('图片加载失败', '请检查网络连接或稍后重试');
+                          }}
+                        />
+                      </TouchableOpacity>
+                      {loadingImages[url] && (
+                        <View style={styles.imageLoadingOverlay}>
+                          <ActivityIndicator size="small" color="#fff" />
+                        </View>
+                      )}
+                      {imageLoadErrors[url] > 0 && !loadingImages[url] && (
+                        <TouchableOpacity
+                          style={styles.retryButton}
+                          onPress={() => {
+                            setImageLoadErrors(prev => ({...prev, [url]: 0}));
+                            setLoadingImages(prev => ({ ...prev, [url]: true }));
+                          }}
+                        >
+                          <Ionicons name="reload" size={20} color="#fff" />
+                          <Text style={styles.retryText}>重试</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            <View style={styles.shareButtonsContainer}>
+              <TouchableOpacity 
+                style={[styles.shareButton, { backgroundColor: colors.primary }]}
+                onPress={async () => {
+                  try {
+                    const uri = await viewShotRefs[report.id].capture();
+                    await Share.share({
+                      url: uri,
+                      title: `污泥车间日报 - ${reportDate}`,
+                      message: `污泥车间日报 - ${reportDate}`
+                    });
+                  } catch (error) {
+                    console.error('分享失败:', error);
+                    Alert.alert('错误', '分享失败，请稍后重试');
+                  }
+                }}
+              >
+                <Ionicons name="image" size={20} color="#fff" style={styles.buttonIcon} />
+                <Text style={styles.buttonText}>分享截图</Text>
+              </TouchableOpacity>
+              
               <TouchableOpacity 
                 style={[styles.shareButton, { backgroundColor: '#FF5722', marginLeft: 10 }]}
                 onPress={() => exportToPdf(report)}
@@ -1537,11 +1812,28 @@ const ReportQueryScreen = () => {
             setReports([]);
           }}
         >
-          <Text style={[styles.siteButtonText, selectedSite === '5000' && styles.selectedSiteButtonText]}>5000吨处理站</Text>
+          <Text style={[styles.siteButtonText, selectedSite === '5000' && styles.selectedSiteButtonText]}>五千吨处理站</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.siteButton, selectedSite === 'sludge' && styles.selectedSiteButton]}
+          onPress={() => {
+            setSelectedSite('sludge');
+            setReports([]);
+          }}
+        >
+          <Text style={[styles.siteButtonText, selectedSite === 'sludge' && styles.selectedSiteButtonText]}>污泥车间</Text>
         </TouchableOpacity>
       </View>
       <ScrollView style={styles.content}>
-        {reports.map(report => selectedSite === 'gt' ? renderGTReportCard(report) : render5000ReportCard(report))}
+        {reports.map(report => {
+          if (selectedSite === 'gt') {
+            return renderGTReportCard(report);
+          } else if (selectedSite === '5000') {
+            return render5000ReportCard(report);
+          } else if (selectedSite === 'sludge') {
+            return renderSludgeReportCard(report);
+          }
+        })}
       </ScrollView>
       {renderImageViewerModal()}
       

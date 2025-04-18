@@ -414,11 +414,11 @@ const ProfileScreen = () => {
         </View>
         <View style={styles.infoContainer}>
           <View style={styles.infoRow}>
-            <Text style={[styles.label, { color: colors.text }]}>员工</Text>
+            <Text style={[styles.label, { color: colors.text }]}>姓名</Text>
             <Text style={[styles.value, { color: colors.text }]}>{userInfo.username}</Text>
           </View>
           <View style={styles.infoRow}>
-            <Text style={[styles.label, { color: colors.text }]}>单位</Text>
+            <Text style={[styles.label, { color: colors.text }]}>公司</Text>
             <Text style={[styles.value, { color: colors.text }]}>{userInfo.company || '未设置'}</Text>
           </View>
           <View style={styles.infoRow}>

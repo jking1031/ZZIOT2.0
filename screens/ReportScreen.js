@@ -24,6 +24,13 @@ const ReportScreen = () => {
       type: 'daily'
     },
     {
+      id: 'sludgerb',
+      title: '高铁厂污泥车间日报',
+      description: '记录污泥车间运行数据，包括产量、药剂用量、AO池污泥浓度、设备状态等',
+      icon: 'document-text',
+      type: 'daily'
+    },
+    {
       id: 'qtrb',
       title: '泵站运行周报',
       description: '记录其他污水处理设施的运行情况和维护信息',
@@ -36,6 +43,18 @@ const ReportScreen = () => {
     // 根据报告类型导航到相应的填报页面
     if (report.id === '5000rb') {
       navigation.navigate('5000吨处理厂日报', {
+        reportId: report.id,
+        title: report.title,
+        type: report.type
+      });
+    } else if (report.id === 'sludgerb') {
+      navigation.navigate('污泥车间日报', {
+        reportId: report.id,
+        title: report.title,
+        type: report.type
+      });
+    } else if (report.id === 'qtrb') {
+      navigation.navigate('泵站运行周报', {
         reportId: report.id,
         title: report.title,
         type: report.type

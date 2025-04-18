@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,72 +11,60 @@ import {
   Platform,
   KeyboardAvoidingView,
   Keyboard,
-  TouchableWithoutFeedback
+  TouchableWithoutFeedback,
+  ActivityIndicator
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
-import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 
 const SludgeDataEntryScreen = () => {
   const { colors } = useTheme();
+  const navigation = useNavigation();
   const [loadingModalVisible, setLoadingModalVisible] = useState(false);
-  const [collapsedSamples, setCollapsedSamples] = useState({});
-
-  const [samples, setSamples] = useState([{
-    id: Date.now(),
-    sample_name: '',
-    concentration: '',
-    settling_ratio: '',
+  const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
+  
+  // 使用单个数据对象，包含所有固定字段
+  const [sludgeData, setSludgeData] = useState({
+    ao_pool_1: '',
+    ao_pool_2: '',
+    ao_pool_3: '',
+    ao_pool_1_settling: '',
+    ao_pool_2_settling: '',
+    ao_pool_3_settling: '',
     water_content: '',
     time: new Date().toISOString().split('T')[0]
-  }]);
+  });
 
-  const toggleCollapse = (id) => {
-    setCollapsedSamples(prev => ({
-      ...prev,
-      [id]: !prev[id]
-    }));
-  };
+  // 检查所选日期是否已有数据
+  const checkExistingData = async (date) => {
+    setIsCheckingDuplicate(true);
+    try {
+      const response = await fetch(`https://nodered.jzz77.cn:9003/api/wunidata/query?dbName=nodered&tableName=sludge_data&date=${date}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
 
-  const isSampleCollapsed = (id) => {
-    return !!collapsedSamples[id];
-  };
-
-  const addSample = () => {
-    const newSample = {
-      id: Date.now(),
-      sample_name: '',
-      concentration: '',
-      settling_ratio: '',
-      water_content: '',
-      time: new Date().toISOString().split('T')[0]
-    };
-    setSamples([...samples, newSample]);
-    // 默认展开新添加的样本
-    setCollapsedSamples(prev => ({
-      ...prev,
-      [newSample.id]: false
-    }));
-  };
-
-  const removeSample = (id) => {
-    if (samples.length === 1) {
-      Alert.alert('提示', '至少需要保留一条记录');
-      return;
-    }
-    setSamples(samples.filter(sample => sample.id !== id));
-    // 移除折叠状态
-    const updatedCollapsedSamples = {...collapsedSamples};
-    delete updatedCollapsedSamples[id];
-    setCollapsedSamples(updatedCollapsedSamples);
-  };
-
-  const updateSample = (id, field, value) => {
-    setSamples(samples.map(sample => {
-      if (sample.id === id) {
-        return { ...sample, [field]: value };
+      if (!response.ok) {
+        throw new Error('查询失败');
       }
-      return sample;
-    }));
+
+      const data = await response.json();
+      return data && data.length > 0;
+    } catch (error) {
+      console.error('检查重复数据失败:', error);
+      return false;
+    } finally {
+      setIsCheckingDuplicate(false);
+    }
+  };
+
+  const updateField = (field, value) => {
+    setSludgeData({
+      ...sludgeData,
+      [field]: value
+    });
   };
 
   const validateNumber = (value, fieldName) => {
@@ -91,48 +79,78 @@ const SludgeDataEntryScreen = () => {
 
   const handleSubmit = async () => {
     // 验证数据
-    const isValid = samples.every(sample => {
-      // 验证污泥样品名称是否填写
-      if (!sample.sample_name) {
-        Alert.alert('错误', '请输入污泥样品名称');
-        return false;
+    // 验证浓度字段
+    if (!validateNumber(sludgeData.ao_pool_1, '1号ao池')) return;
+    if (!validateNumber(sludgeData.ao_pool_2, '2号ao池')) return;
+    if (!validateNumber(sludgeData.ao_pool_3, '3号ao池')) return;
+    
+    // 验证沉降比字段
+    if (!validateNumber(sludgeData.ao_pool_1_settling, '1号ao池沉降比')) return;
+    if (!validateNumber(sludgeData.ao_pool_2_settling, '2号ao池沉降比')) return;
+    if (!validateNumber(sludgeData.ao_pool_3_settling, '3号ao池沉降比')) return;
+    
+    // 验证污泥压榨含水率是否在0-100%之间
+    if (sludgeData.water_content) {
+      if (isNaN(sludgeData.water_content) || sludgeData.water_content < 0 || sludgeData.water_content > 100) {
+        Alert.alert('错误', '污泥压榨含水率必须在0-100%之间');
+        return;
       }
+    }
 
-      // 验证数值的有效性
-      if (sample.concentration && !validateNumber(sample.concentration, '污泥浓度')) return false;
-      if (sample.settling_ratio && !validateNumber(sample.settling_ratio, '污泥沉降比')) return false;
-      
-      // 验证污泥压榨含水率是否在0-100%之间
-      if (sample.water_content) {
-        if (isNaN(sample.water_content) || sample.water_content < 0 || sample.water_content > 100) {
-          Alert.alert('错误', '污泥压榨含水率必须在0-100%之间');
-          return false;
-        }
-      }
+    // 验证日期格式
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+    if (!datePattern.test(sludgeData.time)) {
+      Alert.alert('错误', '请输入正确的日期格式 (YYYY-MM-DD)');
+      return;
+    }
 
-      // 验证日期格式
-      const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-      if (!datePattern.test(sample.time)) {
-        Alert.alert('错误', '请输入正确的日期格式 (YYYY-MM-DD)');
-        return false;
-      }
+    // 检查是否存在重复数据
+    setLoadingModalVisible(true);
+    const hasExistingData = await checkExistingData(sludgeData.time);
+    
+    if (hasExistingData) {
+      setLoadingModalVisible(false);
+      Alert.alert(
+        '数据已存在',
+        `${sludgeData.time} 的数据已存在，不允许重复提交`
+      );
+      return;
+    }
+    
+    submitData();
+  };
 
-      return true;
-    });
-
-    if (!isValid) return;
-
+  const submitData = async () => {
     setIsSubmitting(true);
     setLoadingModalVisible(true);
 
     try {
-      const formattedSamples = samples.map(sample => ({
-        sampleName: sample.sample_name,
-        concentration: sample.concentration,
-        settlingRatio: sample.settling_ratio,
-        waterContent: sample.water_content,
-        testDate: sample.time
-      }));
+      // 转换为服务器需要的格式
+      const samples = [
+        {
+          sampleName: "1号ao池",
+          concentration: sludgeData.ao_pool_1,
+          settlingRatio: sludgeData.ao_pool_1_settling,
+          testDate: sludgeData.time
+        },
+        {
+          sampleName: "2号ao池",
+          concentration: sludgeData.ao_pool_2,
+          settlingRatio: sludgeData.ao_pool_2_settling,
+          testDate: sludgeData.time
+        },
+        {
+          sampleName: "3号ao池",
+          concentration: sludgeData.ao_pool_3,
+          settlingRatio: sludgeData.ao_pool_3_settling,
+          testDate: sludgeData.time
+        },
+        {
+          sampleName: "污泥压榨含水率",
+          waterContent: sludgeData.water_content,
+          testDate: sludgeData.time
+        }
+      ];
 
       const response = await fetch('https://nodered.jzz77.cn:9003/api/wuni', {
         method: 'POST',
@@ -142,7 +160,7 @@ const SludgeDataEntryScreen = () => {
         body: JSON.stringify({
             dbName: 'nodered',
             tableName: 'sludge_data',
-            samples: formattedSamples
+            samples: samples
         })
       });
 
@@ -162,17 +180,16 @@ const SludgeDataEntryScreen = () => {
       setLoadingModalVisible(false);
       Alert.alert('成功', '数据已成功提交');
       // 重置表单
-      const newSample = {
-        id: Date.now(),
-        sample_name: '',
-        concentration: '',
-        settling_ratio: '',
+      setSludgeData({
+        ao_pool_1: '',
+        ao_pool_2: '',
+        ao_pool_3: '',
+        ao_pool_1_settling: '',
+        ao_pool_2_settling: '',
+        ao_pool_3_settling: '',
         water_content: '',
         time: new Date().toISOString().split('T')[0]
-      };
-      setSamples([newSample]);
-      // 重置折叠状态
-      setCollapsedSamples({ [newSample.id]: false });
+      });
     } catch (error) {
       console.error('提交失败:', error);
       Alert.alert('错误', error.message || '提交失败，请稍后重试');
@@ -180,18 +197,6 @@ const SludgeDataEntryScreen = () => {
       setIsSubmitting(false);
       setLoadingModalVisible(false);
     }
-  };
-
-  const renderSampleSummary = (sample) => {
-    return (
-      <View style={[styles.sampleSummary, { borderBottomColor: colors.border }]}>
-        <Text style={{ color: colors.text }}>
-          {sample.sample_name || '未命名样本'}{' '}
-          {sample.sample_name && sample.concentration ? `| 浓度: ${sample.concentration} g/L` : ''}
-          {sample.sample_name && sample.water_content ? ` | 含水率: ${sample.water_content}%` : ''}
-        </Text>
-      </View>
-    );
   };
 
   return (
@@ -209,132 +214,150 @@ const SludgeDataEntryScreen = () => {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 100 }}
         >
-          {samples.map((sample, index) => (
-            <View key={sample.id} style={styles.sampleContainer}>
-              <View style={styles.sampleHeader}>
-                <View style={styles.headerLeftSection}>
-                  <TouchableOpacity 
-                    onPress={() => toggleCollapse(sample.id)}
-                    style={styles.collapseButton}
-                  >
-                    <Ionicons 
-                      name={isSampleCollapsed(sample.id) ? "chevron-down" : "chevron-up"} 
-                      size={24} 
-                      color={colors.text} 
-                    />
-                  </TouchableOpacity>
-                  <Text style={[styles.sampleTitle, { color: colors.text }]}>
-                    样本 {index + 1}
-                  </Text>
-                </View>
-                <TouchableOpacity 
-                  onPress={() => removeSample(sample.id)}
-                  style={styles.removeButton}
-                >
-                  <Text style={styles.removeButtonText}>删除</Text>
-                </TouchableOpacity>
-              </View>
-
-              {isSampleCollapsed(sample.id) ? renderSampleSummary(sample) : (
-                <View style={styles.sampleContent}>
-                  <View style={styles.inputGroup}>
-                    <Text style={[styles.label, { color: colors.text }]}>污泥样品名称</Text>
-                    <TextInput
-                      style={[styles.input, { 
-                        backgroundColor: colors.background,
-                        color: colors.text,
-                        borderColor: colors.border,
-                        marginBottom: 16
-                      }]}
-                      value={sample.sample_name}
-                      onChangeText={(value) => updateSample(sample.id, 'sample_name', value)}
-                      placeholder="请输入污泥样品名称"
-                      placeholderTextColor={colors.text}
-                    />
-                  </View>
-
-                  <View style={styles.inputRow}>
-                    <View style={styles.inputGroup}>
-                      <Text style={[styles.label, { color: colors.text }]}>污泥浓度 (g/L)</Text>
-                      <TextInput
-                        style={[styles.input, { 
-                          backgroundColor: colors.background,
-                          color: colors.text,
-                          borderColor: colors.border
-                        }]}
-                        value={sample.concentration}
-                        onChangeText={(value) => updateSample(sample.id, 'concentration', value)}
-                        keyboardType="numeric"
-                        placeholder="污泥浓度"
-                        placeholderTextColor={colors.text}
-                      />
-                    </View>
-
-                    <View style={styles.inputGroup}>
-                      <Text style={[styles.label, { color: colors.text }]}>污泥沉降比 (%)</Text>
-                      <TextInput
-                        style={[styles.input, { 
-                          backgroundColor: colors.background,
-                          color: colors.text,
-                          borderColor: colors.border
-                        }]}
-                        value={sample.settling_ratio}
-                        onChangeText={(value) => updateSample(sample.id, 'settling_ratio', value)}
-                        keyboardType="numeric"
-                        placeholder="污泥沉降比"
-                        placeholderTextColor={colors.text}
-                      />
-                    </View>
-                  </View>
-
-                  <View style={styles.inputRow}>
-                    <View style={styles.inputGroup}>
-                      <Text style={[styles.label, { color: colors.text }]}>污泥压榨含水率 (%)</Text>
-                      <TextInput
-                        style={[styles.input, { 
-                          backgroundColor: colors.background,
-                          color: colors.text,
-                          borderColor: colors.border
-                        }]}
-                        value={sample.water_content}
-                        onChangeText={(value) => updateSample(sample.id, 'water_content', value)}
-                        keyboardType="numeric"
-                        placeholder="污泥压榨含水率"
-                        placeholderTextColor={colors.text}
-                      />
-                    </View>
-
-                    <View style={styles.inputGroup}>
-                      <Text style={[styles.label, { color: colors.text }]}>采样日期</Text>
-                      <TextInput
-                        style={[styles.input, { 
-                          backgroundColor: colors.background,
-                          color: colors.text,
-                          borderColor: colors.border
-                        }]}
-                        value={sample.time}
-                        onChangeText={(value) => updateSample(sample.id, 'time', value)}
-                        placeholder="YYYY-MM-DD"
-                        placeholderTextColor={colors.text}
-                      />
-                    </View>
-                  </View>
-                </View>
-              )}
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.cardTitle, { color: colors.text }]}>AO池污泥浓度 (g/L)</Text>
+            
+            <View style={styles.inputGroup}>
+              <Text style={[styles.label, { color: colors.text }]}>1号ao池</Text>
+              <TextInput
+                style={[styles.input, { 
+                  backgroundColor: colors.background,
+                  color: colors.text,
+                  borderColor: colors.border
+                }]}
+                value={sludgeData.ao_pool_1}
+                onChangeText={(value) => updateField('ao_pool_1', value)}
+                keyboardType="numeric"
+                placeholder="请输入浓度"
+                placeholderTextColor={colors.text}
+              />
             </View>
-          ))}
+
+            <View style={styles.inputGroup}>
+              <Text style={[styles.label, { color: colors.text }]}>2号ao池</Text>
+              <TextInput
+                style={[styles.input, { 
+                  backgroundColor: colors.background,
+                  color: colors.text,
+                  borderColor: colors.border
+                }]}
+                value={sludgeData.ao_pool_2}
+                onChangeText={(value) => updateField('ao_pool_2', value)}
+                keyboardType="numeric"
+                placeholder="请输入浓度"
+                placeholderTextColor={colors.text}
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={[styles.label, { color: colors.text }]}>3号ao池</Text>
+              <TextInput
+                style={[styles.input, { 
+                  backgroundColor: colors.background,
+                  color: colors.text,
+                  borderColor: colors.border
+                }]}
+                value={sludgeData.ao_pool_3}
+                onChangeText={(value) => updateField('ao_pool_3', value)}
+                keyboardType="numeric"
+                placeholder="请输入浓度"
+                placeholderTextColor={colors.text}
+              />
+            </View>
+          </View>
+
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.cardTitle, { color: colors.text }]}>AO池污泥沉降比 (%)</Text>
+            
+            <View style={styles.inputGroup}>
+              <Text style={[styles.label, { color: colors.text }]}>1号ao池沉降比</Text>
+              <TextInput
+                style={[styles.input, { 
+                  backgroundColor: colors.background,
+                  color: colors.text,
+                  borderColor: colors.border
+                }]}
+                value={sludgeData.ao_pool_1_settling}
+                onChangeText={(value) => updateField('ao_pool_1_settling', value)}
+                keyboardType="numeric"
+                placeholder="请输入沉降比"
+                placeholderTextColor={colors.text}
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={[styles.label, { color: colors.text }]}>2号ao池沉降比</Text>
+              <TextInput
+                style={[styles.input, { 
+                  backgroundColor: colors.background,
+                  color: colors.text,
+                  borderColor: colors.border
+                }]}
+                value={sludgeData.ao_pool_2_settling}
+                onChangeText={(value) => updateField('ao_pool_2_settling', value)}
+                keyboardType="numeric"
+                placeholder="请输入沉降比"
+                placeholderTextColor={colors.text}
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={[styles.label, { color: colors.text }]}>3号ao池沉降比</Text>
+              <TextInput
+                style={[styles.input, { 
+                  backgroundColor: colors.background,
+                  color: colors.text,
+                  borderColor: colors.border
+                }]}
+                value={sludgeData.ao_pool_3_settling}
+                onChangeText={(value) => updateField('ao_pool_3_settling', value)}
+                keyboardType="numeric"
+                placeholder="请输入沉降比"
+                placeholderTextColor={colors.text}
+              />
+            </View>
+          </View>
+
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.cardTitle, { color: colors.text }]}>其他参数</Text>
+            
+            <View style={styles.inputGroup}>
+              <Text style={[styles.label, { color: colors.text }]}>污泥压榨含水率 (%)</Text>
+              <TextInput
+                style={[styles.input, { 
+                  backgroundColor: colors.background,
+                  color: colors.text,
+                  borderColor: colors.border
+                }]}
+                value={sludgeData.water_content}
+                onChangeText={(value) => updateField('water_content', value)}
+                keyboardType="numeric"
+                placeholder="请输入含水率"
+                placeholderTextColor={colors.text}
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={[styles.label, { color: colors.text }]}>采样日期</Text>
+              <TextInput
+                style={[styles.input, { 
+                  backgroundColor: colors.background,
+                  color: colors.text,
+                  borderColor: colors.border
+                }]}
+                value={sludgeData.time}
+                onChangeText={(value) => updateField('time', value)}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={colors.text}
+              />
+            </View>
+          </View>
 
           <View style={styles.buttonContainer}>
             <TouchableOpacity 
               style={[styles.button, { backgroundColor: colors.primary }]}
-              onPress={addSample}
-            >
-              <Text style={styles.buttonText}>添加样本</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={[styles.button, { backgroundColor: colors.primary }]}
               onPress={handleSubmit}
+              disabled={isSubmitting || isCheckingDuplicate}
             >
               <Text style={styles.buttonText}>提交数据</Text>
             </TouchableOpacity>
@@ -348,10 +371,14 @@ const SludgeDataEntryScreen = () => {
           >
             <View style={styles.modalOverlay}>
               <View style={[styles.loadingModalView, { backgroundColor: colors.card }]}>
-                <Text style={[styles.loadingText, { color: colors.text }]}>正在提交...</Text>
+                <ActivityIndicator size="small" color={colors.primary} style={{ marginBottom: 10 }} />
+                <Text style={[styles.loadingText, { color: colors.text }]}>
+                  {isCheckingDuplicate ? '检查数据...' : '正在提交...'}
+                </Text>
               </View>
             </View>
           </Modal>
+          
           {/* 添加底部空间，确保表单底部内容不被键盘遮挡 */}
           <View style={{ height: 100 }} />
         </ScrollView>
@@ -365,56 +392,25 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
-  sampleContainer: {
+  card: {
     marginBottom: 20,
     padding: 16,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#ddd',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  sampleHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  headerLeftSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  collapseButton: {
-    padding: 5,
-    marginRight: 8,
-  },
-  sampleTitle: {
+  cardTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-  },
-  removeButton: {
-    backgroundColor: '#ff4444',
-    padding: 8,
-    borderRadius: 4,
-  },
-  removeButtonText: {
-    color: 'white',
-    fontSize: 14,
-  },
-  sampleContent: {
-    width: '100%',
-  },
-  sampleSummary: {
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-  },
-  inputRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     marginBottom: 16,
-    width: '100%'
+    textAlign: 'center',
   },
   inputGroup: {
-    flex: 1,
-    marginHorizontal: 8,
+    marginBottom: 16,
   },
   label: {
     marginBottom: 8,
@@ -427,15 +423,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   buttonContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
+    alignItems: 'center',
     marginTop: 20,
     marginBottom: 40,
   },
   button: {
     padding: 12,
     borderRadius: 8,
-    minWidth: 120,
+    minWidth: 160,
   },
   buttonText: {
     color: 'white',

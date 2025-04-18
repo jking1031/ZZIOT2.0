@@ -1,0 +1,64 @@
+{
+  "pumpStationsAPI": {
+    "endpoint": "https://nodered.jzz77.cn:9003/api/pumpstations",
+    "method": "GET",
+    "response": [
+      {
+        "id": 1,
+        "name": "1号泵站",
+        "location": "北区工业园",
+        "status": "active"
+      },
+      {
+        "id": 2,
+        "name": "2号泵站",
+        "location": "南区生活区",
+        "status": "active"
+      }
+    ]
+  },
+  
+  "checkReportExistsAPI": {
+    "endpoint": "https://nodered.jzz77.cn:9003/api/pumpreports",
+    "method": "GET",
+    "params": {
+      "week_start": "2023-05-01",
+      "operator": "操作员姓名",
+      "station_name": "1号泵站"
+    },
+    "response": [
+      {
+        "id": "PUMP_REPORT_2023-05-01_1683012345678",
+        "week_start": "2023-05-01",
+        "week_end": "2023-05-07",
+        "operator": "操作员姓名",
+        "station_name": "1号泵站"
+      }
+    ]
+  },
+  
+  "submitReportAPI": {
+    "endpoint": "https://nodered.jzz77.cn:9003/api/pumpreports",
+    "method": "POST",
+    "request": {
+      "id": "PUMP_REPORT_2023-05-08_1683912345678",
+      "week_start": "2023-05-08",
+      "week_end": "2023-05-14",
+      "operator": "操作员姓名",
+      "station_name": "1号泵站",
+      "pump_running_status": "泵站本周运行正常，无异常停机",
+      "pump_status": "设备运行正常",
+      "electrical_status": "电气系统正常",
+      "pipeline_status": "管道无泄漏",
+      "abnormal_situations": "无异常情况",
+      "other_notes": "需要安排下周例行维护",
+      "report_id": "PUMP_REPORT_2023-05-08_1683912345678",
+      "imagesurl": "https://nextcloud.example.com/reports/image1.jpg,https://nextcloud.example.com/reports/image2.jpg"
+    },
+    "response": {
+      "id": "PUMP_REPORT_2023-05-08_1683912345678",
+      "created_at": "2023-05-14T10:30:00.000Z",
+      "message": "Report created successfully"
+    }
+  }
+} 
