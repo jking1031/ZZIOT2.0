@@ -38,8 +38,14 @@ const SludgeDataEntryScreen = () => {
   // 检查所选日期是否已有数据
   const checkExistingData = async (date) => {
     setIsCheckingDuplicate(true);
+    setLoadingModalVisible(true);
+    
     try {
-      const response = await fetch(`https://nodered.jzz77.cn:9003/api/wunidata/query?dbName=nodered&tableName=sludge_data&date=${date}`, {
+      console.log(`正在检查日期 ${date} 是否存在数据...`);
+      const apiUrl = `https://nodered.jzz77.cn:9003/api/wunidata/query?dbName=nodered&tableName=sludge_data&date=${date}`;
+      console.log('API请求URL:', apiUrl);
+      
+      const response = await fetch(apiUrl, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -47,16 +53,54 @@ const SludgeDataEntryScreen = () => {
       });
 
       if (!response.ok) {
+        console.error(`API响应错误: ${response.status} ${response.statusText}`);
         throw new Error('查询失败');
       }
 
       const data = await response.json();
-      return data && data.length > 0;
+      console.log('API返回数据:', JSON.stringify(data));
+      
+      // 处理不同的API响应格式
+      let hasData = false;
+      
+      // 格式1: 直接返回[{"count": N}]格式
+      if (Array.isArray(data) && data.length > 0 && data[0].count !== undefined) {
+        console.log('检测到count格式:', data[0].count);
+        hasData = data[0].count > 0;
+      }
+      // 格式2: 如果返回的是数组格式，检查是否含有日期匹配的数据
+      else if (Array.isArray(data) && data.length > 0) {
+        hasData = data.some(item => 
+          (item.time && item.time === date)
+        );
+      } 
+      // 格式3: 如果返回的是 {payload: [{count: N}]} 格式
+      else if (data && data.payload && Array.isArray(data.payload) && data.payload.length > 0) {
+        hasData = data.payload[0].count > 0;
+      }
+      // 格式4: 如果返回的是 {success: true, data: [...]} 格式
+      else if (data && data.success === true && Array.isArray(data.data)) {
+        hasData = data.data.length > 0;
+      }
+      
+      console.log(`结果: ${hasData ? '存在数据' : '不存在数据'}`);
+      return hasData;
     } catch (error) {
       console.error('检查重复数据失败:', error);
-      return false;
+      // 出错时询问用户是否继续
+      return new Promise((resolve) => {
+        Alert.alert(
+          '检查数据失败',
+          '无法检查是否有重复数据，是否继续提交？',
+          [
+            { text: '取消', onPress: () => resolve(true), style: 'cancel' }, // 默认认为有重复，阻止提交
+            { text: '继续', onPress: () => resolve(false) }, // 用户确认要继续，允许提交
+          ]
+        );
+      });
     } finally {
       setIsCheckingDuplicate(false);
+      setLoadingModalVisible(false);
     }
   };
 
@@ -78,22 +122,181 @@ const SludgeDataEntryScreen = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async () => {
+    if (isSubmitting) return;
+
+    if (!validateForm()) {
+      return;
+    }
+
+    try {
+      // 在提交前先检查是否已有该日期的数据
+      setLoadingModalVisible(true);
+      const hasExistingData = await checkExistingData(sludgeData.time);
+      
+      if (hasExistingData) {
+        // 格式化日期为"X月X日"的形式，使消息更友好
+        const dateParts = sludgeData.time.split('-');
+        const month = parseInt(dateParts[1]);
+        const day = parseInt(dateParts[2]);
+        const formattedDate = `${month}月${day}日`;
+        
+        Alert.alert('提示', `${formattedDate}的污泥数据已存在，请勿重复提交`);
+        setLoadingModalVisible(false);
+        return;
+      }
+      
+      // 确认提交
+      setLoadingModalVisible(false);
+      Alert.alert(
+        '确认提交',
+        '确定要提交污泥数据吗？',
+        [
+          { text: '取消', style: 'cancel' },
+          { 
+            text: '确定提交', 
+            onPress: async () => {
+              try {
+                setIsSubmitting(true);
+                setLoadingModalVisible(true);
+                
+                console.log('准备提交污泥数据:', JSON.stringify(sludgeData));
+
+                // 使用正确的API端点和提交格式
+                const apiUrl = 'https://nodered.jzz77.cn:9003/api/wuni';
+                console.log('提交至API:', apiUrl);
+                
+                // 需要将数据拆分为多条记录，每个AO池一条记录
+                const submitData = {
+                  dbName: 'nodered',
+                  tableName: 'sludge_data',
+                  data: [
+                    // 1号AO池数据
+                    {
+                      sample_name: '1号ao池',
+                      concentration: sludgeData.ao_pool_1,
+                      settling_ratio: sludgeData.ao_pool_1_settling,
+                      time: sludgeData.time
+                    },
+                    // 2号AO池数据
+                    {
+                      sample_name: '2号ao池',
+                      concentration: sludgeData.ao_pool_2,
+                      settling_ratio: sludgeData.ao_pool_2_settling,
+                      time: sludgeData.time
+                    },
+                    // 3号AO池数据
+                    {
+                      sample_name: '3号ao池',
+                      concentration: sludgeData.ao_pool_3,
+                      settling_ratio: sludgeData.ao_pool_3_settling,
+                      time: sludgeData.time
+                    },
+                    // 污泥压榨含水率数据
+                    {
+                      sample_name: '污泥压榨含水率',
+                      water_content: sludgeData.water_content,
+                      time: sludgeData.time
+                    }
+                  ]
+                };
+                
+                // 过滤掉没有填写的数据项
+                submitData.data = submitData.data.filter(item => {
+                  if (item.sample_name === '污泥压榨含水率') {
+                    return item.water_content && item.water_content.trim() !== '';
+                  } else {
+                    return (item.concentration && item.concentration.trim() !== '') || 
+                           (item.settling_ratio && item.settling_ratio.trim() !== '');
+                  }
+                });
+                
+                // 如果没有任何数据项，提示用户
+                if (submitData.data.length === 0) {
+                  Alert.alert('提示', '请至少填写一项数据');
+                  setIsSubmitting(false);
+                  setLoadingModalVisible(false);
+                  return;
+                }
+                
+                console.log('提交数据格式:', JSON.stringify(submitData));
+
+                const response = await fetch(apiUrl, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify(submitData),
+                });
+
+                console.log('API响应状态:', response.status, response.statusText);
+                
+                // 检查响应的内容类型
+                const contentType = response.headers.get('content-type');
+                console.log('响应内容类型:', contentType);
+                
+                let result;
+                try {
+                  // 如果是JSON则解析
+                  if (contentType && contentType.includes('application/json')) {
+                    result = await response.json();
+                  } else {
+                    // 如果不是JSON，则获取文本内容查看
+                    const textResponse = await response.text();
+                    console.log('非JSON响应内容:', textResponse.substring(0, 200) + '...');
+                    throw new Error('服务器返回了非JSON格式的响应');
+                  }
+                } catch (parseError) {
+                  console.error('解析响应失败:', parseError);
+                  throw new Error('无法解析服务器响应: ' + parseError.message);
+                }
+
+                console.log('提交响应:', JSON.stringify(result));
+
+                if (!response.ok) {
+                  // 处理后端返回的错误，包括重复数据错误
+                  Alert.alert('提交失败', result.message || '提交失败，请稍后重试');
+                  return;
+                }
+
+                resetForm();
+                Alert.alert('提交成功', '污泥数据已提交成功', [
+                  { text: '确定', onPress: () => navigation.goBack() }
+                ]);
+              } catch (error) {
+                console.error('提交数据失败:', error);
+                Alert.alert('提交失败', error.message || '网络错误，请稍后重试');
+              } finally {
+                setIsSubmitting(false);
+                setLoadingModalVisible(false);
+              }
+            }
+          }
+        ]
+      );
+    } catch (error) {
+      console.error('检查已有数据失败:', error);
+      Alert.alert('错误', '无法检查是否存在重复数据，请重试');
+      setLoadingModalVisible(false);
+    }
+  };
+
+  const validateForm = () => {
     // 验证数据
     // 验证浓度字段
-    if (!validateNumber(sludgeData.ao_pool_1, '1号ao池')) return;
-    if (!validateNumber(sludgeData.ao_pool_2, '2号ao池')) return;
-    if (!validateNumber(sludgeData.ao_pool_3, '3号ao池')) return;
+    if (!validateNumber(sludgeData.ao_pool_1, '1号ao池')) return false;
+    if (!validateNumber(sludgeData.ao_pool_2, '2号ao池')) return false;
+    if (!validateNumber(sludgeData.ao_pool_3, '3号ao池')) return false;
     
     // 验证沉降比字段
-    if (!validateNumber(sludgeData.ao_pool_1_settling, '1号ao池沉降比')) return;
-    if (!validateNumber(sludgeData.ao_pool_2_settling, '2号ao池沉降比')) return;
-    if (!validateNumber(sludgeData.ao_pool_3_settling, '3号ao池沉降比')) return;
+    if (!validateNumber(sludgeData.ao_pool_1_settling, '1号ao池沉降比')) return false;
+    if (!validateNumber(sludgeData.ao_pool_2_settling, '2号ao池沉降比')) return false;
+    if (!validateNumber(sludgeData.ao_pool_3_settling, '3号ao池沉降比')) return false;
     
     // 验证污泥压榨含水率是否在0-100%之间
     if (sludgeData.water_content) {
       if (isNaN(sludgeData.water_content) || sludgeData.water_content < 0 || sludgeData.water_content > 100) {
         Alert.alert('错误', '污泥压榨含水率必须在0-100%之间');
-        return;
+        return false;
       }
     }
 
@@ -101,102 +304,23 @@ const SludgeDataEntryScreen = () => {
     const datePattern = /^\d{4}-\d{2}-\d{2}$/;
     if (!datePattern.test(sludgeData.time)) {
       Alert.alert('错误', '请输入正确的日期格式 (YYYY-MM-DD)');
-      return;
+      return false;
     }
 
-    // 检查是否存在重复数据
-    setLoadingModalVisible(true);
-    const hasExistingData = await checkExistingData(sludgeData.time);
-    
-    if (hasExistingData) {
-      setLoadingModalVisible(false);
-      Alert.alert(
-        '数据已存在',
-        `${sludgeData.time} 的数据已存在，不允许重复提交`
-      );
-      return;
-    }
-    
-    submitData();
+    return true;
   };
 
-  const submitData = async () => {
-    setIsSubmitting(true);
-    setLoadingModalVisible(true);
-
-    try {
-      // 转换为服务器需要的格式
-      const samples = [
-        {
-          sampleName: "1号ao池",
-          concentration: sludgeData.ao_pool_1,
-          settlingRatio: sludgeData.ao_pool_1_settling,
-          testDate: sludgeData.time
-        },
-        {
-          sampleName: "2号ao池",
-          concentration: sludgeData.ao_pool_2,
-          settlingRatio: sludgeData.ao_pool_2_settling,
-          testDate: sludgeData.time
-        },
-        {
-          sampleName: "3号ao池",
-          concentration: sludgeData.ao_pool_3,
-          settlingRatio: sludgeData.ao_pool_3_settling,
-          testDate: sludgeData.time
-        },
-        {
-          sampleName: "污泥压榨含水率",
-          waterContent: sludgeData.water_content,
-          testDate: sludgeData.time
-        }
-      ];
-
-      const response = await fetch('https://nodered.jzz77.cn:9003/api/wuni', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            dbName: 'nodered',
-            tableName: 'sludge_data',
-            samples: samples
-        })
-      });
-
-      let data;
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        data = await response.json();
-      } else {
-        const text = await response.text();
-        throw new Error('服务器返回了非JSON格式的响应：' + text);
-      }
-
-      if (!response.ok) {
-        throw new Error(data.error || '提交失败');
-      }
-
-      setLoadingModalVisible(false);
-      Alert.alert('成功', '数据已成功提交');
-      // 重置表单
-      setSludgeData({
-        ao_pool_1: '',
-        ao_pool_2: '',
-        ao_pool_3: '',
-        ao_pool_1_settling: '',
-        ao_pool_2_settling: '',
-        ao_pool_3_settling: '',
-        water_content: '',
-        time: new Date().toISOString().split('T')[0]
-      });
-    } catch (error) {
-      console.error('提交失败:', error);
-      Alert.alert('错误', error.message || '提交失败，请稍后重试');
-    } finally {
-      setIsSubmitting(false);
-      setLoadingModalVisible(false);
-    }
+  const resetForm = () => {
+    setSludgeData({
+      ao_pool_1: '',
+      ao_pool_2: '',
+      ao_pool_3: '',
+      ao_pool_1_settling: '',
+      ao_pool_2_settling: '',
+      ao_pool_3_settling: '',
+      water_content: '',
+      time: new Date().toISOString().split('T')[0]
+    });
   };
 
   return (

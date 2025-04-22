@@ -156,7 +156,7 @@ const ReportQueryScreen = () => {
           apiUrl = 'https://nodered.jzz77.cn:9003/api/reports/query';
           break;
         case '5000':
-          apiUrl = 'https://nodered.jzz77.cn:9003/api/reports5000t';
+          apiUrl = 'https://nodered.jzz77.cn:9003/api/reports5000/query';
           break;
         case 'sludge':
           apiUrl = 'https://nodered.jzz77.cn:9003/api/ReportsSludge/query';
