@@ -30,7 +30,10 @@ const MainTab = () => {
     sludgeProduction: 0,
     carbonUsage: 0,
     phosphorusRemoval: 0,
-    disinfectant: 0
+    disinfectant: 0,
+    electricity: 0,     // 新增电量
+    pacUsage: 0,        // 新增PAC用量
+    pamUsage: 0         // 新增PAM用量
   });
 
   const [deviceStats, setDeviceStats] = useState({
@@ -39,6 +42,9 @@ const MainTab = () => {
     totalDevices: 0,
     runningDevices: 0
   });
+
+  // 添加刷新状态
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // 使用useEffect设置状态栏
   useEffect(() => {
@@ -54,6 +60,7 @@ const MainTab = () => {
   // 添加获取统计数据的函数
   const fetchStats = useCallback(async () => {
     try {
+      setIsRefreshing(true); // 开始刷新时设置状态
       const response = await axios.get('https://nodered.jzz77.cn:9003/api/stats/overview', {
         timeout: 10000
       });
@@ -69,7 +76,10 @@ const MainTab = () => {
           sludgeProduction: data.sludgeProduction || 0,
           carbonUsage: data.carbonUsage || 0,
           phosphorusRemoval: data.phosphorusRemoval || 0,
-          disinfectant: data.disinfectant || 0
+          disinfectant: data.disinfectant || 0,
+          electricity: data.electricity || 0,     // 新增电量
+          pacUsage: data.pacUsage || 0,          // 新增PAC用量
+          pamUsage: data.pamUsage || 0           // 新增PAM用量
         });
 
         // 更新设备统计数据
@@ -82,6 +92,8 @@ const MainTab = () => {
       }
     } catch (error) {
       console.error('获取统计数据失败:', error);
+    } finally {
+      setIsRefreshing(false); // 结束刷新
     }
   }, []);
 
@@ -174,6 +186,11 @@ const MainTab = () => {
       alignItems: 'center',
       marginHorizontal: 22,
       marginBottom: 9,
+      justifyContent: 'space-between', // 修改为space-between以便放置刷新按钮
+    },
+    sectionTitleContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
     },
     sectionTitle: {
       fontSize: 18,
@@ -193,7 +210,7 @@ const MainTab = () => {
       flexDirection: 'row',
       flexWrap: 'wrap',
       justifyContent: 'space-between',
-      paddingHorizontal: 20,
+      paddingHorizontal: 12,  // 从20改为12，与backup一致
       marginBottom: 5,
     },
     statsCardContainer: {
@@ -202,7 +219,9 @@ const MainTab = () => {
     },
     statsCard: {
       flex: 1,
-      padding: 18,
+      padding: 12,         // 从18改为12
+      paddingTop: 10,      // 添加特定的顶部padding
+      paddingBottom: 10,   // 添加特定的底部padding
       borderRadius: 12,
       alignItems: 'center',
       justifyContent: 'center',
@@ -371,6 +390,9 @@ const MainTab = () => {
       justifyContent: 'space-between',
       marginBottom: 10,
     },
+    refreshButton: {
+      padding: 5,
+    },
   });
 
   // 自定义快捷方式的状态
@@ -461,7 +483,7 @@ const MainTab = () => {
     { name: '消息中心', icon: 'notifications', color: '#E91E63', route: '消息中心' },
     { name: '工具箱', icon: 'construct', color: '#9C27B0', route: '工具箱' },
     { name: '设备管理', icon: 'hardware-chip', color: '#FF9800', route: '设备管理' },
-    { name: '报告查询', icon: 'document-text', color: '#E91E63', route: '报告查询' },
+    { name: '动态报表', icon: 'document-text', color: '#E91E63', route: '动态报表' },
     { name: '告警信息', icon: 'warning', color: '#FF4444', route: '告警信息' },
     { name: '个人中心', icon: 'person', color: '#2196F3', route: '个人中心' },
     { name: '工单系统', icon: 'clipboard', color: '#9C27B0', route: '工单列表' },
@@ -626,10 +648,23 @@ const MainTab = () => {
             {/* Android平台的成本分析区 改为 当月生产统计 */}
             <View style={styles.sectionContainer}>
               <View style={styles.sectionHeader}>
-                <View style={[styles.sectionIcon, { backgroundColor: 'rgba(76, 175, 80, 0.15)' }]}>
-                  <Ionicons name="stats-chart" size={20} color="#4CAF50" />
+                <View style={styles.sectionTitleContainer}>
+                  <View style={[styles.sectionIcon, { backgroundColor: 'rgba(76, 175, 80, 0.15)' }]}>
+                    <Ionicons name="stats-chart" size={20} color="#4CAF50" />
+                  </View>
+                  <Text style={styles.sectionTitle}>当月生产统计</Text>
                 </View>
-                <Text style={styles.sectionTitle}>当月生产统计</Text>
+                <TouchableOpacity 
+                  style={styles.refreshButton}
+                  onPress={fetchStats}
+                  disabled={isRefreshing}
+                >
+                  <Ionicons 
+                    name={isRefreshing ? "refresh" : "refresh-outline"} 
+                    size={24} 
+                    color="#4CAF50" 
+                  />
+                </TouchableOpacity>
               </View>
               
               <View style={styles.statsContainer}>
@@ -672,13 +707,35 @@ const MainTab = () => {
                   </View>
                 </View>
                 
-
-                
                 <View style={[styles.statsCardContainer, { width: '31%' }]}>
                   <View style={styles.statsCard}>
                     <Ionicons name="leaf" size={24} color="#795548" />
                     <Text style={styles.statsValue} adjustsFontSizeToFit numberOfLines={1}>{stats.sludgeProduction}</Text>
                     <Text style={styles.statsLabel}>污泥产量(吨)</Text>
+                  </View>
+                </View>
+                
+                <View style={[styles.statsCardContainer, { width: '31%' }]}>
+                  <View style={styles.statsCard}>
+                    <Ionicons name="flash" size={24} color="#FFC107" />
+                    <Text style={styles.statsValue} adjustsFontSizeToFit numberOfLines={1}>{stats.electricity}</Text>
+                    <Text style={styles.statsLabel}>电量(度)</Text>
+                  </View>
+                </View>
+                
+                <View style={[styles.statsCardContainer, { width: '31%' }]}>
+                  <View style={styles.statsCard}>
+                    <Ionicons name="water-outline" size={24} color="#3F51B5" />
+                    <Text style={styles.statsValue} adjustsFontSizeToFit numberOfLines={1}>{stats.pacUsage}</Text>
+                    <Text style={styles.statsLabel}>PAC用量(kg)</Text>
+                  </View>
+                </View>
+                
+                <View style={[styles.statsCardContainer, { width: '31%' }]}>
+                  <View style={styles.statsCard}>
+                    <Ionicons name="flask-outline" size={24} color="#00BCD4" />
+                    <Text style={styles.statsValue} adjustsFontSizeToFit numberOfLines={1}>{stats.pamUsage}</Text>
+                    <Text style={styles.statsLabel}>PAM用量(kg)</Text>
                   </View>
                 </View>
               </View>
@@ -748,10 +805,23 @@ const MainTab = () => {
             {/* iOS平台的成本分析区 改为 当月生产统计 */}
             <View style={styles.sectionContainer}>
               <View style={styles.sectionHeader}>
-                <View style={[styles.sectionIcon, { backgroundColor: 'rgba(76, 175, 80, 0.15)' }]}>
-                  <Ionicons name="stats-chart" size={20} color="#4CAF50" />
+                <View style={styles.sectionTitleContainer}>
+                  <View style={[styles.sectionIcon, { backgroundColor: 'rgba(76, 175, 80, 0.15)' }]}>
+                    <Ionicons name="stats-chart" size={20} color="#4CAF50" />
+                  </View>
+                  <Text style={styles.sectionTitle}>当月生产统计</Text>
                 </View>
-                <Text style={styles.sectionTitle}>当月生产统计</Text>
+                <TouchableOpacity 
+                  style={styles.refreshButton}
+                  onPress={fetchStats}
+                  disabled={isRefreshing}
+                >
+                  <Ionicons 
+                    name={isRefreshing ? "refresh" : "refresh-outline"} 
+                    size={24} 
+                    color="#4CAF50" 
+                  />
+                </TouchableOpacity>
               </View>
               
               <View style={styles.statsContainer}>
@@ -794,13 +864,35 @@ const MainTab = () => {
                   </View>
                 </View>
                 
-
-                
                 <View style={[styles.statsCardContainer, { width: '31%' }]}>
                   <View style={styles.statsCard}>
                     <Ionicons name="leaf" size={24} color="#795548" />
                     <Text style={styles.statsValue} adjustsFontSizeToFit numberOfLines={1}>{stats.sludgeProduction}</Text>
                     <Text style={styles.statsLabel}>污泥产量(吨)</Text>
+                  </View>
+                </View>
+                
+                <View style={[styles.statsCardContainer, { width: '31%' }]}>
+                  <View style={styles.statsCard}>
+                    <Ionicons name="flash" size={24} color="#FFC107" />
+                    <Text style={styles.statsValue} adjustsFontSizeToFit numberOfLines={1}>{stats.electricity}</Text>
+                    <Text style={styles.statsLabel}>电量(度)</Text>
+                  </View>
+                </View>
+                
+                <View style={[styles.statsCardContainer, { width: '31%' }]}>
+                  <View style={styles.statsCard}>
+                    <Ionicons name="water-outline" size={24} color="#3F51B5" />
+                    <Text style={styles.statsValue} adjustsFontSizeToFit numberOfLines={1}>{stats.pacUsage}</Text>
+                    <Text style={styles.statsLabel}>PAC用量(kg)</Text>
+                  </View>
+                </View>
+                
+                <View style={[styles.statsCardContainer, { width: '31%' }]}>
+                  <View style={styles.statsCard}>
+                    <Ionicons name="flask-outline" size={24} color="#00BCD4" />
+                    <Text style={styles.statsValue} adjustsFontSizeToFit numberOfLines={1}>{stats.pamUsage}</Text>
+                    <Text style={styles.statsLabel}>PAM用量(kg)</Text>
                   </View>
                 </View>
               </View>
@@ -817,10 +909,13 @@ const MainTab = () => {
         {/* 功能中心部分 */}
         <View style={styles.sectionContainer}>
           <View style={styles.sectionHeader}>
-            <View style={[styles.sectionIcon, { backgroundColor: 'rgba(156, 39, 176, 0.15)' }]}>
-              <Ionicons name="grid" size={20} color="#9C27B0" />
+            <View style={{flexDirection: 'row', alignItems: 'center'}}>
+              <View style={[styles.sectionIcon, { backgroundColor: 'rgba(156, 39, 176, 0.15)' }]}>
+                <Ionicons name="grid" size={20} color="#9C27B0" />
+              </View>
+              <Text style={styles.sectionTitle}>功能中心</Text>
             </View>
-            <Text style={styles.sectionTitle}>功能中心</Text>
+            {/* 移除此处的刷新按钮 */}
           </View>
           
           <View style={styles.statsContainer}>
@@ -892,7 +987,7 @@ const MainTab = () => {
             <View style={[styles.statsCardContainer, { width: '31%' }]}>
               <TouchableOpacity 
                 style={[styles.statsCard, styles.functionCard]} 
-                onPress={() => navigation.navigate('报告查询')}
+                onPress={() => navigation.navigate('动态报表')}
               >
                 <View style={[styles.iconContainer, { backgroundColor: 'rgba(233, 30, 99, 0.15)' }]}>
                   <Ionicons name="document-text" size={26} color="#E91E63" />
