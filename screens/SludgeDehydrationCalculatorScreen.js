@@ -13,6 +13,7 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
+  SafeAreaView,
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import Slider from '@react-native-community/slider';
@@ -793,7 +794,7 @@ const SludgeDehydrationCalculatorScreen = () => {
       flex: 1,
       padding: 12,
       backgroundColor: isDarkMode ? '#121212' : '#F5F5F7',
-      paddingBottom: 120, // 增加底部填充，从80改为120
+      paddingBottom: 12,
     },
     title: {
       fontSize: 20,
@@ -1047,8 +1048,8 @@ const SludgeDehydrationCalculatorScreen = () => {
       flexDirection: 'row',
     },
     saveSchemeContainer: {
-      marginTop: 20, // 增加上边距
-      marginBottom: 30, // 增加底部边距
+      marginTop: 20,
+      marginBottom: 30,
       flexDirection: 'row',
       alignItems: 'center',
     },
@@ -1127,347 +1128,347 @@ const SludgeDehydrationCalculatorScreen = () => {
       padding: 20,
     },
     bottomSafeArea: {
-      height: 60, // 增加底部安全区域的高度
       backgroundColor: isDarkMode ? '#121212' : '#F5F5F7', 
     },
   });
 
   return (
-    <KeyboardAvoidingView 
-      style={{ flex: 1 }} 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={100} // 增加键盘垂直偏移量
-    >
-      <ScrollView 
-        style={styles.container}
-        contentContainerStyle={{ paddingBottom: 80 }} // 添加内容容器的底部填充
+    <SafeAreaView style={{ flex: 1, backgroundColor: isDarkMode ? '#121212' : '#F5F5F7' }}>
+      <KeyboardAvoidingView 
+        style={{ flex: 1 }} 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 20}
       >
-        <Text style={styles.title}>污泥脱水计算器</Text>
+        <ScrollView 
+          style={styles.container}
+          contentContainerStyle={{ paddingBottom: 20 }}
+        >
+          <Text style={styles.title}>污泥脱水计算器</Text>
 
-        <View style={styles.typeSelector}>
-          <TouchableOpacity
-            style={[
-              styles.typeButton,
-              {
-                backgroundColor: calculatorType === 'PAC' ? colors.primary : colors.background,
-              },
-            ]}
-            onPress={() => setCalculatorType('PAC')}
-          >
-            <Text
+          <View style={styles.typeSelector}>
+            <TouchableOpacity
               style={[
-                styles.typeButtonText,
-                { color: calculatorType === 'PAC' ? '#fff' : colors.text },
+                styles.typeButton,
+                {
+                  backgroundColor: calculatorType === 'PAC' ? colors.primary : colors.background,
+                },
               ]}
+              onPress={() => setCalculatorType('PAC')}
             >
-              PAC计算
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.typeButton,
-              {
-                backgroundColor: calculatorType === 'PAM' ? colors.primary : colors.background,
-              },
-            ]}
-            onPress={() => setCalculatorType('PAM')}
-          >
-            <Text
-              style={[
-                styles.typeButtonText,
-                { color: calculatorType === 'PAM' ? '#fff' : colors.text },
-              ]}
-            >
-              PAM计算
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.typeButton,
-              {
-                backgroundColor: calculatorType === 'DOSING' ? colors.primary : colors.background,
-              },
-            ]}
-            onPress={() => setCalculatorType('DOSING')}
-          >
-            <Text
-              style={[
-                styles.typeButtonText,
-                { color: calculatorType === 'DOSING' ? '#fff' : colors.text },
-              ]}
-            >
-              药剂投加
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {calculatorType === 'PAC' ? (
-          <>
-            <View style={styles.section}>
-              <View style={styles.configHeader}>
-                <Text style={styles.label}>
-                  {isContinuousFlow ? '持续流量模式' : '固定水量模式'}
-                </Text>
-                <TouchableOpacity
-                  style={styles.configButton}
-                  onPress={() => setShowHistoryModal(true)}
-                >
-                  <Text style={styles.configButtonText}>历史</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={styles.switchContainer}>
-                <Switch
-                  value={isContinuousFlow}
-                  onValueChange={setIsContinuousFlow}
-                  trackColor={{ false: '#767577', true: colors.primary }}
-                  thumbColor={isDarkMode ? '#f4f3f4' : '#f4f3f4'}
-                />
-              </View>
-
-              <Text style={styles.label}>
-                {isContinuousFlow ? '进水流量（L/H）' : '清水体积（L）'}
+              <Text
+                style={[
+                  styles.typeButtonText,
+                  { color: calculatorType === 'PAC' ? '#fff' : colors.text },
+                ]}
+              >
+                PAC计算
               </Text>
-              <View style={styles.inputContainer}>
-                <TouchableOpacity 
-                  style={styles.button} 
-                  onPress={decreaseWaterVolume}
-                >
-                  <Text style={styles.buttonText}>-</Text>
-                </TouchableOpacity>
-                <TextInput
-                  style={[styles.input, styles.numberInput]}
-                  keyboardType="numeric"
-                  value={String(waterVolume)}
-                  editable={false}
-                />
-                <TouchableOpacity 
-                  style={styles.button} 
-                  onPress={increaseWaterVolume}
-                >
-                  <Text style={styles.buttonText}>+</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.typeButton,
+                {
+                  backgroundColor: calculatorType === 'PAM' ? colors.primary : colors.background,
+                },
+              ]}
+              onPress={() => setCalculatorType('PAM')}
+            >
+              <Text
+                style={[
+                  styles.typeButtonText,
+                  { color: calculatorType === 'PAM' ? '#fff' : colors.text },
+                ]}
+              >
+                PAM计算
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.typeButton,
+                {
+                  backgroundColor: calculatorType === 'DOSING' ? colors.primary : colors.background,
+                },
+              ]}
+              onPress={() => setCalculatorType('DOSING')}
+            >
+              <Text
+                style={[
+                  styles.typeButtonText,
+                  { color: calculatorType === 'DOSING' ? '#fff' : colors.text },
+                ]}
+              >
+                药剂投加
+              </Text>
+            </TouchableOpacity>
+          </View>
 
-            <View style={styles.section}>
-              <Text style={styles.label}>PAC有效含量（%）</Text>
-              <View style={styles.inputContainer}>
-                <TouchableOpacity 
-                  style={styles.button} 
-                  onPress={decreaseEffectiveContent}
-                >
-                  <Text style={styles.buttonText}>-</Text>
-                </TouchableOpacity>
-                <TextInput
-                  style={[styles.input, styles.numberInput]}
-                  keyboardType="numeric"
-                  value={String(effectiveContent)}
-                  editable={false}
-                />
-                <TouchableOpacity 
-                  style={styles.button} 
-                  onPress={increaseEffectiveContent}
-                >
-                  <Text style={styles.buttonText}>+</Text>
-                </TouchableOpacity>
-              </View>
-              <Text style={styles.note}>范围：1% - 100%</Text>
-            </View>
-
-            <View style={styles.section}>
-              <Text style={styles.label}>目标浓度（%）</Text>
-              <View style={styles.inputContainer}>
-                <TouchableOpacity 
-                  style={styles.button} 
-                  onPress={decreaseTargetConcentration}
-                >
-                  <Text style={styles.buttonText}>-</Text>
-                </TouchableOpacity>
-                <TextInput
-                  style={[styles.input, styles.numberInput]}
-                  keyboardType="numeric"
-                  value={String(targetConcentration)}
-                  editable={false}
-                />
-                <TouchableOpacity 
-                  style={styles.button} 
-                  onPress={increaseTargetConcentration}
-                >
-                  <Text style={styles.buttonText}>+</Text>
-                </TouchableOpacity>
-              </View>
-              <Text style={styles.note}>范围：1% - 20%</Text>
-            </View>
-
-            <View style={styles.resultSection}>
-              {isContinuousFlow ? (
-                <>
-                  <Text style={styles.resultTitle}>计算结果</Text>
-                  <View style={styles.resultItem}>
-                    <Text style={styles.resultLabel}>每小时PAC用量：</Text>
-                    <Text style={styles.resultValue}>{calculatePacAmount().toFixed(2)} kg/H</Text>
-                  </View>
-                  <Text style={styles.resultNote}>
-                    每{waterVolume}L/H流量需投加{calculatePacAmount().toFixed(2)}kg/H PAC粉剂
+          {calculatorType === 'PAC' ? (
+            <>
+              <View style={styles.section}>
+                <View style={styles.configHeader}>
+                  <Text style={styles.label}>
+                    {isContinuousFlow ? '持续流量模式' : '固定水量模式'}
                   </Text>
-                  <Text style={styles.resultNote}>
-                    （目标浓度{targetConcentration}%，有效含量{effectiveContent}%）
-                  </Text>
+                  <TouchableOpacity
+                    style={styles.configButton}
+                    onPress={() => setShowHistoryModal(true)}
+                  >
+                    <Text style={styles.configButtonText}>历史</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.switchContainer}>
+                  <Switch
+                    value={isContinuousFlow}
+                    onValueChange={setIsContinuousFlow}
+                    trackColor={{ false: '#767577', true: colors.primary }}
+                    thumbColor={isDarkMode ? '#f4f3f4' : '#f4f3f4'}
+                  />
+                </View>
 
-                  <View style={styles.saveSchemeContainer}>
-                    <TextInput
-                      style={[styles.schemeNameInput, { color: colors.text, borderColor: colors.border }]}
-                      placeholder="输入方案名称以保存"
-                      placeholderTextColor={isDarkMode ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'}
-                      value={schemeName}
-                      onChangeText={setSchemeName}
-                    />
-                    <TouchableOpacity
-                      style={[styles.saveButton, { backgroundColor: colors.primary }]}
-                      onPress={saveCurrentScheme}
-                    >
-                      <Text style={styles.saveButtonText}>保存</Text>
-                    </TouchableOpacity>
-                  </View>
-                </>
-              ) : (
-                <>
-                  <Text style={styles.resultTitle}>计算结果</Text>
-                  <View style={styles.resultItem}>
-                    <Text style={styles.resultLabel}>所需PAC用量：</Text>
-                    <Text style={styles.resultValue}>{calculatePacAmount().toFixed(2)} kg</Text>
-                  </View>
-                  <Text style={styles.resultNote}>
-                    每{waterVolume}L清水加{calculatePacAmount().toFixed(2)}kg PAC粉剂
-                  </Text>
-                  <Text style={styles.resultNote}>
-                    （目标浓度{targetConcentration}%，有效含量{effectiveContent}%）
-                  </Text>
-
-                  <View style={styles.saveSchemeContainer}>
-                    <TextInput
-                      style={[styles.schemeNameInput, { color: colors.text, borderColor: colors.border }]}
-                      placeholder="输入方案名称以保存"
-                      placeholderTextColor={isDarkMode ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'}
-                      value={schemeName}
-                      onChangeText={setSchemeName}
-                    />
-                    <TouchableOpacity
-                      style={[styles.saveButton, { backgroundColor: colors.primary }]}
-                      onPress={saveCurrentScheme}
-                    >
-                      <Text style={styles.saveButtonText}>保存</Text>
-                    </TouchableOpacity>
-                  </View>
-                </>
-              )}
-            </View>
-          </>
-        ) : calculatorType === 'PAM' ? (
-          <>
-            <View style={styles.section}>
-              <View style={styles.configHeader}>
-                <Text style={styles.label}>PAM配置</Text>
-                <TouchableOpacity
-                  style={styles.configButton}
-                  onPress={() => setShowHistoryModal(true)}
-                >
-                  <Text style={styles.configButtonText}>历史</Text>
-                </TouchableOpacity>
+                <Text style={styles.label}>
+                  {isContinuousFlow ? '进水流量（L/H）' : '清水体积（L）'}
+                </Text>
+                <View style={styles.inputContainer}>
+                  <TouchableOpacity 
+                    style={styles.button} 
+                    onPress={decreaseWaterVolume}
+                  >
+                    <Text style={styles.buttonText}>-</Text>
+                  </TouchableOpacity>
+                  <TextInput
+                    style={[styles.input, styles.numberInput]}
+                    keyboardType="numeric"
+                    value={String(waterVolume)}
+                    editable={false}
+                  />
+                  <TouchableOpacity 
+                    style={styles.button} 
+                    onPress={increaseWaterVolume}
+                  >
+                    <Text style={styles.buttonText}>+</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
 
-              <Text style={styles.label}>目标浓度（%）</Text>
-              <View style={styles.inputContainer}>
-                <TouchableOpacity 
-                  style={styles.button} 
-                  onPress={decreaseConcentration}
-                >
-                  <Text style={styles.buttonText}>-</Text>
-                </TouchableOpacity>
+              <View style={styles.section}>
+                <Text style={styles.label}>PAC有效含量（%）</Text>
+                <View style={styles.inputContainer}>
+                  <TouchableOpacity 
+                    style={styles.button} 
+                    onPress={decreaseEffectiveContent}
+                  >
+                    <Text style={styles.buttonText}>-</Text>
+                  </TouchableOpacity>
+                  <TextInput
+                    style={[styles.input, styles.numberInput]}
+                    keyboardType="numeric"
+                    value={String(effectiveContent)}
+                    editable={false}
+                  />
+                  <TouchableOpacity 
+                    style={styles.button} 
+                    onPress={increaseEffectiveContent}
+                  >
+                    <Text style={styles.buttonText}>+</Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.note}>范围：1% - 100%</Text>
+              </View>
+
+              <View style={styles.section}>
+                <Text style={styles.label}>目标浓度（%）</Text>
+                <View style={styles.inputContainer}>
+                  <TouchableOpacity 
+                    style={styles.button} 
+                    onPress={decreaseTargetConcentration}
+                  >
+                    <Text style={styles.buttonText}>-</Text>
+                  </TouchableOpacity>
+                  <TextInput
+                    style={[styles.input, styles.numberInput]}
+                    keyboardType="numeric"
+                    value={String(targetConcentration)}
+                    editable={false}
+                  />
+                  <TouchableOpacity 
+                    style={styles.button} 
+                    onPress={increaseTargetConcentration}
+                  >
+                    <Text style={styles.buttonText}>+</Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.note}>范围：1% - 20%</Text>
+              </View>
+
+              <View style={styles.resultSection}>
+                {isContinuousFlow ? (
+                  <>
+                    <Text style={styles.resultTitle}>计算结果</Text>
+                    <View style={styles.resultItem}>
+                      <Text style={styles.resultLabel}>每小时PAC用量：</Text>
+                      <Text style={styles.resultValue}>{calculatePacAmount().toFixed(2)} kg/H</Text>
+                    </View>
+                    <Text style={styles.resultNote}>
+                      每{waterVolume}L/H流量需投加{calculatePacAmount().toFixed(2)}kg/H PAC粉剂
+                    </Text>
+                    <Text style={styles.resultNote}>
+                      （目标浓度{targetConcentration}%，有效含量{effectiveContent}%）
+                    </Text>
+
+                    <View style={styles.saveSchemeContainer}>
+                      <TextInput
+                        style={[styles.schemeNameInput, { color: colors.text, borderColor: colors.border }]}
+                        placeholder="输入方案名称以保存"
+                        placeholderTextColor={isDarkMode ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'}
+                        value={schemeName}
+                        onChangeText={setSchemeName}
+                      />
+                      <TouchableOpacity
+                        style={[styles.saveButton, { backgroundColor: colors.primary }]}
+                        onPress={saveCurrentScheme}
+                      >
+                        <Text style={styles.saveButtonText}>保存</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.resultTitle}>计算结果</Text>
+                    <View style={styles.resultItem}>
+                      <Text style={styles.resultLabel}>所需PAC用量：</Text>
+                      <Text style={styles.resultValue}>{calculatePacAmount().toFixed(2)} kg</Text>
+                    </View>
+                    <Text style={styles.resultNote}>
+                      每{waterVolume}L清水加{calculatePacAmount().toFixed(2)}kg PAC粉剂
+                    </Text>
+                    <Text style={styles.resultNote}>
+                      （目标浓度{targetConcentration}%，有效含量{effectiveContent}%）
+                    </Text>
+
+                    <View style={styles.saveSchemeContainer}>
+                      <TextInput
+                        style={[styles.schemeNameInput, { color: colors.text, borderColor: colors.border }]}
+                        placeholder="输入方案名称以保存"
+                        placeholderTextColor={isDarkMode ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'}
+                        value={schemeName}
+                        onChangeText={setSchemeName}
+                      />
+                      <TouchableOpacity
+                        style={[styles.saveButton, { backgroundColor: colors.primary }]}
+                        onPress={saveCurrentScheme}
+                      >
+                        <Text style={styles.saveButtonText}>保存</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
+              </View>
+            </>
+          ) : calculatorType === 'PAM' ? (
+            <>
+              <View style={styles.section}>
+                <View style={styles.configHeader}>
+                  <Text style={styles.label}>PAM配置</Text>
+                  <TouchableOpacity
+                    style={styles.configButton}
+                    onPress={() => setShowHistoryModal(true)}
+                  >
+                    <Text style={styles.configButtonText}>历史</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.label}>目标浓度（%）</Text>
+                <View style={styles.inputContainer}>
+                  <TouchableOpacity 
+                    style={styles.button} 
+                    onPress={decreaseConcentration}
+                  >
+                    <Text style={styles.buttonText}>-</Text>
+                  </TouchableOpacity>
+                  <TextInput
+                    style={[styles.input, styles.numberInput]}
+                    keyboardType="numeric"
+                    value={String(concentration)}
+                    editable={false}
+                  />
+                  <TouchableOpacity 
+                    style={styles.button} 
+                    onPress={increaseConcentration}
+                  >
+                    <Text style={styles.buttonText}>+</Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.note}>建议范围：0.1% - 0.5%</Text>
+              </View>
+
+              <View style={styles.section}>
+                <Text style={styles.label}>进水流量（L/H）</Text>
+                <View style={styles.inputContainer}>
+                  <TouchableOpacity 
+                    style={styles.button} 
+                    onPress={decreaseFlowRate}
+                  >
+                    <Text style={styles.buttonText}>-</Text>
+                  </TouchableOpacity>
+                  <TextInput
+                    style={[styles.input, styles.numberInput]}
+                    keyboardType="numeric"
+                    value={String(flowRate)}
+                    editable={false}
+                  />
+                  <TouchableOpacity 
+                    style={styles.button} 
+                    onPress={increaseFlowRate}
+                  >
+                    <Text style={styles.buttonText}>+</Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.warning}>最大流量限制：2500 L/H</Text>
+              </View>
+
+              <View style={styles.section}>
+                <Text style={styles.label}>PAM投加速度（g/min）</Text>
                 <TextInput
-                  style={[styles.input, styles.numberInput]}
+                  style={styles.input}
                   keyboardType="numeric"
-                  value={String(concentration)}
+                  value={String(pamRate)}
                   editable={false}
                 />
-                <TouchableOpacity 
-                  style={styles.button} 
-                  onPress={increaseConcentration}
-                >
-                  <Text style={styles.buttonText}>+</Text>
-                </TouchableOpacity>
+                <Text style={styles.warning}>安全阈值：≤500 g/min</Text>
               </View>
-              <Text style={styles.note}>建议范围：0.1% - 0.5%</Text>
-            </View>
 
-            <View style={styles.section}>
-              <Text style={styles.label}>进水流量（L/H）</Text>
-              <View style={styles.inputContainer}>
-                <TouchableOpacity 
-                  style={styles.button} 
-                  onPress={decreaseFlowRate}
-                >
-                  <Text style={styles.buttonText}>-</Text>
-                </TouchableOpacity>
-                <TextInput
-                  style={[styles.input, styles.numberInput]}
-                  keyboardType="numeric"
-                  value={String(flowRate)}
-                  editable={false}
-                />
-                <TouchableOpacity 
-                  style={styles.button} 
-                  onPress={increaseFlowRate}
-                >
-                  <Text style={styles.buttonText}>+</Text>
-                </TouchableOpacity>
+              <View style={styles.section}>
+                <Text style={styles.label}>计算公式</Text>
+                <Text style={styles.note}>PAM投加速度 = (浓度 × 进水流量) / 6</Text>
+                <Text style={styles.note}>进水流量 = (PAM投加速度 × 6) / 浓度</Text>
+                <Text style={styles.note}>浓度 = (PAM投加速度 × 6) / 进水流量</Text>
+
+                <View style={styles.saveSchemeContainer}>
+                  <TextInput
+                    style={[styles.schemeNameInput, { color: colors.text, borderColor: colors.border }]}
+                    placeholder="输入方案名称以保存"
+                    placeholderTextColor={isDarkMode ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'}
+                    value={schemeName}
+                    onChangeText={setSchemeName}
+                  />
+                  <TouchableOpacity
+                    style={[styles.saveButton, { backgroundColor: colors.primary }]}
+                    onPress={saveCurrentScheme}
+                  >
+                    <Text style={styles.saveButtonText}>保存</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-              <Text style={styles.warning}>最大流量限制：2500 L/H</Text>
-            </View>
+            </>
+          ) : (
+            renderDosingCalculator()
+          )}
 
-            <View style={styles.section}>
-              <Text style={styles.label}>PAM投加速度（g/min）</Text>
-              <TextInput
-                style={styles.input}
-                keyboardType="numeric"
-                value={String(pamRate)}
-                editable={false}
-              />
-              <Text style={styles.warning}>安全阈值：≤500 g/min</Text>
-            </View>
-
-            <View style={styles.section}>
-              <Text style={styles.label}>计算公式</Text>
-              <Text style={styles.note}>PAM投加速度 = (浓度 × 进水流量) / 6</Text>
-              <Text style={styles.note}>进水流量 = (PAM投加速度 × 6) / 浓度</Text>
-              <Text style={styles.note}>浓度 = (PAM投加速度 × 6) / 进水流量</Text>
-
-              <View style={styles.saveSchemeContainer}>
-                <TextInput
-                  style={[styles.schemeNameInput, { color: colors.text, borderColor: colors.border }]}
-                  placeholder="输入方案名称以保存"
-                  placeholderTextColor={isDarkMode ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'}
-                  value={schemeName}
-                  onChangeText={setSchemeName}
-                />
-                <TouchableOpacity
-                  style={[styles.saveButton, { backgroundColor: colors.primary }]}
-                  onPress={saveCurrentScheme}
-                >
-                  <Text style={styles.saveButtonText}>保存</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </>
-        ) : (
-          renderDosingCalculator()
-        )}
-
-        {renderConfigModal()}
-        {renderHistoryModal()}
-      </ScrollView>
-      <View style={styles.bottomSafeArea} />
-    </KeyboardAvoidingView>
+          {renderConfigModal()}
+          {renderHistoryModal()}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
