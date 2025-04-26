@@ -29,6 +29,7 @@ import ReportForm5000Screen from './screens/ReportForm5000Screen';
 import ReportFormSludgeScreen from './screens/ReportFormSludgeScreen';
 import FileUploadTestScreen from './screens/FileUploadTestScreen';
 import UserManagementScreen from './screens/UserManagementScreen';
+import SludgeDehydrationCalculatorScreen from './screens/SludgeDehydrationCalculatorScreen';
 // 导入工单相关页面
 import TicketListScreen from './screens/TicketListScreen';
 import TicketDetailScreen from './screens/TicketDetailScreen';
@@ -36,7 +37,7 @@ import CreateTicketScreen from './screens/CreateTicketScreen';
 import LabDataScreen from './screens/LabDataScreen';
 import SludgeDataEntryScreen from './screens/SludgeDataEntryScreen';
 import ReportFormPumpStationScreen from './screens/ReportFormPumpStationScreen';
-
+import DynamicReportsScreen from './screens/DynamicReportsScreen';
 // 添加错误边界组件
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -408,7 +409,14 @@ function AppContent({ showSplash, onSplashFinish }) {
               headerShown: true
             }}
           />
-
+          <Stack.Screen
+            name="动态报表"
+            component={DynamicReportsScreen}
+            options={{
+              title: '报告查询',
+              headerShown: true
+            }}
+          />
           <Stack.Screen
             name="AO池数据查询"
             component={AODataQueryScreen}
@@ -475,6 +483,14 @@ function AppContent({ showSplash, onSplashFinish }) {
             component={UserManagementScreen}
             options={{
               title: '用户管理',
+              headerShown: true
+            }}
+          />
+          <Stack.Screen
+            name="污泥脱水计算器"
+            component={SludgeDehydrationCalculatorScreen}
+            options={{
+              title: '污泥脱水计算器',
               headerShown: true
             }}
           />

@@ -21,6 +21,15 @@ function BoxScreen({ navigation }) {
       description: '上传文件',
       onPress: () => navigation.navigate('文件上传')
     },
+
+    {
+      id: 'sludgeDehydration',
+      title: "污泥脱水计算器",
+      icon: 'calculator',
+      description: '计算污泥脱水',
+      onPress: () => navigation.navigate('污泥脱水计算器')
+    }
+
   ];
 
   const renderMenuItem = (item) => (
