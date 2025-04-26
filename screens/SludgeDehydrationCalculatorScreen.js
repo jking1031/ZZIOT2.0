@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
+  Keyboard,
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import Slider from '@react-native-community/slider';
@@ -59,10 +60,27 @@ const SludgeDehydrationCalculatorScreen = () => {
   const pamHistoriesKey = 'pamHistories';
   const dosingHistoriesKey = 'dosingHistories';
   
+  // 添加ScrollView引用
+  const scrollViewRef = useRef(null);
+  
   // 加载保存的配置
   useEffect(() => {
     loadConfig();
     loadAllHistories();
+  }, []);
+
+  // 监听键盘显示事件，自动滚动到底部
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener(
+      'keyboardDidShow',
+      () => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }
+    );
+
+    return () => {
+      keyboardDidShowListener.remove();
+    };
   }, []);
 
   const loadConfig = async () => {
@@ -1137,11 +1155,16 @@ const SludgeDehydrationCalculatorScreen = () => {
       <KeyboardAvoidingView 
         style={{ flex: 1 }} 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 20}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 30}
+        enabled
       >
         <ScrollView 
+          ref={scrollViewRef}
           style={styles.container}
-          contentContainerStyle={{ paddingBottom: 20 }}
+          contentContainerStyle={{ paddingBottom: 50 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={true}
+          scrollEventThrottle={16}
         >
           <Text style={styles.title}>污泥脱水计算器</Text>
 
