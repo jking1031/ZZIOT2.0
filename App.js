@@ -29,7 +29,6 @@ import ReportForm5000Screen from './screens/ReportForm5000Screen';
 import ReportFormSludgeScreen from './screens/ReportFormSludgeScreen';
 import FileUploadTestScreen from './screens/FileUploadTestScreen';
 import UserManagementScreen from './screens/UserManagementScreen';
-import SludgeDehydrationCalculatorScreen from './screens/SludgeDehydrationCalculatorScreen';
 // 导入工单相关页面
 import TicketListScreen from './screens/TicketListScreen';
 import TicketDetailScreen from './screens/TicketDetailScreen';
@@ -38,6 +37,11 @@ import LabDataScreen from './screens/LabDataScreen';
 import SludgeDataEntryScreen from './screens/SludgeDataEntryScreen';
 import ReportFormPumpStationScreen from './screens/ReportFormPumpStationScreen';
 import DynamicReportsScreen from './screens/DynamicReportsScreen';
+// 导入四个计算器
+import PacCalculatorScreen from './screens/PacCalculatorScreen';
+import PamCalculatorScreen from './screens/PamCalculatorScreen';
+import DosingCalculatorScreen from './screens/DosingCalculatorScreen';
+import ExcessSludgeCalculatorScreen from './screens/ExcessSludgeCalculatorScreen';
 // 添加错误边界组件
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -487,10 +491,34 @@ function AppContent({ showSplash, onSplashFinish }) {
             }}
           />
           <Stack.Screen
-            name="污泥脱水计算器"
-            component={SludgeDehydrationCalculatorScreen}
+            name="PAC计算器"
+            component={PacCalculatorScreen}
             options={{
-              title: '污泥脱水计算器',
+              title: 'PAC稀释计算器',
+              headerShown: true
+            }}
+          />
+          <Stack.Screen
+            name="PAM计算器"
+            component={PamCalculatorScreen}
+            options={{
+              title: 'PAM稀释计算器',
+              headerShown: true
+            }}
+          />
+          <Stack.Screen
+            name="药剂投加计算器"
+            component={DosingCalculatorScreen}
+            options={{
+              title: '脱水药剂投加计算器',
+              headerShown: true
+            }}
+          />
+          <Stack.Screen
+            name="剩余污泥计算器"
+            component={ExcessSludgeCalculatorScreen}
+            options={{
+              title: '剩余污泥计算器',
               headerShown: true
             }}
           />

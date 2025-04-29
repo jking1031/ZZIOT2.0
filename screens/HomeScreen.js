@@ -58,10 +58,11 @@ const MainTab = () => {
   }, [isAdmin]);
 
   // 添加获取统计数据的函数
-  const fetchStats = useCallback(async () => {
+  const fetchStats = useCallback(async (isManual = false) => {
     try {
       setIsRefreshing(true); // 开始刷新时设置状态
       const response = await axios.get('https://nodered.jzz77.cn:9003/api/stats/overview', {
+        params: { isManual },
         timeout: 10000
       });
 
@@ -656,7 +657,7 @@ const MainTab = () => {
                 </View>
                 <TouchableOpacity 
                   style={styles.refreshButton}
-                  onPress={fetchStats}
+                  onPress={() => fetchStats(true)} // 传 true 表示手动刷新
                   disabled={isRefreshing}
                 >
                   <Ionicons 
@@ -670,14 +671,14 @@ const MainTab = () => {
               <View style={styles.statsContainer}>
                 <View style={[styles.statsCardContainer, { width: '31%' }]}>
                   <View style={styles.statsCard}>
-                    <Ionicons name="water" size={24} color="#2196F3" />
+                    <Ionicons name="enter-outline" size={24} color="#2196F3" />
                     <Text style={styles.statsValue} adjustsFontSizeToFit numberOfLines={1}>{stats.totalProcessing_in}</Text>
                     <Text style={styles.statsLabel}>总进水量(吨)</Text>
                   </View>
                 </View>
                 <View style={[styles.statsCardContainer, { width: '31%' }]}>
                   <View style={styles.statsCard}>
-                    <Ionicons name="water" size={24} color="#4CAF50" />
+                    <Ionicons name="exit-outline" size={24} color="#4CAF50" />
                     <Text style={styles.statsValue} adjustsFontSizeToFit numberOfLines={1}>{stats.totalProcessing_out}</Text>
                     <Text style={styles.statsLabel}>总出水量(吨)</Text>
                   </View>
@@ -685,7 +686,7 @@ const MainTab = () => {
                 
                 <View style={[styles.statsCardContainer, { width: '31%' }]}>
                   <View style={styles.statsCard}>
-                    <Ionicons name="flask" size={24} color="#FF9800" />
+                    <Ionicons name="cube-outline" size={24} color="#FF9800" />
                     <Text style={styles.statsValue} adjustsFontSizeToFit numberOfLines={1}>{stats.carbonUsage}</Text>
                     <Text style={styles.statsLabel}>碳源使用量(L)</Text>
                   </View>
@@ -701,7 +702,7 @@ const MainTab = () => {
                 
                 <View style={[styles.statsCardContainer, { width: '31%' }]}>
                   <View style={styles.statsCard}>
-                    <Ionicons name="color-fill" size={24} color="#9C27B0" />
+                    <Ionicons name="color-fill-outline" size={24} color="#9C27B0" />
                     <Text style={styles.statsValue} adjustsFontSizeToFit numberOfLines={1}>{stats.disinfectant}</Text>
                     <Text style={styles.statsLabel}>消毒剂使用量(L)</Text>
                   </View>
@@ -709,7 +710,7 @@ const MainTab = () => {
                 
                 <View style={[styles.statsCardContainer, { width: '31%' }]}>
                   <View style={styles.statsCard}>
-                    <Ionicons name="leaf" size={24} color="#795548" />
+                    <Ionicons name="layers-outline" size={24} color="#795548" />
                     <Text style={styles.statsValue} adjustsFontSizeToFit numberOfLines={1}>{stats.sludgeProduction}</Text>
                     <Text style={styles.statsLabel}>污泥产量(吨)</Text>
                   </View>
@@ -813,7 +814,7 @@ const MainTab = () => {
                 </View>
                 <TouchableOpacity 
                   style={styles.refreshButton}
-                  onPress={fetchStats}
+                  onPress={() => fetchStats(true)} // 传 true 表示手动刷新
                   disabled={isRefreshing}
                 >
                   <Ionicons 
@@ -827,14 +828,14 @@ const MainTab = () => {
               <View style={styles.statsContainer}>
                 <View style={[styles.statsCardContainer, { width: '31%' }]}>
                   <View style={styles.statsCard}>
-                    <Ionicons name="water" size={24} color="#2196F3" />
+                    <Ionicons name="enter-outline" size={24} color="#2196F3" />
                     <Text style={styles.statsValue} adjustsFontSizeToFit numberOfLines={1}>{stats.totalProcessing_in}</Text>
                     <Text style={styles.statsLabel}>总进水量(吨)</Text>
                   </View>
                 </View>
                 <View style={[styles.statsCardContainer, { width: '31%' }]}>
                   <View style={styles.statsCard}>
-                    <Ionicons name="water" size={24} color="#4CAF50" />
+                    <Ionicons name="exit-outline" size={24} color="#4CAF50" />
                     <Text style={styles.statsValue} adjustsFontSizeToFit numberOfLines={1}>{stats.totalProcessing_out}</Text>
                     <Text style={styles.statsLabel}>总出水量(吨)</Text>
                   </View>
@@ -858,7 +859,7 @@ const MainTab = () => {
                 
                 <View style={[styles.statsCardContainer, { width: '31%' }]}>
                   <View style={styles.statsCard}>
-                    <Ionicons name="color-fill" size={24} color="#9C27B0" />
+                    <Ionicons name="color-fill-outline" size={24} color="#9C27B0" />
                     <Text style={styles.statsValue} adjustsFontSizeToFit numberOfLines={1}>{stats.disinfectant}</Text>
                     <Text style={styles.statsLabel}>消毒剂使用量(L)</Text>
                   </View>
@@ -866,7 +867,7 @@ const MainTab = () => {
                 
                 <View style={[styles.statsCardContainer, { width: '31%' }]}>
                   <View style={styles.statsCard}>
-                    <Ionicons name="leaf" size={24} color="#795548" />
+                    <Ionicons name="layers-outline" size={24} color="#795548" />
                     <Text style={styles.statsValue} adjustsFontSizeToFit numberOfLines={1}>{stats.sludgeProduction}</Text>
                     <Text style={styles.statsLabel}>污泥产量(吨)</Text>
                   </View>
@@ -1006,10 +1007,12 @@ const MainTab = () => {
             
             <View style={styles.sectionContainer}>
               <View style={styles.sectionHeader}>
-                <View style={[styles.sectionIcon, { backgroundColor: 'rgba(33, 150, 243, 0.15)' }]}>
-                  <Ionicons name="shield" size={20} color="#2196F3" />
+                <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                  <View style={[styles.sectionIcon, { backgroundColor: 'rgba(33, 150, 243, 0.15)' }]}>
+                    <Ionicons name="shield" size={20} color="#2196F3" />
+                  </View>
+                  <Text style={styles.sectionTitle}>管理员功能</Text>
                 </View>
-                <Text style={styles.sectionTitle}>管理员功能</Text>
               </View>
               
               <View style={styles.adminMenuContainer}>

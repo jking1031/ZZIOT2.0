@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { Platform, StatusBar } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Platform, StatusBar, Linking } from 'react-native';
 import { StyleSheet, View, Text, TouchableOpacity, Image, Switch, ScrollView, Modal, Alert, ActivityIndicator, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Updates from 'expo-updates';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import Constants from 'expo-constants';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
@@ -50,7 +50,14 @@ const ProfileScreen = () => {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [localAvatarUri, setLocalAvatarUri] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [downloadUrls, setDownloadUrls] = useState(null);
+  const [loadingUrls, setLoadingUrls] = useState(false);
+  const [hasNewVersion, setHasNewVersion] = useState(false);
+  
+  // 备用TestFlight链接 - 当API无法获取链接时使用
+  const TESTFLIGHT_URL = 'https://testflight.apple.com/join/VdGJbkDy';
 
+  // 加载用户数据
   useEffect(() => {
     if (user) {
       setUserInfo({
@@ -67,6 +74,26 @@ const ProfileScreen = () => {
       checkLocalAvatar();
     }
   }, [user]);
+  
+  // 页面加载时获取下载链接
+  useEffect(() => {
+    // 首次加载时获取下载链接
+    fetchDownloadUrls();
+  }, []);
+  
+  // 从其他页面切换回来时重新获取下载链接
+  useFocusEffect(
+    useCallback(() => {
+      console.log('个人中心页面获得焦点，重新获取下载链接...');
+      fetchDownloadUrls();
+      
+      // 返回清理函数
+      return () => {
+        // 当页面失去焦点时执行（可选）
+        console.log('个人中心页面失去焦点');
+      };
+    }, [])
+  );
 
   // 获取用户角色
   const fetchUserRoles = async () => {
@@ -342,6 +369,178 @@ const ProfileScreen = () => {
     }
   };
 
+  // 获取下载链接
+  const fetchDownloadUrls = async () => {
+    try {
+      setLoadingUrls(true);
+      const response = await axios.get('https://nodered.jzz77.cn:9003/api/ota/url', { timeout: 10000 });
+      console.log('下载链接API响应:', response.data);
+      
+      // 检查API响应格式
+      const payload = response.data.payload || response.data;
+      
+      if (payload) {
+        console.log('下载链接数据:', payload);
+        
+        // 保存下载链接和版本状态
+        setDownloadUrls(payload);
+        setHasNewVersion(payload.start === true);
+        
+        return payload;
+      } else {
+        console.error('API响应格式异常:', response.data);
+        // 使用 console.error 记录错误但不向用户显示弹窗，避免频繁打扰
+        return null;
+      }
+    } catch (error) {
+      console.error('获取下载链接出错:', error);
+      // 仅在控制台记录错误，不显示弹窗给用户，避免频繁打扰
+      return null;
+    } finally {
+      setLoadingUrls(false);
+    }
+  };
+
+  // 打开下载链接
+  const handleDownloadApp = async () => {
+    try {
+      setLoadingUrls(true);
+      
+      // 如果没有下载链接数据，先获取
+      let urls = downloadUrls;
+      if (!urls) {
+        urls = await fetchDownloadUrls();
+        if (!urls) {
+          setLoadingUrls(false);
+          return;
+        }
+      }
+      
+      // 检查是否允许下载新版本
+      if (urls.start !== true) {
+        Alert.alert('提示', '暂无新版本可供下载');
+        setLoadingUrls(false);
+        return;
+      }
+
+      // 根据平台获取对应的下载链接
+      let downloadUrl;
+      if (Platform.OS === 'android') {
+        downloadUrl = urls.androidUrl || urls.downloadUrl;
+      } else if (Platform.OS === 'ios') {
+        downloadUrl = urls.iosUrl || urls.testflightUrl;
+      }
+
+      if (!downloadUrl) {
+        console.error('API未返回有效的下载链接');
+        
+        // 如果是iOS设备且有备用TestFlight链接，则使用备用链接
+        if (Platform.OS === 'ios' && TESTFLIGHT_URL) {
+          console.log('使用备用TestFlight链接:', TESTFLIGHT_URL);
+          downloadUrl = TESTFLIGHT_URL;
+        } else {
+          Alert.alert('获取失败', '未能获取到有效的应用下载地址，请联系管理员。');
+          setLoadingUrls(false);
+          return;
+        }
+      }
+
+      console.log(`获取到的${Platform.OS}下载地址:`, downloadUrl);
+      
+      // iOS设备特殊处理：尝试使用多种链接格式
+      if (Platform.OS === 'ios') {
+        try {
+          // 尝试获取应用的标识符
+          const appId = (urls.appIdentifier || 
+                        Constants.expoConfig?.ios?.bundleIdentifier || 
+                        'com.zziot.app').trim();
+          console.log('应用标识符:', appId);
+          
+          // 尝试构建不同的TestFlight URL格式
+          // 1. 标准TestFlight URL (用户提供的链接)
+          const testflightUrl = downloadUrl;
+          
+          // 2. 尝试直接使用TestFlight scheme打开特定应用
+          const testflightSchemeUrl = `itms-beta://beta.itunes.apple.com/v1/app/${appId}`;
+          
+          // 3. 使用通用的App Store URL
+          const appStoreUrl = `https://apps.apple.com/app/id${appId}`;
+          
+          // 4. 尝试TestFlight短链接
+          const testflightCode = urls.testflightCode || 'VdGJbkDy';
+          const testflightShortUrl = `https://testflight.apple.com/join/${testflightCode}`;
+          
+          // 按优先级尝试不同的链接
+          console.log('尝试打开TestFlight链接:', testflightUrl);
+          if (await Linking.canOpenURL(testflightUrl)) {
+            await Linking.openURL(testflightUrl);
+            Alert.alert('打开TestFlight', 'TestFlight将会打开，请根据提示更新应用。');
+            setLoadingUrls(false);
+            return;
+          }
+          
+          console.log('尝试打开TestFlight scheme:', testflightSchemeUrl);
+          if (await Linking.canOpenURL(testflightSchemeUrl)) {
+            await Linking.openURL(testflightSchemeUrl);
+            Alert.alert('打开TestFlight', 'TestFlight将会打开，请根据提示更新应用。');
+            setLoadingUrls(false);
+            return;
+          }
+          
+          console.log('尝试打开TestFlight短链接:', testflightShortUrl);
+          if (await Linking.canOpenURL(testflightShortUrl)) {
+            await Linking.openURL(testflightShortUrl);
+            Alert.alert('打开TestFlight', 'TestFlight将会打开，请根据提示更新应用。');
+            setLoadingUrls(false);
+            return;
+          }
+          
+          console.log('尝试打开App Store链接:', appStoreUrl);
+          if (await Linking.canOpenURL(appStoreUrl)) {
+            await Linking.openURL(appStoreUrl);
+            Alert.alert('打开App Store', 'App Store将会打开，请根据提示下载或更新应用。');
+            setLoadingUrls(false);
+            return;
+          }
+          
+          // 所有特殊链接都失败，回退到通用链接
+          console.log('所有特殊链接尝试失败，回退到通用链接');
+        } catch (specialError) {
+          console.error('特殊链接处理错误，回退到标准方法:', specialError);
+        }
+      }
+      
+      // 标准方法：尝试打开下载链接
+      const supported = await Linking.canOpenURL(downloadUrl);
+      if (supported) {
+        await Linking.openURL(downloadUrl);
+        // 根据平台提供不同的提示
+        if (Platform.OS === 'android') {
+          Alert.alert('开始下载', '应用安装包将在浏览器中开始下载，请在下载完成后手动安装。');
+        } else if (Platform.OS === 'ios') {
+          Alert.alert('打开TestFlight', 'TestFlight将会打开，请根据提示更新应用。');
+        }
+      } else {
+        console.error(`无法打开链接: ${downloadUrl}`);
+        Alert.alert('打开失败', `无法打开${Platform.OS === 'ios' ? 'TestFlight' : '下载'}链接，请检查网络或联系管理员。`);
+      }
+    } catch (error) {
+      console.error('获取或打开下载链接失败:', error);
+      if (error.response) {
+        console.error('API错误响应:', error.response.status, error.response.data);
+        Alert.alert('API错误', `获取更新信息失败 (状态码: ${error.response.status})，请稍后重试或联系管理员。`);
+      } else if (error.request) {
+        console.error('网络请求错误:', error.request);
+        Alert.alert('网络错误', '无法连接到更新服务器，请检查网络连接。');
+      } else {
+        console.error('其他错误:', error.message);
+        Alert.alert('未知错误', '获取更新信息时发生未知错误，请稍后重试。');
+      }
+    } finally {
+      setLoadingUrls(false);
+    }
+  };
+
   // 清除本地用户数据
   const clearLocalUserData = async () => {
     try {
@@ -397,7 +596,7 @@ const ProfileScreen = () => {
         styles.container, 
         { 
           backgroundColor: colors.background,
-          paddingTop: statusBarHeight // 保持结构不变，但值改为0
+          paddingTop: statusBarHeight
         }
       ]}
     >
@@ -556,6 +755,40 @@ const ProfileScreen = () => {
               <>
                 <Ionicons name="refresh" size={16} color="#fff" style={{ marginRight: 5 }} />
                 <Text style={styles.updateButtonText}>检查更新</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+        
+        {/* 添加下载应用按钮 */}
+        <View style={styles.updateContainer}>
+          <Text style={[styles.settingLabel, { color: colors.text }]}>
+            {hasNewVersion ? '有新版本可用' : '当前是最新版本'}
+          </Text>
+          <TouchableOpacity 
+            style={[
+              styles.downloadButton, 
+              { 
+                opacity: loadingUrls ? 0.6 : 1,
+                backgroundColor: hasNewVersion ? '#4CAF50' : '#9E9E9E'
+              }
+            ]} 
+            onPress={handleDownloadApp}
+            disabled={loadingUrls}
+          >
+            {loadingUrls ? (
+              <ActivityIndicator size="small" color="#ffffff" />
+            ) : (
+              <>
+                <Ionicons 
+                  name={Platform.OS === 'ios' ? "logo-apple-appstore" : "cloud-download"} 
+                  size={16} 
+                  color="#fff" 
+                  style={{ marginRight: 5 }} 
+                />
+                <Text style={styles.updateButtonText}>
+                  {Platform.OS === 'ios' ? '打开TestFlight' : '下载APK'}
+                </Text>
               </>
             )}
           </TouchableOpacity>
@@ -967,6 +1200,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     borderRadius: 20,
     backgroundColor: '#FF6700',
+  },
+  downloadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 15,
+    borderRadius: 20,
+    backgroundColor: '#4CAF50',
   },
   updateButtonText: {
     color: '#fff',
