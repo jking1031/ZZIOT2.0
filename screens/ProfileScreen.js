@@ -53,7 +53,7 @@ const ProfileScreen = () => {
   const [downloadUrls, setDownloadUrls] = useState(null);
   const [loadingUrls, setLoadingUrls] = useState(false);
   const [hasNewVersion, setHasNewVersion] = useState(false);
-  
+
   // 备用TestFlight链接 - 当API无法获取链接时使用
   const TESTFLIGHT_URL = 'https://testflight.apple.com/join/VdGJbkDy';
 

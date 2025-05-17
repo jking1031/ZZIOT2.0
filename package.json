@@ -57,7 +57,10 @@
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
-    "concurrently": "^8.2.2"
+    "@react-native-community/cli": "^18.0.0",
+    "@react-native/metro-config": "^0.79.2",
+    "concurrently": "^8.2.2",
+    "react-native-svg-transformer": "^1.5.1"
   },
   "private": true,
   "expo": {
