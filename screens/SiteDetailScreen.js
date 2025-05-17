@@ -1,11 +1,29 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { StyleSheet, View, Text, ScrollView, RefreshControl, Modal, TextInput, TouchableOpacity, AppState, Platform, Alert, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, RefreshControl, Modal, TextInput, TouchableOpacity, AppState, Platform, Alert, ActivityIndicator, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons'; // 导入Ionicons图标
 import axios from 'axios';
 import * as Device from 'expo-device'; // 导入设备信息模块
 import AsyncStorage from '@react-native-async-storage/async-storage'; // 导入AsyncStorage
+
+// 添加安全的toFixed函数
+const safeToFixed = (value, digits = 2) => {
+  if (value === undefined || value === null) return '0.' + '0'.repeat(digits);
+  
+  // 确保转换为数字类型
+  const num = Number(value);
+  
+  // 检查是否为有效数字
+  if (isNaN(num)) return '0.' + '0'.repeat(digits);
+  
+  try {
+    return num.toFixed(digits);
+  } catch (e) {
+    console.log('toFixed错误:', e, '值:', value);
+    return '0.' + '0'.repeat(digits);
+  }
+};
 
 // 添加全局引用，解决组件重复挂载问题
 const globalWSRef = { current: null };
@@ -67,6 +85,13 @@ function SiteDetailScreen({ route, navigation }) {
   
   // 添加一个权限已检查完成的标志
   const permissionCheckedRef = useRef(false);
+  
+  // 添加工艺参数设置相关的状态
+  const [processModalVisible, setProcessModalVisible] = useState(false);
+  const [selectedProcess, setSelectedProcess] = useState(null);
+  const [lowerLimit, setLowerLimit] = useState('');
+  const [upperLimit, setUpperLimit] = useState('');
+  const [coefficient, setCoefficient] = useState('');
   
   // 监听全局userRoles变化，更新本地状态
   useEffect(() => {
@@ -1534,7 +1559,7 @@ function SiteDetailScreen({ route, navigation }) {
       <Text style={[styles.cardTitle, { color: colors.text }]}>{item.name}</Text>
       <View style={styles.dataContainer}>
         <Text style={[styles.dataValue, { color: item.alarm === 1 ? '#FF5252' : colors.text }]}>
-          {item.data.toFixed(2)}
+          {safeToFixed(item.data, 2)}
         </Text>
         <Text style={[styles.dataUnit, { color: colors.text }]}>{item.dw}</Text>
       </View>
@@ -1560,13 +1585,13 @@ function SiteDetailScreen({ route, navigation }) {
       <Text style={[styles.cardTitle, { color: colors.text }]}>{item.name}</Text>
       <View style={styles.dataContainer}>
         <Text style={[styles.dataValue, { color: colors.text }]}>
-          {item.hz?.toFixed(2) || '0.00'}
+          {safeToFixed(item.hz, 2)}
         </Text>
         <Text style={[styles.dataUnit, { color: colors.text }]}>Hz</Text>
       </View>
       {item.sethz !== undefined && (
         <Text style={[styles.frequencySetpoint, { color: colors.text }]}>
-          设定值: {item.sethz?.toFixed(2) || '0.00'} Hz
+          设定值: {safeToFixed(item.sethz, 2)} Hz
         </Text>
       )}
       <CommandStatusDisplay deviceId={item.name} />
@@ -1680,7 +1705,7 @@ function SiteDetailScreen({ route, navigation }) {
       <Text style={[styles.cardTitle, { color: colors.text }]}>{item.name}</Text>
       <View style={styles.dataContainer}>
         <Text style={[styles.dataValue, { color: colors.text }]}>
-          {item.value.toFixed(2)}
+          {safeToFixed(item.value, 2)}
         </Text>
         <Text style={[styles.dataUnit, { color: colors.text }]}>{item.unit || 'kWh'}</Text>
       </View>
@@ -1693,7 +1718,7 @@ function SiteDetailScreen({ route, navigation }) {
             color: item.trend > 0 ? '#FF5252' : '#4CAF50',
             fontSize: 12 
           }}>
-            {item.trend > 0 ? '↑' : '↓'} {Math.abs(item.trend).toFixed(1)}%
+            {item.trend > 0 ? '↑' : '↓'} {Math.abs(item.trend || 0).toFixed(1)}%
           </Text>
         </View>
       )}
@@ -1739,15 +1764,93 @@ function SiteDetailScreen({ route, navigation }) {
     </View>
   );
 
-  // 工艺参数监控卡片的优化
+  // 修改工艺参数控制函数使用WebSocket
+  const handleProcessControl = async (processName, action, params = {}) => {
+    // 权限检查
+    if (!hasControlPermission) {
+      Alert.alert('权限不足', '您没有设置工艺参数的权限');
+      return;
+    }
+
+    try {
+      // 记录操作日志
+      const operationContent = `${action} - ${JSON.stringify(params)}`;
+      logOperation(processName, '工艺参数设置', operationContent);
+      
+      // 使用WebSocket发送命令
+      await sendCommandWs({
+        type: 'process_control',
+        processName,
+        action,
+        ...params
+      });
+    } catch (error) {
+      console.error('工艺参数设置失败:', error);
+      // 如果WebSocket失败，尝试回退到HTTP
+      try {
+        await sendCommand({
+          type: 'process_control',
+          processName,
+          action,
+          ...params
+        });
+      } catch (httpError) {
+        console.error('HTTP工艺参数设置也失败:', httpError);
+      }
+    }
+  };
+
+  // 处理工艺参数点击，打开设置窗口
+  const handleProcessClick = (process) => {
+    if (!hasControlPermission) {
+      Alert.alert('权限不足', '您没有设置工艺参数的权限');
+      return;
+    }
+    
+    setSelectedProcess(process);
+    setLowerLimit(process.lowerLimit?.toString() || '');
+    setUpperLimit(process.upperLimit?.toString() || '');
+    setCoefficient(process.coefficient?.toString() || '1');  // 默认系数为1
+    setProcessModalVisible(true);
+  };
+
+  // 保存工艺参数设置
+  const saveProcessSettings = async () => {
+    if (!selectedProcess) return;
+    
+    try {
+      // 发送设置到服务器
+      await handleProcessControl(selectedProcess.name, 'set_parameters', {
+        lowerLimit: parseFloat(lowerLimit) || selectedProcess.lowerLimit,
+        upperLimit: parseFloat(upperLimit) || selectedProcess.upperLimit,
+        coefficient: parseFloat(coefficient) || 1
+      });
+      
+      // 关闭模态窗口
+      setProcessModalVisible(false);
+      
+      // 提示用户设置成功
+      Alert.alert('设置成功', '工艺参数设置已更新');
+      
+      // 刷新数据
+      fetchSiteDetail();
+    } catch (error) {
+      console.error('保存工艺参数设置失败:', error);
+      Alert.alert('设置失败', '请稍后再试');
+    }
+  };
+
+  // 修改工艺参数监控卡片的渲染，添加点击事件
   const renderProcessCard = (item) => (
-    <View
+    <TouchableOpacity
       key={item.name}
       style={[
         styles.card, 
         { backgroundColor: colors.card },
         item.status === 'abnormal' && styles.abnormalCard
       ]}
+      onPress={() => handleProcessClick(item)}
+      disabled={!hasControlPermission}
     >
       <Text style={[styles.cardTitle, { color: colors.text }]}>{item.name}</Text>
       <View style={styles.processDataRow}>
@@ -1757,27 +1860,42 @@ function SiteDetailScreen({ route, navigation }) {
           { 
             color: item.status === 'abnormal' ? '#FF5252' : 
                   item.value > item.upperLimit || item.value < item.lowerLimit ? '#FF9800' : '#2196F3',
-            marginLeft: 0, // 减少空隙
-            fontWeight: '700' // 更粗的字体
+            marginLeft: 0,
+            fontWeight: '700'
           }
         ]}>
-          {item.value.toFixed(2)}{item.unit}
+          {safeToFixed(item.value, 2)}{item.unit}
         </Text>
       </View>
       
       <View style={styles.processDataRow}>
         <Text style={styles.processLabel}>正常范围：</Text>
         <Text style={styles.processRange}>
-          {item.lowerLimit.toFixed(1)}-{item.upperLimit.toFixed(1)}{item.unit}
+          {safeToFixed(item.lowerLimit, 1)}-{safeToFixed(item.upperLimit, 1)}{item.unit}
         </Text>
       </View>
+      
+      {item.coefficient && item.coefficient !== 1 && (
+        <View style={styles.processDataRow}>
+          <Text style={styles.processLabel}>系数：</Text>
+          <Text style={styles.processCoefficient}>
+            {safeToFixed(item.coefficient, 2)}
+          </Text>
+        </View>
+      )}
       
       {item.status === 'abnormal' && (
         <View style={styles.alarmBadge}>
           <Text style={styles.alarmText}>工艺参数异常</Text>
         </View>
       )}
-    </View>
+      
+      {!hasControlPermission && (
+        <View style={styles.noPermissionBadge}>
+          <Text style={styles.noPermissionText}>无设置权限</Text>
+        </View>
+      )}
+    </TouchableOpacity>
   );
 
   // 报警信息卡片
@@ -1844,7 +1962,7 @@ function SiteDetailScreen({ route, navigation }) {
               fontWeight: '700' // 更粗的字体
             }
           ]}>
-            {item.value.toFixed(2)}{item.unit}
+            {Number(item.value || 0).toFixed(2)}{item.unit}
           </Text>
         </View>
         
@@ -1951,9 +2069,9 @@ function SiteDetailScreen({ route, navigation }) {
   // 生产指标卡片
   const renderProductionCard = (item) => {
     // 安全处理数值
-    const current = Number(item.current) || 0;
-    const target = Number(item.target) || 1; // 避免除以零
-    const efficiency = Number(item.efficiency) || 0;
+    const current = Number(item.current || 0);
+    const target = Math.max(Number(item.target || 1), 1); // 避免除以零
+    const efficiency = Number(item.efficiency || 0);
     
     // 计算完成百分比，限制最大值为100
     const completionPercent = Math.min(100, (current / target) * 100);
@@ -2000,7 +2118,7 @@ function SiteDetailScreen({ route, navigation }) {
             />
           </View>
           <Text style={styles.progressText}>
-            {completionPercent.toFixed(1)}%
+            {safeToFixed(completionPercent, 1)}%
           </Text>
         </View>
         
@@ -2346,13 +2464,13 @@ function SiteDetailScreen({ route, navigation }) {
                 <Text style={[styles.cardTitle, { color: colors.text }]}>{item.name}</Text>
                 <View style={styles.dataContainer}>
                   <Text style={[styles.dataValue, { color: colors.text }]}>
-                    {item.hz?.toFixed(2) || '0.00'}
+                    {safeToFixed(item.hz, 2)}
                   </Text>
                   <Text style={[styles.dataUnit, { color: colors.text }]}>Hz</Text>
                 </View>
                 {item.sethz !== undefined && (
                   <Text style={[styles.frequencySetpoint, { color: colors.text }]}>
-                    设定值: {item.sethz?.toFixed(2) || '0.00'} Hz
+                    设定值: {safeToFixed(item.sethz, 2)} Hz
                   </Text>
                 )}
                     <CommandStatusDisplay deviceId={item.name} />
@@ -2520,6 +2638,87 @@ function SiteDetailScreen({ route, navigation }) {
             </View>
           </View>
         </View>
+      </Modal>
+      
+      {/* 添加工艺参数设置模态窗口 */}
+      <Modal
+        visible={processModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setProcessModalVisible(false)}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: colors.card, width: '85%' }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>
+                {selectedProcess?.name || ''} - 参数设置
+              </Text>
+              
+              <Text style={[styles.modalLabel, { color: colors.text }]}>下限值:</Text>
+              <TextInput
+                style={[styles.frequencyInput, { 
+                  borderColor: colors.border,
+                  backgroundColor: colors.background,
+                  color: colors.text
+                }]}
+                placeholder="请输入下限值"
+                placeholderTextColor={colors.secondaryText || '#666666'}
+                keyboardType="numeric"
+                value={lowerLimit}
+                onChangeText={setLowerLimit}
+              />
+              
+              <Text style={[styles.modalLabel, { color: colors.text }]}>上限值:</Text>
+              <TextInput
+                style={[styles.frequencyInput, { 
+                  borderColor: colors.border,
+                  backgroundColor: colors.background,
+                  color: colors.text
+                }]}
+                placeholder="请输入上限值"
+                placeholderTextColor={colors.secondaryText || '#666666'}
+                keyboardType="numeric"
+                value={upperLimit}
+                onChangeText={setUpperLimit}
+              />
+              
+              <Text style={[styles.modalLabel, { color: colors.text }]}>系数:</Text>
+              <TextInput
+                style={[styles.frequencyInput, { 
+                  borderColor: colors.border,
+                  backgroundColor: colors.background,
+                  color: colors.text
+                }]}
+                placeholder="请输入系数"
+                placeholderTextColor={colors.secondaryText || '#666666'}
+                keyboardType="numeric"
+                value={coefficient}
+                onChangeText={setCoefficient}
+              />
+
+              {selectedProcess && (
+                <Text style={[styles.coefficientInfo, { color: colors.secondaryText || '#666666' }]}>
+                  原始值 {selectedProcess.rawValue ? selectedProcess.rawValue.toFixed(2) : selectedProcess.value?.toFixed(2) || '0'}{selectedProcess.unit} × 系数 = 显示值
+                </Text>
+              )}
+              
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.cancelButton]}
+                  onPress={() => setProcessModalVisible(false)}
+                >
+                  <Text style={styles.modalButtonText}>取消</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.confirmButton]}
+                  onPress={saveProcessSettings}
+                >
+                  <Text style={styles.modalButtonText}>确认</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </TouchableWithoutFeedback>
       </Modal>
     </View>
   );
@@ -3045,6 +3244,23 @@ const styles = StyleSheet.create({
   visibilityTextDisabled: {
     color: '#FF5252',
     fontWeight: '600',
+  },
+  modalLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  processCoefficient: {
+    fontSize: 12,
+    color: '#2196F3',
+    fontWeight: '600',
+  },
+  coefficientInfo: {
+    fontSize: 12,
+    marginTop: 8,
+    fontStyle: 'italic',
+    textAlign: 'center'
   },
 });
 

@@ -39,7 +39,12 @@ import SludgeDataEntryScreen from './screens/SludgeDataEntryScreen';
 import { registerForPushNotificationsAsync } from './utils/notifications';
 import { initJPush, registerJPushDevice } from './utils/jpushNotifications';
 import ReportFormPumpStationScreen from './screens/ReportFormPumpStationScreen';
-
+import DynamicReportsScreen from './screens/DynamicReportsScreen';
+// 导入四个计算器
+import PacCalculatorScreen from './screens/PacCalculatorScreen';
+import PamCalculatorScreen from './screens/PamCalculatorScreen';
+import DosingCalculatorScreen from './screens/DosingCalculatorScreen';
+import ExcessSludgeCalculatorScreen from './screens/ExcessSludgeCalculatorScreen';
 // 添加错误边界组件
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -439,7 +444,14 @@ function AppContent({ showSplash, onSplashFinish }) {
               headerShown: true
             }}
           />
-
+          <Stack.Screen
+            name="动态报表"
+            component={DynamicReportsScreen}
+            options={{
+              title: '报告查询',
+              headerShown: true
+            }}
+          />
           <Stack.Screen
             name="AO池数据查询"
             component={AODataQueryScreen}
@@ -506,6 +518,38 @@ function AppContent({ showSplash, onSplashFinish }) {
             component={UserManagementScreen}
             options={{
               title: '用户管理',
+              headerShown: true
+            }}
+          />
+          <Stack.Screen
+            name="PAC计算器"
+            component={PacCalculatorScreen}
+            options={{
+              title: 'PAC稀释计算器',
+              headerShown: true
+            }}
+          />
+          <Stack.Screen
+            name="PAM计算器"
+            component={PamCalculatorScreen}
+            options={{
+              title: 'PAM稀释计算器',
+              headerShown: true
+            }}
+          />
+          <Stack.Screen
+            name="药剂投加计算器"
+            component={DosingCalculatorScreen}
+            options={{
+              title: '脱水药剂投加计算器',
+              headerShown: true
+            }}
+          />
+          <Stack.Screen
+            name="剩余污泥计算器"
+            component={ExcessSludgeCalculatorScreen}
+            options={{
+              title: '剩余污泥计算器',
               headerShown: true
             }}
           />

@@ -1,0 +1,654 @@
+64:609-      <View style={styles.section}>
+65-610-        <View style={styles.configHeader}>
+66-611-          <Text style={styles.label}>储泥罐参数</Text>
+67-612-          <View style={styles.headerButtons}>
+68-613-            <TouchableOpacity
+69-614-              style={styles.configButton}
+70-615-              onPress={() => setShowHistoryModal(true)}
+71-616-            >
+72-617-              <Text style={styles.configButtonText}>历史</Text>
+73-618-            </TouchableOpacity>
+74-619-            <TouchableOpacity
+75-620-              style={[styles.configButton, { marginLeft: 8 }]}
+76-621-              onPress={() => setShowConfigModal(true)}
+77-622-            >
+78-623-              <Text style={styles.configButtonText}>配置</Text>
+79-624-            </TouchableOpacity>
+80-625-          </View>
+81-626-        </View>
+82-627-        <View style={styles.tankInfo}>
+83-628-          <Text style={styles.tankInfoText}>直径: {tankConfig.diameter}m</Text>
+84-629-          <Text style={styles.tankInfoText}>最高液位: {tankConfig.maxLevel}m</Text>
+85-630-          <Text style={styles.tankInfoText}>最低液位: {tankConfig.minLevel}m</Text>
+86-631-          <Text style={styles.tankInfoText}>有效容积: {calculateSludgeVolume().toFixed(2)}m³</Text>
+87-632-        </View>
+88-633-      </View>
+89-634-
+90:635-      <View style={styles.section}>
+91-636-        <Text style={styles.label}>污泥浓度（mg/L）</Text>
+92-637-        <View style={styles.inputContainer}>
+93-638-          <TouchableOpacity 
+94-639-            style={styles.button} 
+95-640-            onPress={() => {
+96-641-              const newValue = Math.max(5000, sludgeConcentration - 1000);
+97-642-              if (validateSludgeConcentration(newValue)) {
+98-643-                setSludgeConcentration(newValue);
+99-644-              }
+100-645-            }}
+101-646-          >
+102-647-            <Text style={styles.buttonText}>-</Text>
+103-648-          </TouchableOpacity>
+104-649-          <TextInput
+105-650-            style={[styles.input, styles.numberInput]}
+106-651-            keyboardType="numeric"
+107-652-            value={String(sludgeConcentration)}
+108-653-            editable={false}
+109-654-          />
+110-655-          <TouchableOpacity 
+111-656-            style={styles.button} 
+112-657-            onPress={() => {
+113-658-              const newValue = Math.min(15000, sludgeConcentration + 1000);
+114-659-              if (validateSludgeConcentration(newValue)) {
+115-660-                setSludgeConcentration(newValue);
+116-661-              }
+117-662-            }}
+118-663-          >
+119-664-            <Text style={styles.buttonText}>+</Text>
+120-665-          </TouchableOpacity>
+121-666-        </View>
+122-667-        <Text style={styles.note}>建议范围：5000 - 15000 mg/L</Text>
+123-668-      </View>
+124-669-
+125:670-      <View style={styles.section}>
+126-671-        <Text style={styles.label}>PAM溶液浓度（%）</Text>
+127-672-        <View style={styles.inputContainer}>
+128-673-          <TouchableOpacity 
+129-674-            style={styles.button} 
+130-675-            onPress={() => setPamConcentration(Math.max(0.1, pamConcentration - 0.1))}
+131-676-          >
+132-677-            <Text style={styles.buttonText}>-</Text>
+133-678-          </TouchableOpacity>
+134-679-          <TextInput
+135-680-            style={[styles.input, styles.numberInput]}
+136-681-            keyboardType="numeric"
+137-682-            value={String(pamConcentration)}
+138-683-            editable={false}
+139-684-          />
+140-685-          <TouchableOpacity 
+141-686-            style={styles.button} 
+142-687-            onPress={() => setPamConcentration(Math.min(0.3, pamConcentration + 0.1))}
+143-688-          >
+144-689-            <Text style={styles.buttonText}>+</Text>
+145-690-          </TouchableOpacity>
+146-691-        </View>
+147-692-        <Text style={styles.note}>建议范围：0.1% - 0.3%</Text>
+148-693-      </View>
+149-694-
+150:695-      <View style={styles.section}>
+151-696-        <Text style={styles.label}>PAM投加比例（‰）</Text>
+152-697-        <View style={styles.inputContainer}>
+153-698-          <TouchableOpacity 
+154-699-            style={styles.button} 
+155-700-            onPress={decreasePamRatio}
+156-701-          >
+157-702-            <Text style={styles.buttonText}>-</Text>
+158-703-          </TouchableOpacity>
+159-704-          <TextInput
+160-705-            style={[styles.input, styles.numberInput]}
+161-706-            keyboardType="numeric"
+162-707-            value={String(pamRatio)}
+163-708-            editable={false}
+164-709-          />
+165-710-          <TouchableOpacity 
+166-711-            style={styles.button} 
+167-712-            onPress={increasePamRatio}
+168-713-          >
+169-714-            <Text style={styles.buttonText}>+</Text>
+170-715-          </TouchableOpacity>
+171-716-        </View>
+172-717-        <Text style={styles.note}>建议范围：1.5‰ - 3‰ (1.5-3 kg/吨干泥)</Text>
+173-718-      </View>
+174-719-
+175:720-      <View style={styles.section}>
+176-721-        <Text style={styles.label}>PAC投加比例（%）</Text>
+177-722-        <View style={styles.inputContainer}>
+178-723-          <TouchableOpacity 
+179-724-            style={styles.button} 
+180-725-            onPress={() => setPacRatio(Math.max(8, pacRatio - 0.5))}
+181-726-          >
+182-727-            <Text style={styles.buttonText}>-</Text>
+183-728-          </TouchableOpacity>
+184-729-          <TextInput
+185-730-            style={[styles.input, styles.numberInput]}
+186-731-            keyboardType="numeric"
+187-732-            value={String(pacRatio)}
+188-733-            editable={false}
+189-734-          />
+190-735-          <TouchableOpacity 
+191-736-            style={styles.button} 
+192-737-            onPress={() => setPacRatio(Math.min(10, pacRatio + 0.5))}
+193-738-          >
+194-739-            <Text style={styles.buttonText}>+</Text>
+195-740-          </TouchableOpacity>
+196-741-        </View>
+197-742-        <Text style={styles.note}>厂家建议：8% - 10%（干固体量）</Text>
+198-743-      </View>
+199-744-
+200-745-      <View style={styles.resultSection}>
+201-746-        <Text style={styles.resultTitle}>计算结果</Text>
+202-747-        <View style={styles.resultItemGroup}>
+203-748-          <View style={styles.resultItem}>
+204-749-            <Text style={styles.resultLabel}>绝干污泥量：</Text>
+205-750-            <Text style={styles.resultValue}>{calculateDrySludge().toFixed(2)} kg</Text>
+206-751-          </View>
+207-752-          <View style={styles.resultItem}>
+208-753-            <Text style={styles.resultLabel}>PAM干粉需求：</Text>
+209-754-            <Text style={styles.resultValue}>
+210-755-              {calculatePamPowder() < 1 
+211-756-                ? `${(calculatePamPowder() * 1000).toFixed(0)} g`
+212-757-                : `${calculatePamPowder().toFixed(3)} kg`}
+213-758-            </Text>
+214-759-          </View>
+215-760-          <View style={styles.resultItem}>
+216-761-            <Text style={styles.resultLabel}>PAM溶液投加量：</Text>
+217-762-            <Text style={styles.resultValue}>{calculatePamVolume().toFixed(2)} L</Text>
+218-763-          </View>
+219-764-        </View>
+220-765-        
+221-766-        <View style={styles.resultDivider} />
+222-767-        
+223-768-        <View style={styles.resultItemGroup}>
+224-769-          <View style={styles.resultItem}>
+225-770-            <Text style={styles.resultLabel}>PAC干粉需求：</Text>
+226-771-            <Text style={styles.resultValue}>{calculatePacPowder().toFixed(2)} kg</Text>
+227-772-          </View>
+228-773-          <View style={styles.resultItem}>
+229-774-            <Text style={styles.resultLabel}>PAC溶液投加量：</Text>
+230-775-            <Text style={styles.resultValue}>{calculatePacVolume().toFixed(2)} L</Text>
+231-776-          </View>
+232-777-        </View>
+233-778-        
+234-779-        <View style={styles.resultNoteContainer}>
+235-780-          <Text style={styles.resultNote}>
+236-781-            污泥浓度: {sludgeConcentration}mg/L
+237-782-          </Text>
+238-783-          <Text style={styles.resultNote}>
+239-784-            PAM: {pamConcentration}% 溶液，{pamRatio}‰ 投加比例
+240-785-          </Text>
+241-786-          <Text style={styles.resultNote}>
+242-787-            PAC: {pacRatio}% 投加比例，10% 溶液
+243-788-          </Text>
+244-789-        </View>
+245-790-
+246-791-        <View style={styles.saveSchemeContainer}>
+247-792-          <TextInput
+248-793-            style={[styles.schemeNameInput, { color: colors.text, borderColor: colors.border }]}
+249-794-            placeholder="输入方案名称以保存"
+250-795-            placeholderTextColor={isDarkMode ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'}
+251-796-            value={schemeName}
+252-797-            onChangeText={setSchemeName}
+253-798-          />
+254-799-          <TouchableOpacity
+255-800-            style={[styles.saveButton, { backgroundColor: colors.primary }]}
+256-801-            onPress={saveCurrentScheme}
+257-802-          >
+258-803-            <Text style={styles.saveButtonText}>保存</Text>
+259-804-          </TouchableOpacity>
+260-805-        </View>
+261-806-      </View>
+262-807-    </>
+263-808-  );
+264-809-
+265-810-  const styles = StyleSheet.create({
+266-811-    container: {
+267-812-      flex: 1,
+268-813-      padding: 12,
+269-814-      backgroundColor: isDarkMode ? '#121212' : '#F5F5F7',
+270-815-      paddingBottom: 12,
+271-816-    },
+272-817-    title: {
+273-818-      fontSize: 20,
+274-819-      fontWeight: 'bold',
+275-820-      marginBottom: 12,
+276-821-      color: colors.text,
+277-822-      textAlign: 'center',
+278-823-    },
+279-824-    section: {
+280-825-      marginBottom: 15,
+281-826-      backgroundColor: isDarkMode ? '#1A1A1A' : '#FFFFFF',
+282-827-      padding: 12,
+283-828-      borderRadius: 10,
+284-829-      shadowColor: '#000',
+285-830-      shadowOffset: { width: 0, height: 1 },
+286-831-      shadowOpacity: isDarkMode ? 0.2 : 0.05,
+287-832-      shadowRadius: 2,
+288-833-      elevation: isDarkMode ? 3 : 1,
+289-834-    },
+290-835-    label: {
+291-836-      fontSize: 14,
+292-837-      marginBottom: 8,
+293-838-      color: colors.text,
+294-839-    },
+295-840-    value: {
+296-841-      fontSize: 18,
+297-842-      fontWeight: '600',
+298-843-      color: colors.primary,
+299-844-      textAlign: 'center',
+300-845-      marginTop: 10,
+301-846-    },
+302-847-    input: {
+303-848-      height: 40,
+304-849-      borderWidth: 1,
+305-850-      borderColor: isDarkMode ? 'rgba(255,255,255,0.2)' : '#ddd',
+306-851-      borderRadius: 8,
+307-852-      paddingHorizontal: 10,
+308-853-      fontSize: 14,
+309-854-      color: colors.text,
+310-855-      backgroundColor: isDarkMode ? '#2A2A2A' : '#FFFFFF',
+311-856-    },
+312-857-    slider: {
+313-858-      width: '100%',
+314-859-      height: 40,
+315-860-    },
+316-861-    note: {
+317-862-      fontSize: 12,
+318-863-      color: colors.textSecondary,
+319-864-      marginTop: 3,
+320-865-      fontStyle: 'italic',
+321-866-    },
+322-867-    warning: {
+323-868-      fontSize: 14,
+324-869-      color: '#FF4444',
+325-870-      marginTop: 5,
+326-871-    },
+327-872-    resultSection: {
+328-873-      marginTop: 15,
+329-874-      padding: 12,
+330-875-      backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.9)' : 'rgba(232, 245, 233, 0.9)',
+331-876-      borderRadius: 10,
+332-877-      shadowColor: '#000',
+333-878-      shadowOffset: { width: 0, height: 1 },
+334-879-      shadowOpacity: isDarkMode ? 0.2 : 0.05,
+335-880-      shadowRadius: 2,
+336-881-      elevation: 3,
+337-882-    },
+338-883-    resultTitle: {
+339-884-      fontSize: 16,
+340-885-      fontWeight: 'bold',
+341-886-      color: colors.primary,
+342-887-      marginBottom: 10,
+343-888-      textAlign: 'center',
+344-889-    },
+345-890-    resultItemGroup: {
+346-891-      marginBottom: 10,
+347-892-    },
+348-893-    resultItem: {
+349-894-      flexDirection: 'row',
+350-895-      alignItems: 'center',
+351-896-      justifyContent: 'space-between',
+352-897-      marginBottom: 6,
+353-898-      paddingHorizontal: 2,
+354-899-    },
+355-900-    resultLabel: {
+356-901-      fontSize: 14,
+357-902-      color: colors.text,
+358-903-      flex: 1,
+359-904-    },
+360-905-    resultValue: {
+361-906-      fontSize: 14,
+362-907-      fontWeight: 'bold',
+363-908-      color: colors.primary,
+364-909-      minWidth: 80,
+365-910-      textAlign: 'right',
+366-911-    },
+367-912-    resultDivider: {
+368-913-      height: 1,
+369-914-      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+370-915-      marginVertical: 8,
+371-916-    },
+372-917-    resultNoteContainer: {
+373-918-      backgroundColor: isDarkMode ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.4)',
+374-919-      padding: 8,
+375-920-      borderRadius: 6,
+376-921-      marginTop: 8,
+377-922-    },
+378-923-    resultNote: {
+379-924-      fontSize: 12,
+380-925-      color: isDarkMode ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.6)',
+381-926-      marginBottom: 2,
+382-927-    },
+383-928-    switchContainer: {
+384-929-      flexDirection: 'row',
+385-930-      alignItems: 'center',
+386-931-      justifyContent: 'space-between',
+387-932-      marginBottom: 20,
+388-933-    },
+389-934-    switchLabel: {
+390-935-      fontSize: 16,
+391-936-      color: colors.text,
+392-937-    },
+393-938-    typeSelector: {
+394-939-      flexDirection: 'row',
+395-940-      justifyContent: 'center',
+396-941-      marginBottom: 12,
+397-942-    },
+398-943-    typeButton: {
+399-944-      padding: 8,
+400-945-      marginHorizontal: 5,
+401-946-      borderRadius: 6,
+402-947-    },
+403-948-    typeButtonText: {
+404-949-      fontSize: 16,
+405-950-      fontWeight: 'bold',
+406-951-    },
+407---
+408-1189-            </TouchableOpacity>
+409-1190-            <TouchableOpacity
+410-1191-              style={[
+411-1192-                styles.typeButton,
+412-1193-                {
+413-1194:                  backgroundColor: calculatorType === 'PAM' ? colors.primary : colors.background,
+414-1195-                },
+415-1196-              ]}
+416-1197-              onPress={() => setCalculatorType('PAM')}
+417-1198-            >
+418-1199-              <Text
+419-1200-                style={[
+420-1201-                  styles.typeButtonText,
+421-1202:                  { color: calculatorType === 'PAM' ? '#fff' : colors.text },
+422-1203-                ]}
+423-1204-              >
+424-1205-                PAM计算
+425-1206-              </Text>
+426-1207-            </TouchableOpacity>
+427-1208-            <TouchableOpacity
+428-1209-              style={[
+429-1210-                styles.typeButton,
+430-1211-                {
+431-1212-                  backgroundColor: calculatorType === 'DOSING' ? colors.primary : colors.background,
+432-1213-                },
+433-1214-              ]}
+434-1215-              onPress={() => setCalculatorType('DOSING')}
+435-1216-            >
+436-1217-              <Text
+437-1218-                style={[
+438-1219-                  styles.typeButtonText,
+439-1220-                  { color: calculatorType === 'DOSING' ? '#fff' : colors.text },
+440-1221-                ]}
+441-1222-              >
+442-1223-                药剂投加
+443-1224-              </Text>
+444-1225-            </TouchableOpacity>
+445-1226-          </View>
+446-1227-
+447-1228-          {calculatorType === 'PAC' ? (
+448-1229-            <>
+449:1230-              <View style={styles.section}>
+450-1231-                <View style={styles.configHeader}>
+451-1232-                  <Text style={styles.label}>
+452-1233-                    {isContinuousFlow ? '持续流量模式' : '固定水量模式'}
+453-1234-                  </Text>
+454-1235-                  <TouchableOpacity
+455-1236-                    style={styles.configButton}
+456-1237-                    onPress={() => setShowHistoryModal(true)}
+457-1238-                  >
+458-1239-                    <Text style={styles.configButtonText}>历史</Text>
+459-1240-                  </TouchableOpacity>
+460-1241-                </View>
+461-1242-                <View style={styles.switchContainer}>
+462-1243-                  <Switch
+463-1244-                    value={isContinuousFlow}
+464-1245-                    onValueChange={setIsContinuousFlow}
+465-1246-                    trackColor={{ false: '#767577', true: colors.primary }}
+466-1247-                    thumbColor={isDarkMode ? '#f4f3f4' : '#f4f3f4'}
+467-1248-                  />
+468-1249-                </View>
+469-1250-
+470-1251-                <Text style={styles.label}>
+471-1252-                  {isContinuousFlow ? '进水流量（L/H）' : '清水体积（L）'}
+472-1253-                </Text>
+473-1254-                <View style={styles.inputContainer}>
+474-1255-                  <TouchableOpacity 
+475-1256-                    style={styles.button} 
+476-1257-                    onPress={decreaseWaterVolume}
+477-1258-                  >
+478-1259-                    <Text style={styles.buttonText}>-</Text>
+479-1260-                  </TouchableOpacity>
+480-1261-                  <TextInput
+481-1262-                    style={[styles.input, styles.numberInput]}
+482-1263-                    keyboardType="numeric"
+483-1264-                    value={String(waterVolume)}
+484-1265-                    editable={false}
+485-1266-                  />
+486-1267-                  <TouchableOpacity 
+487-1268-                    style={styles.button} 
+488-1269-                    onPress={increaseWaterVolume}
+489-1270-                  >
+490-1271-                    <Text style={styles.buttonText}>+</Text>
+491-1272-                  </TouchableOpacity>
+492-1273-                </View>
+493-1274-              </View>
+494-1275-
+495:1276-              <View style={styles.section}>
+496-1277-                <Text style={styles.label}>PAC有效含量（%）</Text>
+497-1278-                <View style={styles.inputContainer}>
+498-1279-                  <TouchableOpacity 
+499-1280-                    style={styles.button} 
+500-1281-                    onPress={decreaseEffectiveContent}
+501-1282-                  >
+502-1283-                    <Text style={styles.buttonText}>-</Text>
+503-1284-                  </TouchableOpacity>
+504-1285-                  <TextInput
+505-1286-                    style={[styles.input, styles.numberInput]}
+506-1287-                    keyboardType="numeric"
+507-1288-                    value={String(effectiveContent)}
+508-1289-                    editable={false}
+509-1290-                  />
+510-1291-                  <TouchableOpacity 
+511-1292-                    style={styles.button} 
+512-1293-                    onPress={increaseEffectiveContent}
+513-1294-                  >
+514-1295-                    <Text style={styles.buttonText}>+</Text>
+515-1296-                  </TouchableOpacity>
+516-1297-                </View>
+517-1298-                <Text style={styles.note}>范围：1% - 100%</Text>
+518-1299-              </View>
+519-1300-
+520:1301-              <View style={styles.section}>
+521-1302-                <Text style={styles.label}>目标浓度（%）</Text>
+522-1303-                <View style={styles.inputContainer}>
+523-1304-                  <TouchableOpacity 
+524-1305-                    style={styles.button} 
+525-1306-                    onPress={decreaseTargetConcentration}
+526-1307-                  >
+527-1308-                    <Text style={styles.buttonText}>-</Text>
+528-1309-                  </TouchableOpacity>
+529-1310-                  <TextInput
+530-1311-                    style={[styles.input, styles.numberInput]}
+531-1312-                    keyboardType="numeric"
+532-1313-                    value={String(targetConcentration)}
+533-1314-                    editable={false}
+534-1315-                  />
+535-1316-                  <TouchableOpacity 
+536-1317-                    style={styles.button} 
+537-1318-                    onPress={increaseTargetConcentration}
+538-1319-                  >
+539-1320-                    <Text style={styles.buttonText}>+</Text>
+540-1321-                  </TouchableOpacity>
+541-1322-                </View>
+542-1323-                <Text style={styles.note}>范围：1% - 20%</Text>
+543-1324-              </View>
+544-1325-
+545-1326-              <View style={styles.resultSection}>
+546-1327-                {isContinuousFlow ? (
+547-1328-                  <>
+548-1329-                    <Text style={styles.resultTitle}>计算结果</Text>
+549-1330-                    <View style={styles.resultItem}>
+550-1331-                      <Text style={styles.resultLabel}>每小时PAC用量：</Text>
+551-1332-                      <Text style={styles.resultValue}>{calculatePacAmount().toFixed(2)} kg/H</Text>
+552-1333-                    </View>
+553-1334-                    <Text style={styles.resultNote}>
+554-1335-                      每{waterVolume}L/H流量需投加{calculatePacAmount().toFixed(2)}kg/H PAC粉剂
+555-1336-                    </Text>
+556-1337-                    <Text style={styles.resultNote}>
+557-1338-                      （目标浓度{targetConcentration}%，有效含量{effectiveContent}%）
+558-1339-                    </Text>
+559-1340-
+560-1341-                    <View style={styles.saveSchemeContainer}>
+561-1342-                      <TextInput
+562-1343-                        style={[styles.schemeNameInput, { color: colors.text, borderColor: colors.border }]}
+563-1344-                        placeholder="输入方案名称以保存"
+564-1345-                        placeholderTextColor={isDarkMode ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'}
+565-1346-                        value={schemeName}
+566-1347-                        onChangeText={setSchemeName}
+567-1348-                      />
+568-1349-                      <TouchableOpacity
+569-1350-                        style={[styles.saveButton, { backgroundColor: colors.primary }]}
+570-1351-                        onPress={saveCurrentScheme}
+571-1352-                      >
+572-1353-                        <Text style={styles.saveButtonText}>保存</Text>
+573-1354-                      </TouchableOpacity>
+574-1355-                    </View>
+575-1356-                  </>
+576-1357-                ) : (
+577-1358-                  <>
+578-1359-                    <Text style={styles.resultTitle}>计算结果</Text>
+579-1360-                    <View style={styles.resultItem}>
+580-1361-                      <Text style={styles.resultLabel}>所需PAC用量：</Text>
+581-1362-                      <Text style={styles.resultValue}>{calculatePacAmount().toFixed(2)} kg</Text>
+582-1363-                    </View>
+583-1364-                    <Text style={styles.resultNote}>
+584-1365-                      每{waterVolume}L清水加{calculatePacAmount().toFixed(2)}kg PAC粉剂
+585-1366-                    </Text>
+586-1367-                    <Text style={styles.resultNote}>
+587-1368-                      （目标浓度{targetConcentration}%，有效含量{effectiveContent}%）
+588-1369-                    </Text>
+589-1370-
+590-1371-                    <View style={styles.saveSchemeContainer}>
+591-1372-                      <TextInput
+592-1373-                        style={[styles.schemeNameInput, { color: colors.text, borderColor: colors.border }]}
+593-1374-                        placeholder="输入方案名称以保存"
+594-1375-                        placeholderTextColor={isDarkMode ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'}
+595-1376-                        value={schemeName}
+596-1377-                        onChangeText={setSchemeName}
+597-1378-                      />
+598-1379-                      <TouchableOpacity
+599-1380-                        style={[styles.saveButton, { backgroundColor: colors.primary }]}
+600-1381-                        onPress={saveCurrentScheme}
+601-1382-                      >
+602-1383-                        <Text style={styles.saveButtonText}>保存</Text>
+603-1384-                      </TouchableOpacity>
+604-1385-                    </View>
+605-1386-                  </>
+606-1387-                )}
+607-1388-              </View>
+608-1389-            </>
+609-1390:          ) : calculatorType === 'PAM' ? (
+610-1391-            <>
+611:1392-              <View style={styles.section}>
+612-1393-                <View style={styles.configHeader}>
+613-1394-                  <Text style={styles.label}>PAM配置</Text>
+614-1395-                  <TouchableOpacity
+615-1396-                    style={styles.configButton}
+616-1397-                    onPress={() => setShowHistoryModal(true)}
+617-1398-                  >
+618-1399-                    <Text style={styles.configButtonText}>历史</Text>
+619-1400-                  </TouchableOpacity>
+620-1401-                </View>
+621-1402-
+622-1403-                <Text style={styles.label}>目标浓度（%）</Text>
+623-1404-                <View style={styles.inputContainer}>
+624-1405-                  <TouchableOpacity 
+625-1406-                    style={styles.button} 
+626-1407-                    onPress={decreaseConcentration}
+627-1408-                  >
+628-1409-                    <Text style={styles.buttonText}>-</Text>
+629-1410-                  </TouchableOpacity>
+630-1411-                  <TextInput
+631-1412-                    style={[styles.input, styles.numberInput]}
+632-1413-                    keyboardType="numeric"
+633-1414-                    value={String(concentration)}
+634-1415-                    editable={false}
+635-1416-                  />
+636-1417-                  <TouchableOpacity 
+637-1418-                    style={styles.button} 
+638-1419-                    onPress={increaseConcentration}
+639-1420-                  >
+640-1421-                    <Text style={styles.buttonText}>+</Text>
+641-1422-                  </TouchableOpacity>
+642-1423-                </View>
+643-1424-                <Text style={styles.note}>建议范围：0.1% - 0.5%</Text>
+644-1425-              </View>
+645-1426-
+646:1427-              <View style={styles.section}>
+647-1428-                <Text style={styles.label}>进水流量（L/H）</Text>
+648-1429-                <View style={styles.inputContainer}>
+649-1430-                  <TouchableOpacity 
+650-1431-                    style={styles.button} 
+651-1432-                    onPress={decreaseFlowRate}
+652-1433-                  >
+653-1434-                    <Text style={styles.buttonText}>-</Text>
+654-1435-                  </TouchableOpacity>
+655-1436-                  <TextInput
+656-1437-                    style={[styles.input, styles.numberInput]}
+657-1438-                    keyboardType="numeric"
+658-1439-                    value={String(flowRate)}
+659-1440-                    editable={false}
+660-1441-                  />
+661-1442-                  <TouchableOpacity 
+662-1443-                    style={styles.button} 
+663-1444-                    onPress={increaseFlowRate}
+664-1445-                  >
+665-1446-                    <Text style={styles.buttonText}>+</Text>
+666-1447-                  </TouchableOpacity>
+667-1448-                </View>
+668-1449-                <Text style={styles.warning}>最大流量限制：2500 L/H</Text>
+669-1450-              </View>
+670-1451-
+671:1452-              <View style={styles.section}>
+672-1453-                <Text style={styles.label}>PAM投加速度（g/min）</Text>
+673-1454-                <TextInput
+674-1455-                  style={styles.input}
+675-1456-                  keyboardType="numeric"
+676-1457-                  value={String(pamRate)}
+677-1458-                  editable={false}
+678-1459-                />
+679-1460-                <Text style={styles.warning}>安全阈值：≤500 g/min</Text>
+680-1461-              </View>
+681-1462-
+682:1463-              <View style={styles.section}>
+683-1464-                <Text style={styles.label}>计算公式</Text>
+684-1465-                <Text style={styles.note}>PAM投加速度 = (浓度 × 进水流量) / 6</Text>
+685-1466-                <Text style={styles.note}>进水流量 = (PAM投加速度 × 6) / 浓度</Text>
+686-1467-                <Text style={styles.note}>浓度 = (PAM投加速度 × 6) / 进水流量</Text>
+687-1468-
+688-1469-                <View style={styles.saveSchemeContainer}>
+689-1470-                  <TextInput
+690-1471-                    style={[styles.schemeNameInput, { color: colors.text, borderColor: colors.border }]}
+691-1472-                    placeholder="输入方案名称以保存"
+692-1473-                    placeholderTextColor={isDarkMode ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'}
+693-1474-                    value={schemeName}
+694-1475-                    onChangeText={setSchemeName}
+695-1476-                  />
+696-1477-                  <TouchableOpacity
+697-1478-                    style={[styles.saveButton, { backgroundColor: colors.primary }]}
+698-1479-                    onPress={saveCurrentScheme}
+699-1480-                  >
+700-1481-                    <Text style={styles.saveButtonText}>保存</Text>
+701-1482-                  </TouchableOpacity>
+702-1483-                </View>
+703-1484-              </View>
+704-1485-            </>
+705-1486-          ) : (
+706-1487-            renderDosingCalculator()
+707-1488-          )}
+708-1489-
+709-1490-          {renderConfigModal()}
+710-1491-          {renderHistoryModal()}
+711-1492-        </ScrollView>
+712-1493-      </KeyboardAvoidingView>
+713-1494-    </SafeAreaView>
+714-1495-  );
+715-1496-};
+716-1497-
+717-1498-export default SludgeDehydrationCalculatorScreen; 

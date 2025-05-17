@@ -21,6 +21,34 @@ function BoxScreen({ navigation }) {
       description: '上传文件',
       onPress: () => navigation.navigate('文件上传')
     },
+    {
+      id: 'pacCalculator',
+      title: "PAC计算器",
+      icon: 'calculator',
+      description: '计算PAC投加量',
+      onPress: () => navigation.navigate('PAC计算器')
+    },
+    {
+      id: 'pamCalculator',
+      title: "PAM计算器",
+      icon: 'calculator',
+      description: '计算PAM投加量',
+      onPress: () => navigation.navigate('PAM计算器')
+    },
+    {
+      id: 'dosingCalculator',
+      title: "药剂投加计算器",
+      icon: 'calculator',
+      description: '计算药剂投加量',
+      onPress: () => navigation.navigate('药剂投加计算器')
+    },
+    {
+      id: 'excessSludgeCalculator',
+      title: "剩余污泥计算器",
+      icon: 'calculator',
+      description: '计算剩余污泥量',
+      onPress: () => navigation.navigate('剩余污泥计算器')
+    }
   ];
 
   const renderMenuItem = (item) => (
