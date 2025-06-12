@@ -4,7 +4,7 @@
     "slug": "zziot20",
     "version": "1.5.3",
     "orientation": "portrait",
-    "icon": "./assets/logo5.png",
+    "icon": "./assets/zziot1.png",
     "userInterfaceStyle": "light",
     "assetBundlePatterns": [
       "**/*"
@@ -61,7 +61,7 @@
       "package": "com.zziot.app",
       "versionCode": 148,
       "adaptiveIcon": {
-        "foregroundImage": "./assets/logo5.png",
+        "foregroundImage": "./assets/zziot1.png",
         "backgroundColor": "#ffffff"
       },
       "permissions": [

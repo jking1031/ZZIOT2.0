@@ -14,13 +14,7 @@ function BoxScreen({ navigation }) {
       description: '计算碳源投加量',
       onPress: () => navigation.navigate('碳源计算')
     },
-    {
-      id: 'fileAnalysis',
-      title: "文件上传",
-      icon: 'cloud-upload',
-      description: '上传文件',
-      onPress: () => navigation.navigate('文件上传')
-    },
+
     {
       id: 'pacCalculator',
       title: "PAC计算器",

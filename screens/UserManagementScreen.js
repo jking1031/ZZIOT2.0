@@ -22,6 +22,8 @@ import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '@react-navigation/native';
 import axios from 'axios';
 import { Picker } from '@react-native-picker/picker';
+import apiService, { userApi, authApi } from '../api/apiService';
+import { loadApiConfig } from '../api/apiManager';
 
 // 角色定义
 const ROLES = {
@@ -163,17 +165,15 @@ const UserManagementScreen = () => {
       setLoading(true);
     }
     try {
-      const response = await axios.get('https://nodered.jzz77.cn:9003/api/users', {
-        timeout: 10000
-      });
+      const data = await userApi.getUsers();
       
-      if (response.data && Array.isArray(response.data)) {
-        console.log('获取到用户列表:', response.data.length);
-        setUsers(response.data);
+      if (data && Array.isArray(data)) {
+        console.log('获取到用户列表:', data.length);
+        setUsers(data);
         // 更新分组后的用户数据
-        groupUsersByDepartment(response.data);
+        groupUsersByDepartment(data);
       } else {
-        console.log('服务器返回的用户数据格式不正确:', response.data);
+        console.log('服务器返回的用户数据格式不正确:', data);
         Alert.alert('错误', '获取用户列表失败，请稍后再试');
       }
     } catch (error) {
@@ -204,17 +204,15 @@ const UserManagementScreen = () => {
       console.log('开始获取公司列表...');
       setLoading(true);
       
-      const response = await axios.get('https://nodered.jzz77.cn:9003/api/companies', {
-        timeout: 10000
-      });
+      const data = await userApi.getCompanies();
       
-      if (response.status === 200) {
-        if (Array.isArray(response.data)) {
-          console.log('成功获取公司列表:', response.data.length, '条记录');
-          console.log('原始公司数据示例:', JSON.stringify(response.data[0]));
+      if (data) {
+        if (Array.isArray(data)) {
+          console.log('成功获取公司列表:', data.length, '条记录');
+          console.log('原始公司数据示例:', JSON.stringify(data[0]));
           
           // 转换公司数据格式
-          const formattedCompanies = response.data.map(company => {
+          const formattedCompanies = data.map(company => {
             // 将 department1-10 字段转换为部门数组
             const departments = [];
             for (let i = 1; i <= 10; i++) {
@@ -241,12 +239,12 @@ const UserManagementScreen = () => {
           
           setCompanies(formattedCompanies);
         } else {
-          console.error('服务器返回的公司数据格式不正确:', response.data);
+          console.error('服务器返回的公司数据格式不正确:', data);
           Alert.alert('错误', '获取公司列表失败，数据格式不正确');
         }
       } else {
-        console.error('获取公司列表失败, 状态码:', response.status);
-        Alert.alert('错误', `获取公司列表失败，状态码: ${response.status}`);
+        console.error('获取公司列表失败');
+        Alert.alert('错误', '获取公司列表失败');
       }
     } catch (error) {
       console.error('获取公司列表失败:', error.message);
@@ -414,13 +412,11 @@ const UserManagementScreen = () => {
       setLoading(true);
       
       // 获取最新的公司列表
-      const response = await axios.get('https://nodered.jzz77.cn:9003/api/companies', {
-        timeout: 10000
-      });
+      const data = await userApi.getCompanies();
       
-      if (response.status === 200 && Array.isArray(response.data)) {
-        console.log('成功获取公司列表:', response.data.length, '条记录');
-        setCompanies(response.data);
+      if (data && Array.isArray(data)) {
+        console.log('成功获取公司列表:', data.length, '条记录');
+        setCompanies(data);
       } else {
         console.error('获取公司列表失败');
       }
@@ -454,7 +450,7 @@ const UserManagementScreen = () => {
         department_id: newUser.department_id
       }));
       
-      const response = await axios.post('https://zziot.jzz77.cn:9003/api/register', {
+      const data = await authApi.register({
         username: newUser.username,
         email: newUser.email,
         password: newUser.password,
@@ -463,14 +459,11 @@ const UserManagementScreen = () => {
         company_id: newUser.company_id,
         department: newUser.department,
         department_id: newUser.department_id
-      }, {
-        timeout: 10000
       });
 
-      console.log('注册响应状态:', response.status);
-      console.log('完整响应数据:', JSON.stringify(response.data));
+      console.log('完整响应数据:', JSON.stringify(data));
       
-      if (response.status === 201 || response.status === 200) {
+      if (data) {
         // 注册成功，但响应中没有用户ID
         console.log('注册成功，正在获取用户ID...');
         
@@ -516,15 +509,13 @@ const UserManagementScreen = () => {
       console.log('尝试查询用户ID，用户名:', username, '邮箱:', email);
       
       // 获取用户列表
-      const response = await axios.get('https://nodered.jzz77.cn:9003/api/users', {
-        timeout: 10000
-      });
+      const data = await userApi.getUsers();
       
-      if (response.data && Array.isArray(response.data)) {
+      if (data && Array.isArray(data)) {
         console.log('获取到用户列表，正在查找匹配用户...');
         
         // 查找匹配的用户
-        const user = response.data.find(user => 
+        const user = data.find(user => 
           user.username === username || user.email === email
         );
         
@@ -558,13 +549,9 @@ const UserManagementScreen = () => {
     setLoading(true);
     try {
       console.log('正在设置用户角色，用户ID:', addedUserId, '角色:', newUser.is_admin);
-      const response = await axios.put(
-        `https://nodered.jzz77.cn:9003/api/users/${addedUserId}`,
-        { is_admin: newUser.is_admin },
-        { timeout: 10000 }
-      );
+      const data = await userApi.updateUserRole(addedUserId, { is_admin: newUser.is_admin });
 
-      console.log('角色设置响应:', response.status, JSON.stringify(response.data));
+      console.log('角色设置响应:', JSON.stringify(data));
       Alert.alert('成功', '用户添加成功');
       
       // 重置表单并关闭模态框
@@ -617,18 +604,14 @@ const UserManagementScreen = () => {
             onPress: async () => {
               setLoading(true);
               try {
-                const response = await axios.delete(`https://nodered.jzz77.cn:9003/api/users/${userId}`);
+                await userApi.deleteUser(userId);
                 
-                if (response.status === 200) {
-                  // 删除成功，更新用户列表
-                  const updatedUsers = users.filter(user => user.id !== userId);
-                  setUsers(updatedUsers);
-                  // 更新分组
-                  groupUsersByDepartment(updatedUsers);
-                  Alert.alert('成功', '用户已删除');
-                } else {
-                  Alert.alert('错误', '删除用户失败，请稍后再试');
-                }
+                // 删除成功，更新用户列表
+                const updatedUsers = users.filter(user => user.id !== userId);
+                setUsers(updatedUsers);
+                // 更新分组
+                groupUsersByDepartment(updatedUsers);
+                Alert.alert('成功', '用户已删除');
               } catch (error) {
                 console.error('删除用户失败:', error);
                 Alert.alert('错误', '删除用户时出错，请检查网络连接');
@@ -678,9 +661,9 @@ const UserManagementScreen = () => {
       
       console.log('正在更新用户信息，用户ID:', selectedUser.id, '数据:', JSON.stringify(userData));
       
-      const response = await axios.put(`https://nodered.jzz77.cn:9003/api/users/${selectedUser.id}`, userData);
+      await userApi.updateUser(selectedUser.id, userData);
       
-      if (response.status === 200) {
+      // 更新成功
         // 更新本地用户列表
         const updatedUsers = users.map(user => 
           user.id === selectedUser.id ? { ...user, ...userData } : user
@@ -691,9 +674,6 @@ const UserManagementScreen = () => {
         
         setShowEditModal(false);
         Alert.alert('成功', '用户信息已更新');
-      } else {
-        Alert.alert('错误', '更新用户信息失败，请稍后再试');
-      }
     } catch (error) {
       console.error('更新用户信息失败:', error);
       Alert.alert('错误', '更新用户信息时出错，请检查网络连接');
@@ -723,13 +703,9 @@ const UserManagementScreen = () => {
     setLoading(true);
     try {
       console.log('正在设置用户角色，用户ID:', userToChangeRole.id, '角色ID:', roleId);
-      const response = await axios.put(
-        `https://nodered.jzz77.cn:9003/api/users/${userToChangeRole.id}/role`,
-        { is_admin: roleId },
-        { timeout: 10000 }
-      );
+      await userApi.updateUserRole(userToChangeRole.id, { is_admin: roleId });
       
-      if (response.status === 200) {
+      // 角色更新成功
         // 更新本地用户数据
         const updatedUsers = users.map(user => {
           if (user.id === userToChangeRole.id) {
@@ -746,9 +722,6 @@ const UserManagementScreen = () => {
         setUserToChangeRole(null);
         
         Alert.alert('成功', '用户角色已更新');
-      } else {
-        Alert.alert('错误', '更新用户角色失败，请稍后再试');
-      }
     } catch (error) {
       console.error('更新用户角色失败:', error);
       Alert.alert('错误', '更新用户角色失败，请检查网络连接');
@@ -1031,19 +1004,15 @@ const UserManagementScreen = () => {
       
       // 发送角色设置请求
       console.log('正在设置新用户角色，用户ID:', addedUserId, '角色:', newUser.is_admin);
-      const roleResponse = await axios.put(
-        `https://nodered.jzz77.cn:9003/api/users/${addedUserId}/role`,
-        { is_admin: newUser.is_admin }
-      );
+      await userApi.updateUserRole(addedUserId, { is_admin: newUser.is_admin });
       
-      if (roleResponse.status === 200) {
-        // 重新获取用户列表，确保有最新数据
-        const response = await axios.get('https://nodered.jzz77.cn:9003/api/users');
-        if (response.data && Array.isArray(response.data)) {
-          setUsers(response.data);
-          // 更新分组
-          groupUsersByDepartment(response.data);
-        }
+      // 角色设置成功，重新获取用户列表
+      const data = await userApi.getUsers();
+      if (data && Array.isArray(data)) {
+        setUsers(data);
+        // 更新分组
+        groupUsersByDepartment(data);
+      }
         
         // 完成添加流程
         setShowAddModal(false);
@@ -1062,9 +1031,6 @@ const UserManagementScreen = () => {
         });
         
         Alert.alert('成功', '用户添加完成，并成功设置角色权限');
-      } else {
-        Alert.alert('角色设置失败', '用户已创建，但角色设置失败，请稍后在用户列表中设置');
-      }
     } catch (error) {
       console.error('完成用户添加时出错:', error);
       Alert.alert(
@@ -1786,4 +1752,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default UserManagementScreen; 
+export default UserManagementScreen;

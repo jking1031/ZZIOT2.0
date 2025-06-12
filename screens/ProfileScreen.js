@@ -11,6 +11,8 @@ import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createCommonStyles, DesignTokens } from '../styles/StyleGuide';
+import { userApi, otaApi } from '../api/apiService';
 
 // 角色ID与角色信息的映射
 const roleMap = {
@@ -22,12 +24,14 @@ const roleMap = {
   6: { name: '污泥车间', description: '污泥处理相关功能的操作权限' },
   7: { name: '5000吨处理站', description: '处理站相关功能的操作权限' },
   8: { name: '附属设施', description: '附属设施相关功能的操作权限' },
-  9: { name: '备用权限', description: '未来扩展使用的备用权限组' },
+  9: { name: '访客', description: '只具备基本权限' },
 };
 
 const ProfileScreen = () => {
   const navigation = useNavigation();
   const { isDarkMode, toggleTheme, followSystem, toggleFollowSystem, colors } = useTheme();
+  const commonStyles = createCommonStyles(colors, isDarkMode);
+  const styles = createStyles(colors, isDarkMode);
   const [language, setLanguage] = useState('中文');
   const [showAvatarModal, setShowAvatarModal] = useState(false);
   const [showProfileEditModal, setShowProfileEditModal] = useState(false);
@@ -212,9 +216,7 @@ const ProfileScreen = () => {
       }
       
       console.log('开始更新用户信息，用户ID:', user.id);
-      const response = await axios.put(
-        `https://nodered.jzz77.cn:9003/api/users/${user.id}`,
-        {
+      const response = await userApi.updateUser(user.id, {
           username: editableUserInfo.username,
           department: editableUserInfo.department,
           phone: editableUserInfo.phone,
@@ -373,28 +375,29 @@ const ProfileScreen = () => {
   const fetchDownloadUrls = async () => {
     try {
       setLoadingUrls(true);
-      const response = await axios.get('https://nodered.jzz77.cn:9003/api/ota/url', { timeout: 10000 });
-      console.log('下载链接API响应:', response.data);
+      const response = await otaApi.getDownloadUrls();
+      console.log('下载链接API响应:', response);
       
-      // 检查API响应格式
-      const payload = response.data.payload || response.data;
-      
-      if (payload) {
-        console.log('下载链接数据:', payload);
+      // 检查API响应格式 - 直接使用response，因为apiService已经返回了data部分
+      if (response && typeof response === 'object') {
+        console.log('下载链接数据:', response);
         
         // 保存下载链接和版本状态
-        setDownloadUrls(payload);
-        setHasNewVersion(payload.start === true);
+        setDownloadUrls(response);
+        setHasNewVersion(response.start === true);
         
-        return payload;
+        return response;
       } else {
-        console.error('API响应格式异常:', response.data);
+        console.error('API响应格式异常:', response);
         // 使用 console.error 记录错误但不向用户显示弹窗，避免频繁打扰
         return null;
       }
     } catch (error) {
       console.error('获取下载链接出错:', error);
-      // 仅在控制台记录错误，不显示弹窗给用户，避免频繁打扰
+      // 只在开发环境显示错误弹窗
+      if (__DEV__) {
+        Alert.alert('获取失败', '无法获取应用更新信息，请稍后重试。');
+      }
       return null;
     } finally {
       setLoadingUrls(false);
@@ -809,7 +812,7 @@ const ProfileScreen = () => {
             <View style={styles.inputContainer}>
               <Text style={[styles.inputLabel, { color: colors.text }]}>姓名</Text>
               <TextInput
-                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
                 value={editableUserInfo.username}
                 onChangeText={(text) => setEditableUserInfo(prev => ({ ...prev, username: text }))}
                 placeholder="请输入姓名"
@@ -821,7 +824,7 @@ const ProfileScreen = () => {
             <View style={styles.inputContainer}>
               <Text style={[styles.inputLabel, { color: colors.text }]}>单位</Text>
               <TextInput
-                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
                 value={editableUserInfo.company}
                 onChangeText={(text) => setEditableUserInfo(prev => ({ ...prev, company: text }))}
                 placeholder="请输入单位"
@@ -833,7 +836,7 @@ const ProfileScreen = () => {
             <View style={styles.inputContainer}>
               <Text style={[styles.inputLabel, { color: colors.text }]}>部门</Text>
               <TextInput
-                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
                 value={editableUserInfo.department}
                 onChangeText={(text) => setEditableUserInfo(prev => ({ ...prev, department: text }))}
                 placeholder="请输入部门"
@@ -845,7 +848,7 @@ const ProfileScreen = () => {
             <View style={styles.inputContainer}>
               <Text style={[styles.inputLabel, { color: colors.text }]}>联系方式</Text>
               <TextInput
-                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
                 value={editableUserInfo.phone}
                 onChangeText={(text) => setEditableUserInfo(prev => ({ ...prev, phone: text }))}
                 placeholder="请输入联系方式"
@@ -973,275 +976,341 @@ const ProfileScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 15,
-  },
-  card: {
-    borderRadius: 10,
-    padding: 15,
-    marginBottom: 15,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  avatarContainer: {
-    alignItems: 'center',
-    marginBottom: 20,
-    position: 'relative',
-  },
-  avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-  },
-  editButton: {
-    position: 'absolute',
-    right: -20,
-    top: 0,
-    backgroundColor: '#f0f0f0',
-    padding: 8,
-    borderRadius: 20,
-  },
-  infoContainer: {
-    gap: 10,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 5,
-  },
-  label: {
-    fontSize: 16,
-  },
-  value: {
-    fontSize: 16,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 15,
-  },
-  settingRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 10,
-  },
-  settingLabel: {
-    fontSize: 16,
-  },
-  languageButton: {
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  languageText: {
-    fontSize: 14,
-  },
-  modalContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  modalContent: {
-    width: '80%',
-    padding: 20,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 20,
-  },
-  previewAvatar: {
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    marginBottom: 20,
-  },
-  avatarButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-    marginBottom: 20,
-  },
-  generateButton: {
-    backgroundColor: '#2196F3',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
-    width: '48%',
-  },
-  generateButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  pickImageButton: {
-    backgroundColor: '#4CAF50',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
-    width: '48%',
-  },
-  pickImageButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-  },
-  modalButton: {
-    paddingHorizontal: 30,
-    paddingVertical: 10,
-    borderRadius: 20,
-    width: '45%',
-  },
-  cancelButton: {
-    backgroundColor: '#666',
-  },
-  saveButton: {
-    backgroundColor: '#4CAF50',
-  },
-  modalButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  logoutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 15,
-    borderRadius: 10,
-    marginTop: 20,
-  },
-  logoutIcon: {
-    marginRight: 10,
-  },
-  logoutText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  versionText: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  // 角色卡片样式
-  roleItem: {
-    marginBottom: 12,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.05)',
-  },
-  roleHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  roleIcon: {
-    marginRight: 8,
-  },
-  roleName: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  roleDescription: {
-    fontSize: 14,
-    marginLeft: 28,
-  },
-  loadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 10,
-  },
-  loadingText: {
-    marginLeft: 10,
-    fontSize: 14,
-  },
-  noRolesText: {
-    textAlign: 'center',
-    padding: 12,
-    fontSize: 14,
-  },
-  roleHeaderContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  refreshButton: {
-    padding: 5,
-  },
-  updateContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginVertical: 10,
-    paddingHorizontal: 5,
-  },
-  updateButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 15,
-    borderRadius: 20,
-    backgroundColor: '#FF6700',
-  },
-  downloadButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 15,
-    borderRadius: 20,
-    backgroundColor: '#4CAF50',
-  },
-  updateButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  changeAvatarButton: {
-    alignSelf: 'center',
-    marginTop: 15,
-    padding: 8,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 15,
-  },
-  changeAvatarText: {
-    color: '#666',
-    fontSize: 14,
-  },
-  inputContainer: {
-    width: '100%',
-    marginBottom: 15,
-  },
-  inputLabel: {
-    fontSize: 16,
-    marginBottom: 5,
-  },
-  input: {
-    width: '100%',
-    height: 40,
-    borderWidth: 1,
-    borderRadius: 5,
-    paddingHorizontal: 10,
-    fontSize: 16,
-  },
-});
+// 创建样式函数，使用设计令牌
+const createStyles = (colors, isDarkMode) => {
+  const { spacing, typography, borderRadius, shadows } = DesignTokens;
+  
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+      padding: spacing.lg,
+    },
+    card: {
+      backgroundColor: colors.card,
+      borderRadius: borderRadius.xl,
+      padding: spacing.xl,
+      marginBottom: spacing.lg,
+      ...shadows.lg,
+      borderWidth: isDarkMode ? 1 : 0,
+      borderColor: isDarkMode ? colors.border : 'transparent',
+    },
+    avatarContainer: {
+      alignItems: 'center',
+      marginBottom: spacing.xl,
+      position: 'relative',
+    },
+    avatar: {
+      width: 120,
+      height: 120,
+      borderRadius: 60,
+    },
+    editButton: {
+      position: 'absolute',
+      right: -spacing.md,
+      top: 0,
+      backgroundColor: isDarkMode ? colors.surface : colors.backgroundSecondary,
+      padding: spacing.sm,
+      borderRadius: borderRadius.full,
+      ...shadows.sm,
+    },
+    infoContainer: {
+      gap: spacing.md,
+    },
+    infoRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingVertical: spacing.lg,
+      paddingHorizontal: spacing.sm,
+      marginBottom: spacing.xs,
+      backgroundColor: isDarkMode ? colors.surface : colors.backgroundSecondary,
+      borderRadius: borderRadius.md,
+      ...shadows.xs,
+    },
+    label: {
+      fontSize: typography.sizes.md,
+      color: colors.textSecondary,
+      fontWeight: typography.weights.medium,
+    },
+    value: {
+      fontSize: typography.sizes.md,
+      color: colors.text,
+      fontWeight: typography.weights.regular,
+      flex: 1,
+      textAlign: 'right',
+    },
+    cardTitle: {
+      fontSize: typography.sizes.xl,
+      fontWeight: typography.weights.bold,
+      marginBottom: spacing.lg,
+      color: colors.text,
+    },
+    settingRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingVertical: spacing.lg,
+      paddingHorizontal: spacing.sm,
+      marginBottom: spacing.xs,
+      backgroundColor: isDarkMode ? colors.surface : colors.backgroundSecondary,
+      borderRadius: borderRadius.md,
+      ...shadows.xs,
+    },
+    settingLabel: {
+      fontSize: typography.sizes.md,
+      color: colors.text,
+      fontWeight: typography.weights.medium,
+    },
+    languageButton: {
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.sm,
+      borderRadius: borderRadius.full,
+      backgroundColor: colors.primary,
+      ...shadows.sm,
+    },
+    languageText: {
+      fontSize: typography.sizes.sm,
+      color: colors.onPrimary,
+      fontWeight: typography.weights.medium,
+    },
+    modalContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: 'rgba(0, 0, 0, 0.6)',
+      padding: spacing.lg,
+    },
+    modalContent: {
+      width: '100%',
+      maxWidth: 400,
+      backgroundColor: colors.card,
+      padding: spacing.xxl,
+      borderRadius: borderRadius.xxl,
+      alignItems: 'center',
+      ...shadows.xl,
+    },
+    modalTitle: {
+      fontSize: typography.sizes.xxl,
+      fontWeight: typography.weights.bold,
+      marginBottom: spacing.xl,
+      color: colors.text,
+      textAlign: 'center',
+    },
+    previewAvatar: {
+      width: 160,
+      height: 160,
+      borderRadius: 80,
+      marginBottom: spacing.xl,
+      borderWidth: 4,
+      borderColor: colors.primary,
+    },
+    avatarButtons: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      width: '100%',
+      marginBottom: spacing.xl,
+      gap: spacing.md,
+    },
+    generateButton: {
+      backgroundColor: colors.primary,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.md,
+      borderRadius: borderRadius.lg,
+      flex: 1,
+      ...shadows.md,
+    },
+    generateButtonText: {
+      color: colors.onPrimary,
+      fontSize: typography.sizes.md,
+      fontWeight: typography.weights.semibold,
+      textAlign: 'center',
+    },
+    pickImageButton: {
+      backgroundColor: colors.success,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.md,
+      borderRadius: borderRadius.lg,
+      flex: 1,
+      ...shadows.md,
+    },
+    pickImageButtonText: {
+      color: colors.onSuccess,
+      fontSize: typography.sizes.md,
+      fontWeight: typography.weights.semibold,
+      textAlign: 'center',
+    },
+    modalButtons: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      width: '100%',
+      gap: spacing.md,
+    },
+    modalButton: {
+      paddingHorizontal: spacing.xl,
+      paddingVertical: spacing.md,
+      borderRadius: borderRadius.lg,
+      flex: 1,
+      ...shadows.md,
+    },
+    cancelButton: {
+      backgroundColor: colors.textSecondary,
+    },
+    saveButton: {
+      backgroundColor: colors.success,
+    },
+    modalButtonText: {
+      color: colors.onPrimary,
+      fontSize: typography.sizes.md,
+      fontWeight: typography.weights.semibold,
+      textAlign: 'center',
+    },
+    logoutButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: spacing.lg,
+      borderRadius: borderRadius.lg,
+      marginTop: spacing.xl,
+      backgroundColor: colors.error,
+      ...shadows.md,
+    },
+    logoutIcon: {
+      marginRight: spacing.sm,
+    },
+    logoutText: {
+      color: colors.onError,
+      fontSize: typography.sizes.md,
+      fontWeight: typography.weights.bold,
+    },
+    versionText: {
+      fontSize: typography.sizes.md,
+      fontWeight: typography.weights.medium,
+      color: colors.text,
+    },
+    roleItem: {
+      marginBottom: spacing.md,
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.sm,
+      backgroundColor: isDarkMode ? colors.surface : colors.backgroundSecondary,
+      borderRadius: borderRadius.md,
+      ...shadows.xs,
+    },
+    roleHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: spacing.xs,
+    },
+    roleIcon: {
+      marginRight: spacing.sm,
+    },
+    roleName: {
+      fontSize: typography.sizes.md,
+      fontWeight: typography.weights.semibold,
+      color: colors.text,
+    },
+    roleDescription: {
+      fontSize: typography.sizes.sm,
+      marginLeft: spacing.xl,
+      color: colors.textSecondary,
+    },
+    loadingContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: spacing.md,
+    },
+    loadingText: {
+      marginLeft: spacing.sm,
+      fontSize: typography.sizes.sm,
+      color: colors.textSecondary,
+    },
+    noRolesText: {
+      textAlign: 'center',
+      padding: spacing.md,
+      fontSize: typography.sizes.sm,
+      color: colors.textSecondary,
+    },
+    roleHeaderContainer: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: spacing.lg,
+    },
+    refreshButton: {
+      padding: spacing.sm,
+      borderRadius: borderRadius.full,
+      backgroundColor: isDarkMode ? colors.surface : colors.backgroundSecondary,
+    },
+    updateContainer: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginVertical: spacing.md,
+      paddingHorizontal: spacing.sm,
+      gap: spacing.sm,
+    },
+    updateButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.lg,
+      borderRadius: borderRadius.lg,
+      backgroundColor: colors.warning,
+      ...shadows.sm,
+      flex: 1,
+    },
+    downloadButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.lg,
+      borderRadius: borderRadius.lg,
+      backgroundColor: colors.success,
+      ...shadows.sm,
+      flex: 1,
+    },
+    updateButtonText: {
+      color: colors.onWarning,
+      fontSize: typography.sizes.sm,
+      fontWeight: typography.weights.bold,
+    },
+    changeAvatarButton: {
+      alignSelf: 'center',
+      marginTop: spacing.lg,
+      padding: spacing.sm,
+      backgroundColor: isDarkMode ? colors.surface : colors.backgroundSecondary,
+      borderRadius: borderRadius.lg,
+      ...shadows.sm,
+    },
+    changeAvatarText: {
+      color: colors.textSecondary,
+      fontSize: typography.sizes.sm,
+      fontWeight: typography.weights.medium,
+    },
+    inputContainer: {
+      width: '100%',
+      marginBottom: spacing.lg,
+    },
+    inputLabel: {
+      fontSize: typography.sizes.md,
+      marginBottom: spacing.sm,
+      color: colors.text,
+      fontWeight: typography.weights.medium,
+    },
+    input: {
+      width: '100%',
+      height: 48,
+      borderRadius: borderRadius.lg,
+      paddingHorizontal: spacing.md,
+      fontSize: typography.sizes.md,
+      backgroundColor: isDarkMode ? colors.surface : colors.backgroundSecondary,
+      color: colors.text,
+      ...shadows.xs,
+    },
+  });
+};
 
 export default ProfileScreen;

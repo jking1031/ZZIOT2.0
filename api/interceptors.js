@@ -29,16 +29,17 @@ api.interceptors.request.use(
           // 尝试解码令牌payload部分
           const base64Decode = (str) => {
             try {
-              return atob(str);
-            } catch (e) {
-              try {
-                // 处理可能的URL安全base64编码
-                const base64 = str.replace(/-/g, '+').replace(/_/g, '/');
-                return atob(base64);
-              } catch (error) {
-                console.error('解码令牌失败:', error);
-                return null;
-              }
+              // 处理可能的URL安全base64编码
+              const base64 = str.replace(/-/g, '+').replace(/_/g, '/');
+              // 添加必要的填充
+              const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
+              // 使用正确的UTF-8解码
+              const decoded = atob(padded);
+              // 将字节序列转换为UTF-8字符串
+              return decodeURIComponent(escape(decoded));
+            } catch (error) {
+              console.error('解码令牌失败:', error);
+              return null;
             }
           };
           
@@ -143,7 +144,7 @@ async function refreshToken() {
     
     try {
       // 方法1：调用后端刷新令牌接口
-      const response = await axios.post(`${BASE_URL}/api/refresh-token`, {
+      const response = await axios.post(`${BASE_URL}/api/auth/refresh-token/`, {
         userId: user.id,
         email: user.email
       }, {
@@ -305,4 +306,4 @@ export const apiService = {
   }
 };
 
-export default api; 
+export default api;

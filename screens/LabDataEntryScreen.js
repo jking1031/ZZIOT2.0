@@ -1,22 +1,26 @@
-import React, { useState } from 'react';
-import RNPickerSelect from 'react-native-picker-select';
-import { Ionicons } from '@expo/vector-icons';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  TextInput,
   TouchableOpacity,
   Alert,
+  TextInput,
+  Platform,
+  StatusBar,
+  ActivityIndicator,
+  Dimensions,
   Modal,
   KeyboardAvoidingView,
   Keyboard,
-  TouchableWithoutFeedback,
-  Platform,
-  Animated
+  TouchableWithoutFeedback
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
+import { dataApi } from '../api/apiService';
 
 const LabDataEntryScreen = () => {
   const { colors } = useTheme();
@@ -200,29 +204,16 @@ const LabDataEntryScreen = () => {
         testDate: sample.time
       }));
 
-      const response = await fetch('https://zziot.jzz77.cn:9003/submit', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            dbName: 'nodered',
-            tableName: 'huayan_data',
-            samples: formattedSamples
-        })
+      const data = await dataApi.submitLabData({
+        dbName: 'nodered',
+        tableName: 'huayan_data',
+        samples: formattedSamples
       });
 
-      let data;
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        data = await response.json();
-      } else {
-        const text = await response.text();
-        throw new Error('服务器返回了非JSON格式的响应：' + text);
-      }
-
-      if (!response.ok) {
-        throw new Error(data.error || '提交失败');
+      console.log('Submit response:', data);
+      
+      if (!data || data.error) {
+        throw new Error(data?.error || '提交失败');
       }
 
       setLoadingModalVisible(false);

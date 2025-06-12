@@ -45,7 +45,7 @@
 - `POST /api/tickets` - 创建新工单
 - `PATCH /api/tickets/:id/status` - 更新工单状态
 - `POST /api/tickets/:id/comments` - 添加工单评论
-- `PATCH /api/tickets/:id/assign` - 分配工单
+- `PUT /api/tickets/:id/assign` - 分配工单
 
 ## 数据模型
 

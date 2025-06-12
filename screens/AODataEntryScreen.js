@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
+import { dataApi } from '../api/apiService';
 
 const AODataEntryScreen = () => {
   const { isDarkMode } = useTheme();
@@ -45,26 +46,16 @@ const AODataEntryScreen = () => {
       }
 
       // 提交数据到服务器
-      const response = await fetch('https://zziot.jzz77.cn:9003/submit_ao', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      const response = await dataApi.submitAOData({
           tableName: 'nodered.ao_data',
           aoData: aoData
-        })
-      });
+        });
 
-      const result = await response.json();
+      const result = response;
 
-      if (response.ok) {
-        Alert.alert('成功', result.message);
-        // 清空表单数据
-        setFormData({});
-      } else {
-        throw new Error(result.message || '提交失败');
-      }
+      Alert.alert('成功', result.message || '数据提交成功');
+      // 清空表单数据
+      setFormData({});
     } catch (error) {
       console.error('提交AO池数据失败:', error);
       Alert.alert('错误', '提交数据失败，请稍后重试');

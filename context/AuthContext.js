@@ -1,9 +1,11 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
+import { authApi } from '../api/apiService';
 import { CACHE_KEYS } from '../api/config';
 import { saveAuthToken, getAuthToken, clearAuthToken } from '../api/storage';
 import { EventRegister } from '../utils/EventEmitter';
+import { getApiUrl } from '../api/apiManager';
 
 const AuthContext = createContext();
 
@@ -58,19 +60,24 @@ export const AuthProvider = ({ children }) => {
       typ: 'JWT'
     };
     
-    // 确保管理员信息的处理
-    const adminValue = userData.is_admin !== undefined ? userData.is_admin : 
-                       (userData.isAdmin !== undefined ? userData.isAdmin : 
-                       (userData.admin !== undefined ? userData.admin : 0));
+    // 处理角色信息，优先使用新的角色结构
+    const roleId = userData.role_id || userData.is_admin || 9;
+    const isAdmin = userData.isAdmin || false;
+    const isDeptAdmin = userData.isDeptAdmin || false;
+    const roleName = userData.role_name || '普通用户';
     
-    console.log('创建令牌，管理员状态:', adminValue, '类型:', typeof adminValue);
+    console.log('创建令牌，角色ID:', roleId, '角色名称:', roleName, '管理员:', isAdmin);
     
-    // 创建令牌的payload部分，包含用户信息和过期时间
+    // 创建令牌的payload部分，包含完整的用户和角色信息
     const payload = {
       id: userData.id,
       username: userData.username || userData.name,
       email: userData.email,
-      is_admin: adminValue, // 使用处理过的管理员值
+      is_admin: roleId, // 保持向后兼容
+      role_id: roleId,
+      role_name: roleName,
+      isAdmin: isAdmin,
+      isDeptAdmin: isDeptAdmin,
       // 设置过期时间为12小时后
       exp: Math.floor(Date.now() / 1000) + (12 * 60 * 60),
       iat: Math.floor(Date.now() / 1000)
@@ -189,7 +196,7 @@ export const AuthProvider = ({ children }) => {
     try {
       // 方法1：尝试调用后端刷新令牌API
       try {
-        const response = await axios.post('https://zziot.jzz77.cn:9003/api/refresh-token', {
+        const response = await axios.post(getApiUrl('AUTH', 'REFRESH_TOKEN'), {
           userId: user.id,
           email: user.email
         });
@@ -218,74 +225,54 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // 添加一个函数，用于推断用户是否具有管理员权限
-  const inferAdminStatus = (userInfo) => {
-    // 由于后端不直接返回is_admin字段，我们需要根据其他信息来推断
-    
-    // 优先检查数据库中的is_admin字段
-    if (userInfo.is_admin === 1 || userInfo.is_admin === '1') {
-      console.log('数据库is_admin字段值为1，用户是管理员');
-      return true;
-    }
-    
-    // 方法1: 检查用户是否有特定的角色名称，如'admin'、'administrator'等
-    if (userInfo.roles && Array.isArray(userInfo.roles)) {
-      const adminRoleNames = ['admin', 'administrator', '管理员'];
-      const hasAdminRole = userInfo.roles.some(role => 
-        typeof role === 'string' 
-          ? adminRoleNames.includes(role.toLowerCase())
-          : role.name && adminRoleNames.includes(role.name.toLowerCase())
-      );
-      if (hasAdminRole) {
-        console.log('用户具有管理员角色');
-        return true;
+  // 简化的角色判断函数
+  const determineUserRole = (userInfo) => {
+    // 优先使用数据库的is_admin字段
+    if (userInfo.is_admin !== undefined && userInfo.is_admin !== null) {
+      const adminValue = parseInt(userInfo.is_admin, 10);
+      if (!isNaN(adminValue) && adminValue >= 0 && adminValue <= 9) {
+        console.log('使用数据库is_admin字段:', adminValue);
+        return adminValue;
       }
     }
     
-    // 方法2: 检查用户是否有特定的权限标志
-    if (userInfo.permissions && (
-        userInfo.permissions.includes('admin') || 
-        userInfo.permissions.includes('manage_users')
-      )) {
-      console.log('用户具有管理员权限');
-      return true;
+    // 如果is_admin无效，检查其他字段
+    if (userInfo.role_id !== undefined) {
+      const roleId = parseInt(userInfo.role_id, 10);
+      if (!isNaN(roleId) && roleId >= 0 && roleId <= 9) {
+        console.log('使用role_id字段:', roleId);
+        return roleId;
+      }
     }
     
-    // 方法3: 检查用户是否具有特定的用户类型或级别
-    if (userInfo.user_type === 'admin' || userInfo.level === 'admin') {
-      console.log('用户类型为管理员');
-      return true;
+    // 检查用户名和邮箱，推断管理员身份
+    if (userInfo.username && userInfo.username.toLowerCase().includes('admin')) {
+      console.log('用户名包含admin，设置为系统管理员');
+      return 1;
     }
     
-    // 检查type字段 - 可能是后端用来标识用户类型的字段
-    if (userInfo.type === 'admin' || userInfo.type === 1 || userInfo.type === '1') {
-      console.log('用户type字段表明是管理员');
-      return true;
+    if (userInfo.email && userInfo.email.toLowerCase().includes('admin')) {
+      console.log('邮箱包含admin，设置为系统管理员');
+      return 1;
     }
     
-    // 方法4: 检查是否有特定的管理员标志位(不同的命名可能)
-    if (userInfo.isAdmin === true || userInfo.is_admin === true || 
-        userInfo.admin === true || userInfo.administrator === true) {
-      console.log('用户有管理员标志');
-      return true;
-    }
-    
-    // 检查权限/身份等级相关字段
-    if (userInfo.accessLevel === 'admin' || userInfo.access_level === 'admin' ||
-        userInfo.accessLevel === 1 || userInfo.access_level === 1) {
-      console.log('用户访问等级表明是管理员');
-      return true;
-    }
-    
-    // 检查其他可能表示管理员身份的字段组合
-    if (userInfo.status === 'admin' || userInfo.role === 'admin') {
-      console.log('用户status/role字段表明是管理员');
-      return true;
-    }
-    
-    // 如果所有方法都没有确定用户是管理员，则默认为非管理员
-    console.log('未能识别为管理员，设置为普通用户');
-    return false;
+    // 默认为访客角色
+    console.log('无法确定角色，设置为访客');
+    return 9;
+  };
+  
+  // 角色权限映射
+  const ROLE_MAPPING = {
+    0: { name: '普通用户', isAdmin: false, isDeptAdmin: false },
+    1: { name: '系统管理员', isAdmin: true, isDeptAdmin: false },
+    2: { name: '部门管理员', isAdmin: false, isDeptAdmin: true },
+    3: { name: '技术员', isAdmin: false, isDeptAdmin: false },
+    4: { name: '主管', isAdmin: false, isDeptAdmin: false },
+    5: { name: '质检员', isAdmin: false, isDeptAdmin: false },
+    6: { name: '维修员', isAdmin: false, isDeptAdmin: false },
+    7: { name: '调度员', isAdmin: false, isDeptAdmin: false },
+    8: { name: '安全员', isAdmin: false, isDeptAdmin: false },
+    9: { name: '访客', isAdmin: false, isDeptAdmin: false }
   };
 
   const login = async (userData) => {
@@ -313,103 +300,80 @@ export const AuthProvider = ({ children }) => {
       setUser(initialUserData);
       setLoading(false);
       
-      // 关键修改：先查询管理员状态，再创建令牌
-      console.log('登录成功，立即查询管理员状态');
+      // 简化的角色处理逻辑
+      console.log('登录成功，处理用户角色信息');
       
-      try {
-        // 先向后端请求用户的管理员状态
-        // 添加用户ID到请求头，确保后端可以识别用户
-        const response = await axios.post('https://nodered.jzz77.cn:9003/api/check-admin-status', 
-          { 
-            userId: userData.id,
-            username: userData.username,
-            email: userData.email 
-          },
-          {
-            headers: { 
-              'Content-Type': 'application/json',
-              'user-id': userData.id 
+      // 确定用户角色
+      const userRole = determineUserRole(userData);
+      const roleInfo = ROLE_MAPPING[userRole] || ROLE_MAPPING[9];
+      
+      console.log('用户角色确定为:', userRole, '-', roleInfo.name);
+      
+      // 更新用户数据，包含角色信息
+      const completeUserData = {
+        ...userData,
+        is_admin: userRole,
+        role_id: userRole,
+        role_name: roleInfo.name,
+        isAdmin: roleInfo.isAdmin,
+        isDeptAdmin: roleInfo.isDeptAdmin
+      };
+      
+      // 如果后端返回的is_admin字段不完整，尝试查询管理员状态
+      if (userData.is_admin === undefined || userData.is_admin === null) {
+        try {
+          console.log('is_admin字段缺失，查询后端管理员状态');
+          const response = await authApi.checkAdminStatus({ 
+              userId: userData.id
+            },
+            {
+              headers: { 
+                'Content-Type': 'application/json',
+                'user-id': userData.id 
+              }
+            }
+          );
+          
+          console.log('管理员状态查询响应:', JSON.stringify(response.data));
+          
+          // 处理后端返回的管理员状态
+          if (response.data && response.data.data) {
+            const adminValue = response.data.data.is_admin;
+            if (adminValue !== undefined) {
+              completeUserData.is_admin = adminValue;
+              completeUserData.role_id = adminValue;
+              const updatedRoleInfo = ROLE_MAPPING[adminValue] || ROLE_MAPPING[9];
+              completeUserData.role_name = updatedRoleInfo.name;
+              completeUserData.isAdmin = updatedRoleInfo.isAdmin;
+              completeUserData.isDeptAdmin = updatedRoleInfo.isDeptAdmin;
+              console.log('更新用户角色为:', adminValue, '-', updatedRoleInfo.name);
             }
           }
-        );
-        
-        console.log('管理员状态查询响应:', JSON.stringify(response.data));
-        
-        // 解析管理员状态
-        let adminValue = 0;
-        let adminStatus = false;
-        
-        // 处理后端返回的数组格式 [{"is_admin":1}]
-        if (Array.isArray(response.data) && response.data.length > 0) {
-          const firstItem = response.data[0];
-          
-          if (firstItem.is_admin !== undefined) {
-            adminValue = firstItem.is_admin;
-            adminStatus = adminValue === true || adminValue === 1 || adminValue === '1';
-            console.log('获取到管理员状态:', adminValue, '解析为:', adminStatus);
-          }
-        } 
-        // 处理其他格式的响应
-        else if (response.data && typeof response.data === 'object') {
-          if (response.data.is_admin !== undefined) {
-            adminValue = response.data.is_admin;
-            adminStatus = adminValue === true || adminValue === 1 || adminValue === '1';
-            console.log('获取到管理员状态:', adminValue, '解析为:', adminStatus);
-          }
+        } catch (adminCheckError) {
+          console.log('查询管理员状态失败，使用推断的角色:', adminCheckError.message);
         }
-        
-        // 更新用户信息，包含管理员状态
-        const enhancedUserData = {
-          ...userData,
-          is_admin: adminStatus,
-          is_admin_value: adminValue
-        };
-        
-        // 更新状态和存储
-        await AsyncStorage.setItem('user', JSON.stringify(enhancedUserData));
-        setUser(enhancedUserData);
-        setIsAdmin(adminStatus);
-        
-        // 然后创建令牌 - 此时令牌会包含管理员状态
-        console.log('创建令牌，包含管理员状态:', adminValue);
-        
-        if (userData.token) {
-          // 如果后端返回了令牌，直接保存
-          await saveAuthToken(userData.token);
-          console.log('后端提供的令牌已保存');
+      }
+      
+      // 更新状态和存储
+      await AsyncStorage.setItem('user', JSON.stringify(completeUserData));
+      setUser(completeUserData);
+      setIsAdmin(completeUserData.isAdmin);
+      
+      // 创建并保存令牌
+      console.log('创建令牌，包含完整角色信息');
+      
+      if (userData.token) {
+        // 如果后端返回了令牌，直接保存
+        await saveAuthToken(userData.token);
+        console.log('后端提供的令牌已保存');
+      } else {
+        // 创建本地令牌，包含完整的用户角色信息
+        const token = createToken(completeUserData);
+        if (token) {
+          await saveAuthToken(token);
+          console.log('已创建并保存包含角色信息的本地令牌');
         } else {
-          // 否则创建本地令牌，此时包含管理员信息
-          const token = createToken(enhancedUserData);
-          if (token) {
-            await saveAuthToken(token);
-            console.log('已创建并保存包含管理员状态的本地令牌');
-          } else {
-            console.error('创建令牌失败');
-          }
-        }
-        
-      } catch (adminCheckError) {
-        console.error('查询管理员状态失败:', adminCheckError);
-        
-        // 查询失败时，使用默认值创建令牌
-        const fallbackUserData = {
-          ...userData,
-          is_admin: userData.is_admin || false,
-          is_admin_value: userData.is_admin || 0
-        };
-        
-        // 使用回退数据创建令牌
-        if (userData.token) {
-          await saveAuthToken(userData.token);
-          console.log('后端提供的令牌已保存');
-        } else {
-          const token = createToken(fallbackUserData);
-          if (token) {
-            await saveAuthToken(token);
-            console.log('已创建并保存含默认管理员状态的令牌');
-          } else {
-            console.error('创建令牌失败');
-          }
+          console.error('创建令牌失败');
         }
       }
       
@@ -618,7 +582,7 @@ export const AuthProvider = ({ children }) => {
       if (!isLocalUpdate) {
         // 发送更新请求到服务器
         try {
-          const response = await fetch(`https://zziot.jzz77.cn:9003/api/users/${user.id}`, {
+          const response = await fetch(getApiUrl('USERS', 'UPDATE', user.id), {
             method: 'PUT',
             headers: {
               'Content-Type': 'application/json',
@@ -671,8 +635,7 @@ export const AuthProvider = ({ children }) => {
         console.log('调用API检查管理员权限');
         
         // 使用专用API向后端发送当前用户信息
-        const response = await axios.post('https://nodered.jzz77.cn:9003/api/check-admin-status', 
-          { 
+        const response = await authApi.checkAdminStatus({ 
             userId: userInfo.id,
             username: userInfo.username,
             email: userInfo.email 
@@ -763,7 +726,7 @@ export const AuthProvider = ({ children }) => {
   const getAllUsers = async () => {
     try {
       const userData = JSON.parse(await AsyncStorage.getItem('user'));
-      const response = await axios.get('https://zziot.jzz77.cn:9003/api/users', {
+      const response = await axios.get(getApiUrl('USERS', 'LIST'), {
         headers: { 'user-id': userData.id }
       });
       
@@ -780,7 +743,7 @@ export const AuthProvider = ({ children }) => {
   const getAllRoles = async () => {
     try {
       const userData = JSON.parse(await AsyncStorage.getItem('user'));
-      const response = await axios.get('https://zziot.jzz77.cn:9003/api/roles', {
+      const response = await axios.get(getApiUrl('USERS', 'ROLES'), {
         headers: { 'user-id': userData.id }
       });
       
@@ -933,7 +896,7 @@ export const AuthProvider = ({ children }) => {
   const assignRole = async (userId, roleId) => {
     try {
       const userData = JSON.parse(await AsyncStorage.getItem('user'));
-      const response = await axios.post('https://zziot.jzz77.cn:9003/api/users/assign-role', 
+      const response = await axios.post(getApiUrl('USERS', 'ASSIGN_ROLE'), 
         { userId, roleId },
         { headers: { 'user-id': userData.id } }
       );
@@ -948,7 +911,7 @@ export const AuthProvider = ({ children }) => {
   const removeRole = async (userId, roleId) => {
     try {
       const userData = JSON.parse(await AsyncStorage.getItem('user'));
-      const response = await axios.post('https://zziot.jzz77.cn:9003/api/users/remove-role', 
+      const response = await axios.post(getApiUrl('USERS', 'REMOVE_ROLE'), 
         { userId, roleId },
         { headers: { 'user-id': userData.id } }
       );
@@ -963,7 +926,7 @@ export const AuthProvider = ({ children }) => {
   const toggleAdmin = async (userId, isAdmin) => {
     try {
       const userData = JSON.parse(await AsyncStorage.getItem('user'));
-      const response = await axios.post('https://zziot.jzz77.cn:9003/api/users/toggle-admin', 
+      const response = await axios.post(getApiUrl('USERS', 'TOGGLE_ADMIN'), 
         { userId, isAdmin },
         { headers: { 'user-id': userData.id } }
       );
@@ -978,7 +941,7 @@ export const AuthProvider = ({ children }) => {
   const toggleUserStatus = async (userId, status) => {
     try {
       const userData = JSON.parse(await AsyncStorage.getItem('user'));
-      const response = await axios.post('https://zziot.jzz77.cn:9003/api/users/toggle-status', 
+      const response = await axios.post(getApiUrl('USERS', 'TOGGLE_STATUS'), 
         { userId, status },
         { headers: { 'user-id': userData.id } }
       );

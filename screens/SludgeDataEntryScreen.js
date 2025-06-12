@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import { useNavigation } from '@react-navigation/native';
+import { dataApi } from '../api/apiService';
 
 const SludgeDataEntryScreen = () => {
   const { colors } = useTheme();
@@ -42,11 +43,42 @@ const SludgeDataEntryScreen = () => {
     
     try {
       console.log(`正在检查日期 ${date} 是否存在数据...`);
-      const apiUrl = `https://nodered.jzz77.cn:9003/api/wunidata/query?dbName=nodered&tableName=sludge_data&date=${date}`;
-      console.log('API请求URL:', apiUrl);
+      const response = await dataApi.queryWuniData({
+        dbName: 'nodered',
+        tableName: 'sludge_data',
+        date: date
+      });
       
-      const response = await fetch(apiUrl, {
-        method: 'GET',
+      const data = response;
+      console.log('查询结果:', data);
+      
+      if (data && data.length > 0 && data[0].count > 0) {
+        Alert.alert(
+          '数据已存在',
+          `日期 ${date} 的数据已存在，请选择其他日期或修改现有数据。`,
+          [{ text: '确定', style: 'default' }]
+        );
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('检查重复数据时出错:', error);
+      Alert.alert('错误', '检查数据时出现错误，请重试');
+      return false;
+    } finally {
+      setLoadingModalVisible(false);
+      setIsCheckingDuplicate(false);
+    }
+  };
+  
+  // 提交数据函数
+  const submitData = async () => {
+    try {
+      setLoadingModalVisible(true);
+      
+      const response = await dataApi.submitWuniData({
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         }
@@ -162,8 +194,7 @@ const SludgeDataEntryScreen = () => {
                 console.log('准备提交污泥数据:', JSON.stringify(sludgeData));
 
                 // 使用正确的API端点和提交格式
-                const apiUrl = 'https://nodered.jzz77.cn:9003/api/wuni';
-                console.log('提交至API:', apiUrl);
+                console.log('提交污泥数据至API');
                 
                 // 需要将数据拆分为多条记录，每个AO池一条记录
                 const submitData = {
@@ -220,51 +251,36 @@ const SludgeDataEntryScreen = () => {
                 
                 console.log('提交数据格式:', JSON.stringify(submitData));
 
-                const response = await fetch(apiUrl, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                  },
-                  body: JSON.stringify(submitData),
-                });
+                const response = await dataApi.submitWuniData(submitData);
 
-                console.log('API响应状态:', response.status, response.statusText);
-                
-                // 检查响应的内容类型
-                const contentType = response.headers.get('content-type');
-                console.log('响应内容类型:', contentType);
-                
-                let result;
-                try {
-                  // 如果是JSON则解析
-                  if (contentType && contentType.includes('application/json')) {
-                    result = await response.json();
-                  } else {
-                    // 如果不是JSON，则获取文本内容查看
-                    const textResponse = await response.text();
-                    console.log('非JSON响应内容:', textResponse.substring(0, 200) + '...');
-                    throw new Error('服务器返回了非JSON格式的响应');
-                  }
-                } catch (parseError) {
-                  console.error('解析响应失败:', parseError);
-                  throw new Error('无法解析服务器响应: ' + parseError.message);
+                console.log('提交响应:', JSON.stringify(response));
+
+                // 检查提交是否成功
+                if (response && (response.success === true || response.message === 'success' || response.status === 'success')) {
+                  // 提交成功，清除表单数据
+                  resetForm();
+                  Alert.alert(
+                    '提交成功', 
+                    '成功插入 1 条污泥数据', 
+                    [{ text: '确定', onPress: () => navigation.goBack() }]
+                  );
+                } else {
+                  // 提交失败，保留表单数据供用户继续编辑
+                  const errorMessage = response?.message || response?.error || '提交失败，请检查数据后重试';
+                  Alert.alert(
+                    '提交失败', 
+                    errorMessage,
+                    [{ text: '确定', style: 'default' }]
+                  );
                 }
-
-                console.log('提交响应:', JSON.stringify(result));
-
-                if (!response.ok) {
-                  // 处理后端返回的错误，包括重复数据错误
-                  Alert.alert('提交失败', result.message || '提交失败，请稍后重试');
-                  return;
-                }
-
-                resetForm();
-                Alert.alert('提交成功', '污泥数据已提交成功', [
-                  { text: '确定', onPress: () => navigation.goBack() }
-                ]);
               } catch (error) {
                 console.error('提交数据失败:', error);
-                Alert.alert('提交失败', error.message || '网络错误，请稍后重试');
+                // 网络错误或其他异常，保留表单数据供用户继续编辑
+                Alert.alert(
+                  '提交失败', 
+                  error.message || '网络错误，请检查网络连接后重试',
+                  [{ text: '确定', style: 'default' }]
+                );
               } finally {
                 setIsSubmitting(false);
                 setLoadingModalVisible(false);
@@ -587,4 +603,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default SludgeDataEntryScreen; 
+export default SludgeDataEntryScreen;

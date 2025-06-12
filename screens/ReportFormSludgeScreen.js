@@ -18,9 +18,10 @@ import { useTheme } from '../context/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import axios from 'axios';
+import { reportApi, dataApi } from '../api/apiService';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
-import { uploadFileToWebDAV } from './FileUploadScreen';
+import { createClient } from 'webdav';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const ReportFormSludgeScreen = ({ route }) => {
@@ -33,6 +34,7 @@ const ReportFormSludgeScreen = ({ route }) => {
   const [isLoadingSludgeData, setIsLoadingSludgeData] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [images, setImages] = useState([]);
+  const [webdavClient, setWebdavClient] = useState(null);
 
   // 获取当天的日期
   const getTodayDate = () => {
@@ -81,7 +83,39 @@ const ReportFormSludgeScreen = ({ route }) => {
     
     loadCurrentUser();
     loadLatestSludgeData();
+    initializeWebDAVClient();
   }, []);
+
+  // 初始化WebDAV客户端
+  const initializeWebDAVClient = async () => {
+    try {
+      const savedConfig = await AsyncStorage.getItem('davConnectionConfig');
+      let config;
+      
+      if (savedConfig) {
+        config = JSON.parse(savedConfig);
+      } else {
+        // 使用默认配置
+        config = {
+          url: 'http://112.28.56.235:11000/remote.php/dav/files/dsws001',
+          username: 'dsws001',
+          password: 'dsws2276918'
+        };
+      }
+      
+      const client = createClient(config.url, {
+        username: config.username,
+        password: config.password
+      });
+      
+      // 测试连接
+      await client.getDirectoryContents('/');
+      setWebdavClient(client);
+      console.log('WebDAV客户端初始化成功');
+    } catch (error) {
+      console.error('WebDAV客户端初始化失败:', error);
+    }
+  };
 
   // 监听日期变化，当日期变化时重新加载污泥数据
   useEffect(() => {
@@ -94,7 +128,7 @@ const ReportFormSludgeScreen = ({ route }) => {
     try {
       // 构建查询参数，使用表单中的日期
       const date = formData.date;
-      const response = await axios.get(`https://nodered.jzz77.cn:9003/api/wuni/latest?date=${date}`);
+      const response = await dataApi.getWuniLatest({ date: date });
       
       if (response.data && response.data.success) {
         const sludgeData = response.data.data;
@@ -135,9 +169,13 @@ const ReportFormSludgeScreen = ({ route }) => {
     
     setIsCheckingReport(true);
     try {
-      const response = await axios.get(`https://nodered.jzz77.cn:9003/api/ReportsSludge/exists?date=${formData.date}&operator=${formData.operator}`);
+      const response = await reportApi.checkReportSludgeExists({
+        date: formData.date,
+        operator: formData.operator
+      });
       
-      if (response.data && response.data.exists) {
+      // 后端直接返回 {"exists": true/false} 格式
+      if (response && response.exists) {
         // 格式化日期为"X月X日"的形式
         const dateParts = formData.date.split('-');
         const month = parseInt(dateParts[1]);
@@ -264,10 +302,11 @@ const ReportFormSludgeScreen = ({ route }) => {
       };
 
       // 提交到服务器
-      const response = await axios.post('https://nodered.jzz77.cn:9003/api/ReportsSludge', processedData);
+      const response = await reportApi.createReportSludge(processedData);
       
-      if (response.status === 201 || response.status === 200) {
-        Alert.alert('成功', '报告已提交');
+      // 后端使用UPSERT机制，成功返回数据即表示操作成功（新增或更新）
+      if (response && response.message) {
+        Alert.alert('成功', response.message || '报告已提交');
         // 只在成功时清空图片和表单数据
         setImages([]);
         setFormData({
@@ -291,7 +330,7 @@ const ReportFormSludgeScreen = ({ route }) => {
         // 重置日期编辑状态
         setAllowDateEdit(false);
       } else {
-        throw new Error('提交失败');
+        throw new Error('提交失败：服务器响应异常');
       }
     } catch (error) {
       console.error('提交失败:', error);
@@ -382,24 +421,68 @@ const ReportFormSludgeScreen = ({ route }) => {
   };
 
   const uploadImages = async (reportId) => {
+    if (images.length === 0) return [];
+    
+    if (!webdavClient) {
+      console.error('WebDAV客户端未初始化');
+      throw new Error('WebDAV客户端未初始化，请稍后重试');
+    }
+    
+    console.log('=== 污泥车间日报图片WebDAV上传调试信息 ===');
+    console.log('图片数量:', images.length);
+    console.log('报告ID:', reportId);
+    console.log('目标文件夹:', '/report/report_sludge');
+    
     try {
+      // 确保目标文件夹存在
+      try {
+        await webdavClient.createDirectory('/report', { recursive: true });
+        await webdavClient.createDirectory('/report/report_sludge', { recursive: true });
+        console.log('目标文件夹已确保存在');
+      } catch (dirError) {
+        console.log('文件夹可能已存在，继续上传:', dirError.message);
+      }
+      
       const uploadPromises = images.map(async (uri, index) => {
         const timestamp = Date.now();
         const imageFileName = `SLUDGE_${reportId}_IMAGE_${index + 1}_${timestamp}.jpg`;
         
-        const file = {
-          uri,
-          name: imageFileName,
-          type: 'image/jpeg'
-        };
+        console.log(`开始上传第${index + 1}张图片:`);
+        console.log('- 文件名:', imageFileName);
+        console.log('- 文件URI:', uri);
+        console.log('- 目标路径:', `/report/report_sludge/${imageFileName}`);
         
-        return await uploadFileToWebDAV(file, 'reports', reportId);
+        try {
+          // 读取图片文件内容
+          const fileContent = await FileSystem.readAsStringAsync(uri, {
+            encoding: FileSystem.EncodingType.Base64
+          });
+          
+          // 构建WebDAV上传路径
+          const uploadPath = `/report/report_sludge/${imageFileName}`;
+          
+          // 使用WebDAV客户端上传文件
+          await webdavClient.putFileContents(uploadPath, fileContent, {
+            format: 'binary'
+          });
+          
+          console.log(`第${index + 1}张图片WebDAV上传成功:`, uploadPath);
+          
+          // 返回文件的WebDAV访问路径
+          return uploadPath;
+        } catch (uploadError) {
+          console.error(`第${index + 1}张图片WebDAV上传失败:`, uploadError);
+          throw uploadError;
+        }
       });
   
       const imageUrls = await Promise.all(uploadPromises);
+      console.log('所有图片WebDAV上传完成:', imageUrls);
       return imageUrls;
     } catch (error) {
-      console.error('上传图片失败:', error);
+      console.error('=== 图片WebDAV上传批量失败 ===');
+      console.error('错误信息:', error.message);
+      console.error('错误堆栈:', error.stack);
       throw error;
     }
   };

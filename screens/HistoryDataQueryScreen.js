@@ -18,6 +18,7 @@ import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { dataApi } from '../api/apiService';
 
 const HistoryDataQueryScreen = () => {
   const { isDarkMode, colors } = useTheme();
@@ -163,8 +164,6 @@ const HistoryDataQueryScreen = () => {
       setLoading(true);
       setLoadingStartTime(Date.now());
       
-      const apiEndpoint = 'https://zziot.jzz77.cn:9003/query';
-      
       const requestBody = {
         dbName: 'nodered',
         tableName: selectedTable,
@@ -175,22 +174,9 @@ const HistoryDataQueryScreen = () => {
       
       console.log('Query params:', JSON.stringify(requestBody));
       
-      const response = await fetch(apiEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!response.ok) {
-        console.error('Error response:', response.status, response.statusText);
-        const text = await response.text();
-        console.error('Error details:', text);
-        throw new Error(`Network response was not ok: ${response.status}`);
-      }
-
-      const data = await response.json();
+      const data = await dataApi.historyQuery(requestBody);
+      
+      console.log('API Response:', data);
       console.log('Query response (length):', data.length);
       if (data.length > 0) {
         console.log('First record:', JSON.stringify(data[0]));

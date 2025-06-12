@@ -4,6 +4,7 @@ import { useTheme } from '../context/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import axios from 'axios';
+import { reportApi } from '../api/apiService';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { uploadFileToWebDAV } from './FileUploadScreen';
@@ -52,7 +53,7 @@ const ReportFormPumpStationScreen = ({ route, navigation }) => {
     const fetchPumpStations = async () => {
       setLoading(true);
       try {
-        const response = await axios.get('https://nodered.jzz77.cn:9003/api/pumpstations');
+        const response = await reportApi.getPumpStations();
         if (response.data && Array.isArray(response.data)) {
           setPumpStations(response.data);
         } else {
@@ -95,11 +96,14 @@ const ReportFormPumpStationScreen = ({ route, navigation }) => {
   // 检查是否已存在报告
   const checkExistingReport = async (date, operator, station) => {
     try {
-      const response = await axios.get(
-        `https://nodered.jzz77.cn:9003/api/pumpreports?report_date=${date}&operator=${operator}&station_name=${station}`
-      );
+      const response = await reportApi.getPumpReports({
+        report_date: date,
+        operator: operator,
+        station_name: station
+      });
       
-      if (response.data && response.data.length > 0 && response.data[0].count > 0) {
+      // 后端直接返回 {"exists": true/false} 格式
+      if (response && response.exists) {
         // 已存在报告
         Alert.alert(
           '重复提交',
@@ -340,31 +344,32 @@ const ReportFormPumpStationScreen = ({ route, navigation }) => {
       }
 
       // 创建报告
-      const reportResponse = await axios.post(
-        'https://nodered.jzz77.cn:9003/api/pumpreports',
-        {
-          // id由数据库自增，不需要前端传送
-          report_date: formData.report_date,
-          operator: formData.operator,
-          station_name: formData.station_name,
-          pump_running_status: formData.pump_running_status,
-          pump_status: formData.pump_status,
-          electrical_status: formData.electrical_status,
-          pump_tank_status: formData.pump_tank_status,
-          abnormal_situations: formData.abnormal_situations,
-          other_notes: formData.other_notes,
-          report_id: reportId,
-          imagesurl: imagesUrlValue
-        }
-      );
+      const reportResponse = await reportApi.createPumpReport({
+        // id由数据库自增，不需要前端传送
+        report_date: formData.report_date,
+        operator: formData.operator,
+        station_name: formData.station_name,
+        pump_running_status: formData.pump_running_status,
+        pump_status: formData.pump_status,
+        electrical_status: formData.electrical_status,
+        pump_tank_status: formData.pump_tank_status,
+        abnormal_situations: formData.abnormal_situations,
+        other_notes: formData.other_notes,
+        report_id: reportId,
+        imagesurl: imagesUrlValue
+      });
 
-      if (reportResponse.data) {
-        Alert.alert('提交成功', '泵站巡查报告提交成功！', [
+      // 后端使用UPSERT机制，成功返回数据即表示操作成功（新增或更新）
+      if (reportResponse && (reportResponse.message || reportResponse.data)) {
+        const successMessage = reportResponse.message || '泵站巡查报告提交成功！';
+        Alert.alert('提交成功', successMessage, [
           {
             text: '确定',
             onPress: () => navigation.goBack()
           }
         ]);
+      } else {
+        throw new Error('提交失败：服务器响应异常');
       }
     } catch (error) {
       console.error('提交报告时出错:', error);

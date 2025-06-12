@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../context/ThemeContext';
 import axios from 'axios';
 import { Ionicons } from '@expo/vector-icons';
+import { messageApi } from '../api/apiService';
 
 const MessageScreen = () => {
   const { colors } = useTheme();
@@ -70,9 +71,7 @@ const MessageScreen = () => {
 
   const fetchMessages = async () => {
     try {
-      const response = await axios.get('https://nodered.jzz77.cn:9003/api/messages', {
-        timeout: 5000
-      });
+      const response = await messageApi.getMessages();
       
       if (response.data && Array.isArray(response.data)) {
         setMessages(prevMessages => {

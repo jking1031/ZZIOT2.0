@@ -9,6 +9,7 @@ import axios from 'axios';
 import { uploadFileToWebDAV, getFileList } from './FileUploadScreen';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
+import { getApiUrl, getBaseUrl } from '../api/apiManager';
 
 // 修改文件名生成逻辑，添加用户信息
 const generateFileName = (originalName, userId = '', username = '') => {
@@ -292,7 +293,7 @@ const FileUploadTestScreen = () => {
       const userId = user?.id || '';
       const username = user?.username || '';
       const reportId = userId ? `${userId}_${Math.random().toString(36).substring(7)}` : Math.random().toString(36).substring(7);
-      const uploadUrl = `https://zziot.jzz77.cn:9003/api/upload/${FOLDER_PATH}`;
+      const uploadUrl = getApiUrl('FILES', 'UPLOAD', FOLDER_PATH);
 
       // 使用新的文件名生成函数
       const filename = generateFileName(file.name, userId, username);
@@ -334,7 +335,7 @@ const FileUploadTestScreen = () => {
       });
 
       if (response.status === 200 || response.status === 201) {
-        return response.data.fileUrl || `https://node red.jzz77.cn:9003/files/${FOLDER_PATH}/${filename}`;
+        return response.data.fileUrl || `${getBaseUrl('NODERED')}/files/${FOLDER_PATH}/${filename}`;
       } else {
         throw new Error(`上传文件 ${file.name} 失败`);
       }
@@ -386,9 +387,9 @@ const FileUploadTestScreen = () => {
       
       // 确保使用正确的URL
       let fileUrl = item.url;
-      if (!fileUrl.startsWith('https://zziot.jzz77.cn:9003')) {
-        // 替换URL为正确的localhost地址
-        fileUrl = fileUrl.replace(/^http:\/\/[^/]+/i, 'https://zziot.jzz77.cn:9003');
+      if (!fileUrl.startsWith(getBaseUrl('NODERED'))) {
+        // 替换URL为正确的地址
+        fileUrl = fileUrl.replace(/^http:\/\/[^/]+/i, getBaseUrl('NODERED'));
       }
       
       // 对于图片文件，显示大图预览

@@ -19,6 +19,7 @@ import { useTheme } from '../context/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import axios from 'axios';
+import { reportApi } from '../api/apiService';
 import { getFileList } from './FileUploadScreen';
 import * as FileSystem from 'expo-file-system';
 import * as Print from 'expo-print';
@@ -68,17 +69,37 @@ const DynamicReportsScreen = () => {
     try {
       setLoadingReportTypes(true);
       
-      const response = await axios.get('https://nodered.jzz77.cn:9003/api/reportStyles/get');
+      const response = await reportApi.getReportStyles();
+      console.log('获取报告类型响应:', response);
       
-      if (response.data && Array.isArray(response.data)) {
-        setReportTypes(response.data);
-        // 如果有数据，设置第一个类型为默认选中
-        if (response.data.length > 0) {
-          setSelectedReportType(response.data[0].value);
+      // 处理后端响应，检查多种可能的数据结构
+      let reportTypesData = null;
+      if (Array.isArray(response)) {
+        reportTypesData = response;
+      } else if (response && Array.isArray(response.data)) {
+        reportTypesData = response.data;
+      } else if (response && response.message && Array.isArray(response.message)) {
+        reportTypesData = response.message;
+      } else if (response && response.result && Array.isArray(response.result)) {
+        reportTypesData = response.result;
+      } else if (response && typeof response === 'object') {
+        // 如果response是对象，尝试找到数组字段
+        const possibleArrayFields = ['styles', 'reportStyles', 'types', 'reportTypes', 'list', 'items'];
+        for (const field of possibleArrayFields) {
+          if (response[field] && Array.isArray(response[field])) {
+            reportTypesData = response[field];
+            break;
+          }
         }
+      }
+      
+      if (reportTypesData && reportTypesData.length > 0) {
+        setReportTypes(reportTypesData);
+        // 如果有数据，设置第一个类型为默认选中
+        setSelectedReportType(reportTypesData[0].value);
       } else {
-        console.error('获取报告类型失败: 返回数据格式不正确', response.data);
-        Alert.alert('错误', '获取报告类型失败，请稍后重试');
+        console.error('获取报告类型失败: 返回数据格式不正确', response);
+        Alert.alert('错误', '获取报告类型失败，数据格式不正确');
       }
     } catch (error) {
       console.error('获取报告类型失败:', error);
@@ -98,17 +119,26 @@ const DynamicReportsScreen = () => {
     try {
       setLoadingFields(true);
       
-      const response = await axios.get('https://nodered.jzz77.cn:9003/api/reportTypes/get', {
-        params: {
-          reportType: reportType
-        }
-      });
+      const response = await reportApi.getReportTypes({ reportType: reportType });
+      console.log('获取报告字段响应:', response);
       
-      if (response.data && response.data.groups) {
-        setReportFields(response.data);
+      // 处理多种可能的响应数据结构
+      let fieldsData = null;
+      if (response && response.groups) {
+        fieldsData = response;
+      } else if (response && response.data && response.data.groups) {
+        fieldsData = response.data;
+      } else if (response && response.result && response.result.groups) {
+        fieldsData = response.result;
+      } else if (response && response.message && response.message.groups) {
+        fieldsData = response.message;
+      }
+      
+      if (fieldsData && fieldsData.groups) {
+        setReportFields(fieldsData);
       } else {
-        console.error('获取报告字段失败: 返回数据格式不正确', response.data);
-        Alert.alert('错误', '获取报告字段失败，请稍后重试');
+        console.error('获取报告字段失败: 返回数据格式不正确', response);
+        Alert.alert('错误', '获取报告字段失败，数据格式不正确');
       }
     } catch (error) {
       console.error('获取报告字段失败:', error);
@@ -227,16 +257,30 @@ const DynamicReportsScreen = () => {
       const adjustedEndDate = new Date(endDate.getTime() + 8 * 60 * 60 * 1000);
       
       // 使用动态查询API
-      const response = await axios.get('https://nodered.jzz77.cn:9003/api/reports/dynamicQuery', {
-        params: {
+      const response = await reportApi.dynamicQuery({
           reportType: selectedReportType,
           startDate: adjustedStartDate.toLocaleDateString('zh-CN'),
           endDate: adjustedEndDate.toLocaleDateString('zh-CN')
-        }
       });
+      
+      console.log('动态查询响应:', response);
+
+      // 处理响应数据，支持多种数据结构
+      let reportsData = [];
+      if (Array.isArray(response)) {
+        reportsData = response;
+      } else if (response && Array.isArray(response.data)) {
+        reportsData = response.data;
+      } else if (response && Array.isArray(response.result)) {
+        reportsData = response.result;
+      } else if (response && Array.isArray(response.message)) {
+        reportsData = response.message;
+      } else if (response && Array.isArray(response.reports)) {
+        reportsData = response.reports;
+      }
 
       // 处理图片URL
-      const processedReports = response.data.map(report => ({
+      const processedReports = reportsData.map(report => ({
         ...report,
         images: report.imagesurl ? report.imagesurl.split(',').filter(url => url) : []
       }));
@@ -1416,4 +1460,4 @@ const DynamicReportsScreen = () => {
   );
 };
 
-export default DynamicReportsScreen; 
+export default DynamicReportsScreen;

@@ -10,6 +10,7 @@ import {
   Alert
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
+import { calculationApi } from '../api/apiService';
 
 const CarbonCalcScreen = () => {
   const { isDarkMode } = useTheme();
@@ -33,14 +34,7 @@ const CarbonCalcScreen = () => {
       setError('');
       setResult('');
       
-      const response = await fetch('https://zziot.jzz77.cn:9003/api/calculateCarbon', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(formData)
-      });
+      const response = await calculationApi.calculateCarbon(formData);
 
       if (!response.ok) {
         throw new Error(`服务器响应错误: ${response.status}`);

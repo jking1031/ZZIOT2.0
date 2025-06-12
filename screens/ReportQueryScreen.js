@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import axios from 'axios';
+import { reportApi } from '../api/apiService';
 import { getFileList } from './FileUploadScreen';  // 添加导入
 import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system';
@@ -149,31 +150,29 @@ const ReportQueryScreen = () => {
       const adjustedStartDate = new Date(startDate.getTime() + 8 * 60 * 60 * 1000);
       const adjustedEndDate = new Date(endDate.getTime() + 8 * 60 * 60 * 1000);
       
-      // 根据选择的站点类型确定API URL
-      let apiUrl;
-      switch(selectedSite) {
-        case 'gt':
-          apiUrl = 'https://nodered.jzz77.cn:9003/api/reports/query';
-          break;
-        case '5000':
-          apiUrl = 'https://nodered.jzz77.cn:9003/api/reports5000/query';
-          break;
-        case 'sludge':
-          apiUrl = 'https://nodered.jzz77.cn:9003/api/ReportsSludge/query';
-          break;
-        default:
-          apiUrl = 'https://nodered.jzz77.cn:9003/api/reports/query';
-      }
-      
-      const response = await axios.get(apiUrl, {
-        params: {
+      // 根据选择的站点类型确定API方法
+      let response;
+      const queryParams = {
           startDate: adjustedStartDate.toLocaleDateString('zh-CN'),
           endDate: adjustedEndDate.toLocaleDateString('zh-CN')
-        }
-      });
+      };
+      
+      switch(selectedSite) {
+        case 'gt':
+          response = await reportApi.getReports(queryParams);
+          break;
+        case '5000':
+          response = await reportApi.getReports5000(queryParams);
+          break;
+        case 'sludge':
+          response = await reportApi.getReportsSludge(queryParams);
+          break;
+        default:
+          response = await reportApi.getReports(queryParams);
+      }
 
       // 处理图片URL
-      const processedReports = response.data.map(report => ({
+      const processedReports = response.map(report => ({
         ...report,
         images: report.imagesurl ? report.imagesurl.split(',').filter(url => url) : []
       }));

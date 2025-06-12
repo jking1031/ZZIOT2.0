@@ -1,5 +1,11 @@
-// API基础URL
-export const BASE_URL = 'https://nodered.jzz77.cn:9003';
+// 兼容性配置 - 保持向后兼容
+// 推荐使用新的 apiManager.js 进行API管理
+
+// 导入新的API管理系统
+import { API_BASE_URLS, getApiUrl } from './apiManager';
+
+// API基础URL (兼容性保留)
+export const BASE_URL = API_BASE_URLS.NODERED?.url || 'https://nodered.jzz77.cn:9003';
 
 // API请求超时时间 (毫秒)
 export const REQUEST_TIMEOUT = 10000;
@@ -19,22 +25,22 @@ export const API_RESPONSE_CODES = {
 export const CACHE_KEYS = {
   TOKEN: 'auth_token',
   USER_INFO: 'user_info',
-  TICKETS: 'cached_tickets',
-  TICKET_DETAIL: 'ticket_detail_'
+  // 工单系统缓存键已删除
+  API_CONFIG: 'api_config',
+  API_TEST_RESULTS: 'api_test_results'
 };
 
-// API端点
+// API端点 (兼容性保留，推荐使用 apiManager.js)
 export const API_ENDPOINTS = {
+  // 工单相关API已删除
+};
 
-  
-  // 工单相关
-  TICKETS: '/api/tickets',
-  TICKET_BY_ID: (id) => `/api/tickets/${id}`,
-  TICKET_STATUS: (id) => `/api/tickets/${id}/status`,
-  TICKET_COMMENTS: (id) => `/api/tickets/${id}/comments`,
-  TICKET_ASSIGN: (id) => `/api/tickets/${id}/assign`,
-  TICKET_FILTERS: '/api/tickets/filters',
-  TICKET_STATS: '/api/tickets/stats',
+// 新的API URL获取方法 (推荐使用)
+// 工单API URL生成函数已删除
+
+// 获取不同后端的基础URL
+export const getBackendUrl = (backend = 'NODERED') => {
+  return API_BASE_URLS[backend]?.url || API_BASE_URLS.NODERED?.url || 'https://nodered.jzz77.cn:9003';
 }; 
 
 // HTTP请求的简单验证中间件
@@ -69,4 +75,4 @@ function verifyToken(req, res, next) {
     } catch (error) {
         return res.status(401).json({ error: true, message: '令牌解析失败' });
     }
-} 
+}

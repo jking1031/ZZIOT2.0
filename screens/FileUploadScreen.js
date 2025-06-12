@@ -5,18 +5,32 @@ import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import axios from 'axios';
+import { getApiUrl, getBaseUrl } from '../api/apiManager';
+
+// 处理用户名中的中文字符
+const processUsername = (username) => {
+  if (!username) return '';
+  // 检测是否包含中文字符
+  const hasChinese = /[\u4e00-\u9fff]/.test(username);
+  if (hasChinese) {
+    // 如果包含中文，使用时间戳替代
+    return `USER_${Date.now()}`;
+  }
+  return username;
+};
 
 // 修改文件名生成逻辑，添加用户信息
 const generateFileName = (originalName, reportId = '', userId = '', username = '', folder = 'default') => {
   const timestamp = Date.now();
   const extension = originalName.split('.').pop().toLowerCase();
-  const userInfo = userId ? `USER_${userId}_${username}_` : '';
+  
+  // 如果用户名包含中文字符，使用处理后的用户名
+  const processedUsername = username ? processUsername(username) : '';
+  const userInfo = userId ? `USER_${userId}_${processedUsername}_` : '';
   
   // 根据不同的文件夹使用不同的前缀
   let prefix = 'FILE';
-  if (folder === 'tickets') {
-    prefix = 'TICKET';
-  } else if (folder === 'reports' || folder === 'reports_gt' || folder === 'reports_5000') {
+  if (folder === 'reports' || folder === 'reports_gt' || folder === 'reports_5000') {
     prefix = 'REPORT';
   } else if (folder === 'laboratory') {
     prefix = 'LAB';
@@ -34,10 +48,21 @@ const generateFileName = (originalName, reportId = '', userId = '', username = '
 
 // 导出文件上传工具函数
 export const uploadFileToWebDAV = async (file, folder = 'default', reportId = '', userId = '', username = '') => {
+  console.log('=== uploadFileToWebDAV 调试信息开始 ===');
+  console.log('输入参数:');
+  console.log('- file:', file);
+  console.log('- folder:', folder);
+  console.log('- reportId:', reportId);
+  console.log('- userId:', userId);
+  console.log('- username:', username);
+  
   try {
     const filename = generateFileName(file.name, reportId, userId, username, folder);
+    console.log('生成的文件名:', filename);
+    
     // 直接上传到服务器指定目录
-    const uploadUrl = `https://zziot.jzz77.cn:9003/api/upload/${folder}`;
+    const uploadUrl = getApiUrl('FILES', 'UPLOAD', folder);
+    console.log('构建的上传URL:', uploadUrl);
     
     // 创建FormData对象
     const formData = new FormData();
@@ -94,6 +119,16 @@ export const uploadFileToWebDAV = async (file, folder = 'default', reportId = ''
     formData.append('is_image', isImage ? '1' : '0');
     formData.append('username', username);
     
+    console.log('FormData内容:');
+    console.log('- filename:', filename);
+    console.log('- original_name:', file.name);
+    console.log('- folder:', folder);
+    console.log('- report_id:', reportId);
+    console.log('- file_size:', fileSize);
+    console.log('- contentType:', contentType);
+    
+    console.log('准备发送POST请求到:', uploadUrl);
+    
     // 发送POST请求
     const response = await axios({
       method: 'POST',
@@ -109,15 +144,42 @@ export const uploadFileToWebDAV = async (file, folder = 'default', reportId = ''
         return status >= 200 && status < 300;
       }
     });
+    
+    console.log('收到响应:');
+    console.log('- status:', response.status);
+    console.log('- statusText:', response.statusText);
+    console.log('- data:', response.data);
 
     if (response.status === 200 || response.status === 201) {
+      console.log('上传成功，返回URL:', response.data.fileUrl || `${getBaseUrl('NODERED')}/files/${folder}/${filename}`);
       // 返回服务器响应中的文件URL
-      return response.data.fileUrl || `https://zziot.jzz77.cn:9003/files/${folder}/${filename}`;
+      return response.data.fileUrl || `${getBaseUrl('NODERED')}/files/${folder}/${filename}`;
     } else {
-      throw new Error('上传失败');
+      console.error('上传失败，状态码:', response.status);
+      throw new Error(`上传失败，状态码: ${response.status}`);
     }
   } catch (error) {
-    console.error('上传文件失败:', error);
+    console.error('=== uploadFileToWebDAV 错误详情 ===');
+    console.error('错误类型:', error.constructor.name);
+    console.error('错误消息:', error.message);
+    
+    if (error.response) {
+      console.error('响应错误详情:');
+      console.error('- 状态码:', error.response.status);
+      console.error('- 状态文本:', error.response.statusText);
+      console.error('- 响应头:', error.response.headers);
+      console.error('- 响应数据:', error.response.data);
+      console.error('- 请求URL:', error.response.config?.url);
+    } else if (error.request) {
+      console.error('请求错误详情:');
+      console.error('- 请求对象:', error.request);
+      console.error('- 没有收到响应');
+    } else {
+      console.error('其他错误:', error.message);
+    }
+    
+    console.error('错误堆栈:', error.stack);
+    console.error('=== uploadFileToWebDAV 错误详情结束 ===');
     throw error;
   }
 };
@@ -127,7 +189,7 @@ export const uploadFileToWebDAV = async (file, folder = 'default', reportId = ''
 export const getFileList = async (folder = 'default', reportId = '', userId = '') => {
   try {
     // 使用新的服务器API端点获取文件列表
-    let apiUrl = `https://zziot.jzz77.cn:9003/api/files/${folder}`;
+    let apiUrl = getApiUrl('FILES', 'LIST', folder);
     
     // 添加查询参数
     const params = new URLSearchParams();
@@ -163,7 +225,7 @@ export const getFileList = async (folder = 'default', reportId = '', userId = ''
     // 处理服务器返回的文件列表
     const files = response.data.files.map(file => {
       const isImageFile = /\.(jpg|jpeg|png|gif)$/i.test(file.filename);
-      const baseUrl = response.data.baseUrl || 'https://zziot.jzz77.cn:9003/files';
+      const baseUrl = response.data.baseUrl || `${getBaseUrl('NODERED')}/files`;
       const fileUrl = file.url || `${baseUrl}/${folder}/${file.filename}`;
       
       return {
@@ -279,7 +341,7 @@ const FileUploadScreen = ({ route }) => {
       const randomStr = Math.random().toString(36).substring(7);
       const uploadFolder = getUploadFolder();
       const filename = generateFileName(selectedFile.name, randomStr, '', '', uploadFolder);
-      const uploadUrl = `https://zziot.jzz77.cn:9003/api/upload/${uploadFolder}`;
+      const uploadUrl = getApiUrl('FILES', 'UPLOAD', uploadFolder);
 
       // 创建FormData对象
       const formData = new FormData();

@@ -9,6 +9,7 @@ import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import DateTimePickerModal from "react-native-modal-datetime-picker";
+import { dataApi } from '../api/apiService';
 
 const AODataQueryScreen = () => {
   const { isDarkMode, colors } = useTheme();
@@ -184,15 +185,13 @@ const AODataQueryScreen = () => {
       const formattedStartDate = startDate.toISOString().split('T')[0];
       const formattedEndDate = endDate.toISOString().split('T')[0];
       
-      const response = await fetch(
-        `https://zziot.jzz77.cn:9003/api/sub-pools?aoName=${encodeURIComponent(selectedAO)}&startDate=${formattedStartDate}&endDate=${formattedEndDate}`
-      );
+      const response = await dataApi.queryAOData({
+        aoName: selectedAO,
+        startDate: formattedStartDate,
+        endDate: formattedEndDate
+      });
       
-      if (!response.ok) {
-        throw new Error('数据获取失败');
-      }
-      
-      const data = await response.json();
+      const data = response;
       
       // 获取当前选中AO池的配置
       const currentConfig = poolConfigs[selectedAO] || [];

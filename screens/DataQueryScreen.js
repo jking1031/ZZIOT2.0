@@ -7,6 +7,7 @@ import * as XLSX from 'xlsx';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import columnMappings from './columnMappings.json';
+import { dataApi } from '../api/apiService';
 
 const DataQueryScreen = () => {
   const { colors } = useTheme();
@@ -55,12 +56,10 @@ const DataQueryScreen = () => {
       const adjustedStartDate = new Date(startDate.getTime() + 8 * 60 * 60 * 1000);
       const adjustedEndDate = new Date(endDate.getTime() + 8 * 60 * 60 * 1000);
 
-      const response = await fetch(`https://zziot.jzz77.cn:9003/api/query-data/${selectedTable}?startDate=${adjustedStartDate.toISOString()}&endDate=${adjustedEndDate.toISOString()}&interval=${interval}`, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
+      const response = await dataApi.queryData(selectedTable, {
+        startDate: adjustedStartDate.toISOString(),
+        endDate: adjustedEndDate.toISOString(),
+        interval: interval
       });
 
       if (!response.ok) {

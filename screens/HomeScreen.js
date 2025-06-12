@@ -5,12 +5,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, View, Text, ImageBackground, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Modal, TextInput, Switch, FlatList, TouchableWithoutFeedback } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
+import { statsApi, authApi, userApi } from '../api/apiService';
 import * as Location from 'expo-location';
 import { EventRegister } from '../utils/EventEmitter';
 import ProfileScreen from './ProfileScreen';
 import SiteListScreen from './SiteListScreen';
 import MessageScreen from './MessageScreen';
 import { useTheme } from '../context/ThemeContext';
+import { createCommonStyles, DesignTokens } from '../styles/StyleGuide';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import { Picker } from '@react-native-picker/picker';
@@ -61,13 +63,9 @@ const MainTab = () => {
   const fetchStats = useCallback(async (isManual = false) => {
     try {
       setIsRefreshing(true); // 开始刷新时设置状态
-      const response = await axios.get('https://nodered.jzz77.cn:9003/api/stats/overview', {
-        params: { isManual },
-        timeout: 10000
-      });
+      const data = await statsApi.getOverview({ isManual });
 
-      if (response.data) {
-        const data = response.data;
+      if (data) {
         // 更新运营统计数据
         setStats({
           totalProcessing_in: data.totalProcessing_in || 0,
@@ -119,280 +117,298 @@ const MainTab = () => {
   }, [navigation, fetchStats]);
 
   const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: isDarkMode ? '#121212' : '#F5F5F7', // 米家风格背景色
-      paddingTop: 0,
-    },
-    titleBar: {
-      height: Platform.OS === 'android' ? 48 + (StatusBar.currentHeight || 0) : 56,
-      backgroundColor: colors.card,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.2,
-      shadowRadius: 1.5,
-      elevation: 3,
-    },
-    titleText: {
-      fontSize: 18,
-      fontWeight: 'bold',
-      color: colors.text,
-    },
-    titleIcon: {
-      marginRight: 8,
-      width: 24,
-      height: 24,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    scrollView: {
-      flex: 1,
-    },
-    contentContainer: {
-      paddingTop: Platform.OS === 'android' ? 16 : 16,
-      paddingBottom: 24,
-    },
-    header: {
-      paddingHorizontal: 24,
-      paddingVertical: 22,
-      backgroundColor: isDarkMode ? '#1A1A1A' : '#FFFFFF',
-      borderRadius: 12,
-      marginHorizontal: 20,
-      marginTop: Platform.OS === 'android' ? -10 : 8,
-      marginBottom: 28,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: isDarkMode ? 0.25 : 0.06,
-      shadowRadius: 3,
-      elevation: isDarkMode ? 4 : 2,
-      borderWidth: isDarkMode ? 0 : 0.5,
-      borderColor: isDarkMode ? 'transparent' : 'rgba(0,0,0,0.03)',
-    },
-    headerSubtitle: {
-      fontSize: 16,
-      fontWeight: '500',
-      color: colors.text,
-      opacity: 0.85,
-      textAlign: 'center',
-    },
-    sectionContainer: {
-      marginBottom: 6,
-    },
-    sectionHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginHorizontal: 22,
-      marginBottom: 9,
-      justifyContent: 'space-between', // 修改为space-between以便放置刷新按钮
-    },
-    sectionTitleContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    sectionTitle: {
-      fontSize: 18,
-      fontWeight: '600',
-      color: colors.text,
-      marginLeft: 10,
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+    paddingTop: 0,
+  },
+  titleBar: {
+    height: Platform.OS === 'android' ? 48 + (StatusBar.currentHeight || 0) : 56,
+    backgroundColor: colors.surface,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
+    ...DesignTokens.shadows.lg,
+    borderBottomWidth: 0,
+  },
+  titleText: {
+    ...DesignTokens.typography.h3,
+    color: colors.text,
+    fontWeight: '700',
+  },
+  titleIcon: {
+    marginRight: DesignTokens.spacing.xs,
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  contentContainer: {
+    paddingTop: DesignTokens.spacing.md,
+    paddingBottom: DesignTokens.spacing.xl,
+  },
+  header: {
+    paddingHorizontal: DesignTokens.spacing.xl,
+    paddingVertical: DesignTokens.spacing.xl,
+    backgroundColor: colors.surface,
+    borderRadius: DesignTokens.borderRadius.xl,
+    marginHorizontal: DesignTokens.spacing.lg,
+    marginTop: Platform.OS === 'android' ? -10 : DesignTokens.spacing.xs,
+    marginBottom: DesignTokens.spacing.xxl,
+    ...DesignTokens.shadows.xl,
+    borderWidth: isDarkMode ? 1 : 0,
+    borderColor: isDarkMode ? colors.border : 'transparent',
+  },
+  headerSubtitle: {
+    ...DesignTokens.typography.body1,
+    fontWeight: '600',
+    color: colors.text,
+    opacity: 0.9,
+    textAlign: 'center',
+    letterSpacing: 0.3,
+  },
+  sectionContainer: {
+    marginBottom: DesignTokens.spacing.md,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: DesignTokens.spacing.lg,
+    marginBottom: DesignTokens.spacing.md,
+    justifyContent: 'space-between',
+  },
+  sectionTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  sectionTitle: {
+    ...DesignTokens.typography.h4,
+    color: colors.text,
+    marginLeft: DesignTokens.spacing.sm,
+    fontWeight: '700',
+    letterSpacing: 0.2,
     },
     sectionIcon: {
-      width: 30,
-      height: 30,
-      borderRadius: 15,
+      width: 36,
+      height: 36,
+      borderRadius: 18,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: isDarkMode ? 'rgba(255,103,0,0.2)' : 'rgba(255,103,0,0.1)',
+      backgroundColor: isDarkMode ? 'rgba(255,103,0,0.25)' : 'rgba(255,103,0,0.12)',
+      ...DesignTokens.shadows.sm,
     },
     statsContainer: {
       flexDirection: 'row',
       flexWrap: 'wrap',
       justifyContent: 'space-between',
-      paddingHorizontal: 12,  // 从20改为12，与backup一致
-      marginBottom: 5,
+      paddingHorizontal: 16,
+      marginBottom: 8,
     },
     statsCardContainer: {
       width: '48%',
-      marginBottom: 10,
+      marginBottom: 16,
     },
     statsCard: {
       flex: 1,
-      padding: 12,         // 从18改为12
-      paddingTop: 10,      // 添加特定的顶部padding
-      paddingBottom: 10,   // 添加特定的底部padding
-      borderRadius: 12,
+      padding: 16,
+      paddingTop: 14,
+      paddingBottom: 14,
+      borderRadius: 16,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: isDarkMode ? '#1A1A1A' : '#FFFFFF',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: isDarkMode ? 0.25 : 0.06,
-      shadowRadius: 3,
-      elevation: isDarkMode ? 4 : 2,
-      borderWidth: isDarkMode ? 0 : 0.5,
-      borderColor: isDarkMode ? 'transparent' : 'rgba(0,0,0,0.03)',
+      backgroundColor: isDarkMode ? '#1E1E1E' : '#FFFFFF',
+      shadowColor: isDarkMode ? '#000' : '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: isDarkMode ? 0.3 : 0.08,
+      shadowRadius: 8,
+      elevation: isDarkMode ? 6 : 3,
+      borderWidth: isDarkMode ? 1 : 0,
+      borderColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'transparent',
+      transform: [{ scale: 1 }],
     },
     statsValue: {
-      fontSize: 16,
-      fontWeight: '600',
+      fontSize: 18,
+      fontWeight: '700',
       color: colors.text,
       marginBottom: 6,
+      letterSpacing: 0.5,
     },
     statsLabel: {
-      fontSize: 12,
-      lineHeight: 16,
+      fontSize: 13,
+      lineHeight: 18,
       color: isDarkMode ? colors.text : '#666',
       textAlign: 'center',
       maxWidth: '95%',
-      opacity: isDarkMode ? 0.7 : 1,
+      opacity: isDarkMode ? 0.8 : 0.9,
+      fontWeight: '500',
     },
     functionCard: {
-      height: 120,
-      paddingHorizontal: 12,
+      height: 130,
+      paddingHorizontal: 16,
       alignItems: 'center',
       justifyContent: 'center',
-      paddingTop: 5,
-      paddingBottom: 0,
+      paddingTop: 8,
+      paddingBottom: 8,
+      borderRadius: 16,
+      backgroundColor: isDarkMode ? '#1E1E1E' : '#FFFFFF',
+      shadowColor: isDarkMode ? '#000' : '#000',
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: isDarkMode ? 0.25 : 0.06,
+      shadowRadius: 6,
+      elevation: isDarkMode ? 5 : 2,
+      borderWidth: isDarkMode ? 1 : 0,
+      borderColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'transparent',
+      transform: [{ scale: 1 }],
     },
     iconContainer: {
-      width: 48,
-      height: 48,
-      borderRadius: 24,
+      width: 52,
+      height: 52,
+      borderRadius: 26,
       alignItems: 'center',
       justifyContent: 'center',
-      marginBottom: 8,
-      marginTop: -5,
-      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.02)',
+      marginBottom: 10,
+      marginTop: -2,
+      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.04)',
       borderWidth: 0,
+      ...DesignTokens.shadows.sm,
     },
     divider: {
       height: 1,
-      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
-      marginVertical: 6,
+      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+      marginVertical: 8,
       marginHorizontal: 24,
     },
     customShortcutsContainer: {
-      marginTop: Platform.OS === 'android' ? 4 : 8,
-      marginBottom: 12,
+      marginTop: Platform.OS === 'android' ? 8 : 12,
+      marginBottom: 16,
     },
     customShortcutsHeader: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: 20,
+      marginBottom: 24,
       paddingHorizontal: 20,
     },
     customShortcutsTitle: {
-      fontSize: 18,
-      fontWeight: '600',
+      fontSize: 19,
+      fontWeight: '700',
       color: colors.text,
+      letterSpacing: 0.2,
     },
     editButton: {
       flexDirection: 'row',
       alignItems: 'center',
-      padding: 10,
-      backgroundColor: isDarkMode ? 'rgba(255,103,0,0.2)' : 'rgba(255,103,0,0.08)',
-      borderRadius: 18,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      backgroundColor: isDarkMode ? 'rgba(255,103,0,0.25)' : 'rgba(255,103,0,0.1)',
+      borderRadius: 20,
+      ...DesignTokens.shadows.sm,
+      borderWidth: isDarkMode ? 1 : 0,
+      borderColor: isDarkMode ? 'rgba(255,103,0,0.3)' : 'transparent',
     },
     editButtonText: {
       fontSize: 14,
       color: '#FF6700',
       marginLeft: 6,
-      fontWeight: '500',
+      fontWeight: '600',
+      letterSpacing: 0.1,
     },
     shortcutsGrid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
       justifyContent: 'flex-start',
-      paddingHorizontal: 14,
+      paddingHorizontal: 16,
     },
     shortcutItem: {
       width: '25%',
       alignItems: 'center',
-      marginBottom: 12,
+      marginBottom: 16,
     },
     shortcutIcon: {
-      width: 60,
-      height: 60,
-      borderRadius: 30,
+      width: 64,
+      height: 64,
+      borderRadius: 32,
       justifyContent: 'center',
       alignItems: 'center',
-      backgroundColor: isDarkMode ? '#1A1A1A' : '#FFFFFF',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: isDarkMode ? 0.25 : 0.06,
-      shadowRadius: 3,
-      elevation: isDarkMode ? 4 : 2,
-      marginBottom: 10,
-      borderWidth: isDarkMode ? 0 : 0.5,
-      borderColor: isDarkMode ? 'transparent' : 'rgba(0,0,0,0.03)',
+      backgroundColor: isDarkMode ? '#1E1E1E' : '#FFFFFF',
+      shadowColor: isDarkMode ? '#000' : '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: isDarkMode ? 0.3 : 0.08,
+      shadowRadius: 8,
+      elevation: isDarkMode ? 6 : 3,
+      marginBottom: 12,
+      borderWidth: isDarkMode ? 1 : 0,
+      borderColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'transparent',
+      transform: [{ scale: 1 }],
     },
     shortcutText: {
       fontSize: 13,
       textAlign: 'center',
       color: colors.text,
-      maxWidth: 72,
+      maxWidth: 76,
       marginTop: 4,
+      fontWeight: '500',
+      letterSpacing: 0.1,
     },
     addShortcutIcon: {
       borderStyle: 'dashed',
-      borderWidth: 1.5,
+      borderWidth: 2,
       borderColor: '#FF6700',
-      backgroundColor: isDarkMode ? 'rgba(255,103,0,0.1)' : 'rgba(255,103,0,0.04)',
+      backgroundColor: isDarkMode ? 'rgba(255,103,0,0.15)' : 'rgba(255,103,0,0.06)',
     },
     removeButton: {
       position: 'absolute',
-      top: -8,
-      right: -8,
+      top: -10,
+      right: -10,
       backgroundColor: '#FF6700',
-      width: 22,
-      height: 22,
-      borderRadius: 11,
+      width: 24,
+      height: 24,
+      borderRadius: 12,
       alignItems: 'center',
       justifyContent: 'center',
       zIndex: 10,
       shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.25,
-      shadowRadius: 2,
-      elevation: 3,
-      borderWidth: 1.5,
-      borderColor: isDarkMode ? '#1A1A1A' : '#FFFFFF',
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.3,
+      shadowRadius: 4,
+      elevation: 5,
+      borderWidth: 2,
+      borderColor: isDarkMode ? '#1E1E1E' : '#FFFFFF',
     },
     adminMenuItem: {
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: '#2196F3',
+      backgroundColor: isDarkMode ? '#1E1E1E' : '#FFFFFF',
       padding: 12,
-      borderRadius: 8,
-      width: '31%',
-      aspectRatio: 1,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.23,
-      shadowRadius: 2.62,
-      elevation: 4,
+      borderRadius: 12,
+      width: '48%',
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: isDarkMode ? 'rgba(33, 150, 243, 0.3)' : 'rgba(33, 150, 243, 0.2)',
     },
     adminMenuItemText: {
-      color: 'white',
-      fontWeight: 'bold',
-      fontSize: 14,
+      color: isDarkMode ? colors.text : '#2196F3',
+      fontWeight: '600',
+      fontSize: 13,
       marginTop: 8,
       textAlign: 'center',
     },
     adminMenuContainer: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      paddingHorizontal: 20,
+      paddingHorizontal: 16,
       justifyContent: 'space-between',
-      marginBottom: 10,
+      marginBottom: 12,
     },
     refreshButton: {
-      padding: 5,
+      padding: 8,
+      borderRadius: 12,
+      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
     },
   });
 
@@ -402,7 +418,7 @@ const MainTab = () => {
     { id: '2', name: '数据中心', icon: 'analytics', color: '#4CAF50', route: '数据中心' },
     { id: '3', name: '数据查询', icon: 'timer', color: '#FF9800', route: '数据查询' },
     { id: '4', name: '报告查询', icon: 'document-text', color: '#E91E63', route: '报告查询' },
-    { id: '5', name: '工单系统', icon: 'clipboard', color: '#9C27B0', route: '工单列表' },
+    // 工单系统已删除
   ]);
   const [isEditMode, setIsEditMode] = useState(false);
   const [showShortcutModal, setShowShortcutModal] = useState(false);
@@ -487,7 +503,7 @@ const MainTab = () => {
     { name: '动态报表', icon: 'document-text', color: '#E91E63', route: '动态报表' },
     { name: '告警信息', icon: 'warning', color: '#FF4444', route: '告警信息' },
     { name: '个人中心', icon: 'person', color: '#2196F3', route: '个人中心' },
-    { name: '工单系统', icon: 'clipboard', color: '#9C27B0', route: '工单列表' },
+    // 工单系统已删除
     { name: '数据填报', icon: 'document-text-outline', color: '#009688', route: '数据填报中心' },
   ];
 
@@ -975,15 +991,17 @@ const MainTab = () => {
             <View style={[styles.statsCardContainer, { width: '31%' }]}>
               <TouchableOpacity 
                 style={[styles.statsCard, styles.functionCard]} 
-                onPress={() => navigation.navigate('工单列表')}
+                onPress={() => navigation.navigate('文件管理')}
               >
-                <View style={[styles.iconContainer, { backgroundColor: 'rgba(156, 39, 176, 0.15)' }]}>
-                  <Ionicons name="clipboard" size={26} color="#9C27B0" />
+                <View style={[styles.iconContainer, { backgroundColor: 'rgba(103, 58, 183, 0.15)' }]}>
+                  <Ionicons name="folder" size={26} color="#673AB7" />
                 </View>
-                <Text style={styles.statsValue} numberOfLines={1}>工单管理</Text>
-                <Text style={styles.statsLabel} numberOfLines={2}>处理问题</Text>
+                <Text style={styles.statsValue} numberOfLines={1}>文件管理</Text>
+                <Text style={styles.statsLabel} numberOfLines={2}>云端文件</Text>
               </TouchableOpacity>
             </View>
+            
+            {/* 工单系统已删除 */}
             
             <View style={[styles.statsCardContainer, { width: '31%' }]}>
               <TouchableOpacity 
@@ -1020,8 +1038,16 @@ const MainTab = () => {
                   style={styles.adminMenuItem}
                   onPress={() => navigation.navigate('UserManagementScreen')}
                 >
-                  <Ionicons name="people" size={22} color="white" />
+                  <Ionicons name="people" size={20} color="#2196F3" />
                   <Text style={styles.adminMenuItemText}>用户管理</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={styles.adminMenuItem}
+                  onPress={() => navigation.navigate('ApiManagementScreen')}
+                >
+                  <Ionicons name="cloud" size={20} color="#2196F3" />
+                  <Text style={styles.adminMenuItemText}>API管理</Text>
                 </TouchableOpacity>
                 
                 {/* 这里添加更多管理员功能按钮 */}
@@ -1029,7 +1055,7 @@ const MainTab = () => {
                   style={styles.adminMenuItem}
                   onPress={() => Alert.alert('提示', '此功能正在开发中')}
                 >
-                  <Ionicons name="settings" size={22} color="white" />
+                  <Ionicons name="settings" size={20} color="#2196F3" />
                   <Text style={styles.adminMenuItemText}>系统设置</Text>
                 </TouchableOpacity>
                 
@@ -1037,7 +1063,7 @@ const MainTab = () => {
                   style={styles.adminMenuItem}
                   onPress={() => Alert.alert('提示', '此功能正在开发中')}
                 >
-                  <Ionicons name="analytics" size={22} color="white" />
+                  <Ionicons name="analytics" size={20} color="#2196F3" />
                   <Text style={styles.adminMenuItemText}>数据统计</Text>
                 </TouchableOpacity>
               </View>
@@ -1311,23 +1337,29 @@ const HomeScreen = () => {
     try {
       // 第一步：调用登录API获取用户基本信息
       console.log('第一步：调用登录API获取用户基本信息');
-      const response = await axios.post('https://zziot.jzz77.cn:9003/api/login', {
-        email,
-        password
-      }, {
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        timeout: 10000
-      });
-
-      const loginResponse = response.data;
-      if (!loginResponse || !loginResponse.user) {
+      const loginResponse = await authApi.login({ email, password });
+      
+      // 处理Node-RED的响应格式 {success: true, data: {user: {...}, token: ...}}
+      let userInfo, token, refreshToken;
+      if (loginResponse && loginResponse.success && loginResponse.data) {
+        // Node-RED格式
+        userInfo = loginResponse.data.user;
+        token = loginResponse.data.token;
+        refreshToken = loginResponse.data.refreshToken;
+        console.log('Node-RED响应格式，用户信息:', userInfo);
+      } else if (loginResponse && loginResponse.user) {
+        // 旧格式兼容
+        userInfo = loginResponse.user;
+        token = loginResponse.token;
+        refreshToken = loginResponse.refreshToken;
+        console.log('传统响应格式，用户信息:', userInfo);
+      } else {
         throw new Error(loginResponse?.message || '登录响应数据无效');
       }
-
-      // 登录成功，获取用户基本信息
-      const userInfo = loginResponse.user;
+      
+      if (!userInfo) {
+        throw new Error('用户信息缺失');
+      }
       
 
       
@@ -1344,9 +1376,14 @@ const HomeScreen = () => {
       });
       console.log('=============================================');
       
-      // 第二步：调用login函数存储用户基本信息，此时不检查管理员权限
+      // 第二步：调用login函数存储用户基本信息，包含token信息
       console.log('第二步：调用登录函数，存储用户信息并查询管理员状态');
-      await login(userInfo); // 修改后的login函数会在内部处理管理员权限查询和令牌创建
+      const completeUserData = {
+        ...userInfo,
+        token: token,
+        refreshToken: refreshToken
+      };
+      await login(completeUserData); // 传递包含token的完整用户数据
       
       // 如果未选择记住密码，清除之前可能保存的登录信息
       if (!rememberMe) {
@@ -1427,24 +1464,19 @@ const HomeScreen = () => {
         department: registerForm.department
       }));
       
-      const response = await axios.post('https://zziot.jzz77.cn:9003/api/register', {
+      const data = await authApi.register({
         username: registerForm.username,
         password: registerForm.password,
         email: registerForm.email,
         phone: registerForm.phone,
         company: registerForm.company,
         department: registerForm.department
-      }, {
-        timeout: 15000, // 增加超时时间到15秒
-        headers: {
-          'Content-Type': 'application/json'
-        }
       });
 
-      console.log('注册API响应状态:', response.status);
+      console.log('注册API响应:', data);
       
       // 检查响应数据
-      if (response.data && response.status === 201) {
+      if (data) {
         console.log('注册成功，显示成功提示');
         
         // 保存注册成功的邮箱，用于登录页面自动填充
@@ -1517,20 +1549,18 @@ const HomeScreen = () => {
   const fetchCompanies = async () => {
     setLoadingCompanies(true);
     try {
-      const response = await axios.get('https://nodered.jzz77.cn:9003/api/companies', {
-        timeout: 10000
-      });
+      const data = await userApi.getCompanies();
       
-      if (response.data && Array.isArray(response.data)) {
-        console.log('获取到公司列表:', response.data.length);
-        setCompanies(response.data);
-        if (response.data.length > 0) {
-          setSelectedCompany(response.data[0].id.toString());
+      if (data && Array.isArray(data)) {
+        console.log('获取到公司列表:', data.length);
+        setCompanies(data);
+        if (data.length > 0) {
+          setSelectedCompany(data[0].id.toString());
           // 预加载第一个公司的部门
-          updateDepartments(response.data[0]);
+          updateDepartments(data[0]);
         }
       } else {
-        console.log('服务器返回的公司数据格式不正确:', response.data);
+        console.log('服务器返回的公司数据格式不正确:', data);
       }
     } catch (error) {
       console.error('获取公司列表失败:', error);

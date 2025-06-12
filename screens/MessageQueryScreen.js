@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
+import { messageApi } from '../api/apiService';
 
 const MessageQueryScreen = () => {
   const { colors } = useTheme();
@@ -152,25 +153,22 @@ const MessageQueryScreen = () => {
     const adjustedEndDate = new Date(endDate.getTime() + 8 * 60 * 60 * 1000);
     
     try {
-      const response = await axios.get('https://nodered.jzz77.cn:9003/api/messagesquery', {
-        params: {
-          startDate: adjustedStartDate.toISOString(),
-          endDate: adjustedEndDate.toISOString(),
-          type: activeTab === 'all' ? undefined : activeTab
-        },
-        timeout: 5000
+      const data = await messageApi.queryMessages({
+        startDate: adjustedStartDate.toISOString(),
+        endDate: adjustedEndDate.toISOString(),
+        type: activeTab === 'all' ? undefined : activeTab
       });
       
-      console.log('API Response:', response.data); // 调试日志
+      console.log('API Response:', data); // 调试日志
       
-      if (response.data) {
+      if (data) {
         let newMessages = [];
-        if (Array.isArray(response.data)) {
+        if (Array.isArray(data)) {
           // 保持原始数组顺序
-          newMessages = [...response.data];
-        } else if (Array.isArray(response.data.messages)) {
+          newMessages = [...data];
+        } else if (Array.isArray(data.messages)) {
           // 保持原始数组顺序
-          newMessages = [...response.data.messages];
+          newMessages = [...data.messages];
         } else {
           throw new Error('无效的响应数据格式');
         }

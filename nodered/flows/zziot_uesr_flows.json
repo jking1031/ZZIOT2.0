@@ -1,0 +1,1228 @@
+[
+    {
+        "id": "514ec94e7d382f6a",
+        "type": "tab",
+        "label": "用户管理",
+        "disabled": false,
+        "info": "用于处理认证相关的流程",
+        "env": []
+    },
+    {
+        "id": "2b3e427d203d6fee",
+        "type": "function",
+        "z": "514ec94e7d382f6a",
+        "name": "处理登录请求",
+        "func": "// 获取用户名/邮箱和密码\nconst email = msg.payload.email;\nconst password = msg.payload.password;\n\n// 验证参数\nif (!email || !password) {\n    msg.statusCode = 400;\n    msg.payload = {\n        success: false,\n        error: {\n            code: \"INVALID_PARAMS\",\n            message: \"邮箱和密码不能为空\"\n        }\n    };\n    return msg;\n}\n\n// 设置查询参数 - 支持使用邮箱或用户名登录\nmsg.topic = \"SELECT * FROM users1 WHERE email = ? \";\nmsg.payload = [email];\n\nreturn msg;",
+        "outputs": 2,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 360,
+        "y": 40,
+        "wires": [
+            [
+                "129d352e7cd37318"
+            ],
+            [
+                "bd6e9432646a2051"
+            ]
+        ]
+    },
+    {
+        "id": "129d352e7cd37318",
+        "type": "mysql",
+        "z": "514ec94e7d382f6a",
+        "mydb": "806ba83c98eb2e99",
+        "name": "查询用户",
+        "x": 560,
+        "y": 40,
+        "wires": [
+            [
+                "71212ac9a0d2aaa2"
+            ]
+        ]
+    },
+    {
+        "id": "71212ac9a0d2aaa2",
+        "type": "function",
+        "z": "514ec94e7d382f6a",
+        "name": "验证密码",
+        "func": "const users = msg.payload;  // payload 是用户数组\nconst password = msg.req.body.password; // 获取前端提交的密码\n\n// 全局依赖\nconst bcrypt = global.get('bcrypt');\nconst jwt = global.get('jwt');\nconst uuid = global.get('uuid');\nconst jwtSecret = global.get('jwtSecret');\nconst jwtRefreshSecret = global.get('jwtRefreshSecret');\n\n// 用户不存在\nif (!users || users.length === 0) {\n    return [null, {\n            \"error\": {\n                \"code\": \"ERROR_CODE\",\n                \"message\": \"用户不存在'\",\n                \"success\": false,   \n            }\n    }];\n}\n\nconst user = users[0];\n\n// 密码不匹配\nconst passwordMatch = bcrypt.compareSync(password, user.password);\nif (!passwordMatch) {\n    return [null, {\n            \"error\": {\n                \"code\": \"ERROR_CODE\",\n                \"message\": \"用户名或密码错误\",\n                \"success\": false,\n            }\n    }];\n}\n\n// 登录成功：生成 JWT 和 Refresh Token\nconst tokenId = uuid.v4();\nconst refreshTokenId = uuid.v4();\n\nconst tokenExpiry = new Date();\ntokenExpiry.setHours(tokenExpiry.getHours() + 24); // 24小时有效\n\nconst tokenPayload = {\n    id: user.id,\n    username: user.username,\n    role: user.role || 'user',\n    company: user.company,\n    jti: tokenId\n};\n\nconst refreshPayload = {\n    id: user.id,\n    jti: refreshTokenId\n};\n\nconst token = jwt.sign(tokenPayload, jwtSecret, { expiresIn: '24h' });\nconst refreshToken = jwt.sign(refreshPayload, jwtRefreshSecret, { expiresIn: '7d' });\n\nmsg.tokenInfo = {\n    id: tokenId,\n    user_id: user.id,\n    token: token,\n    refresh_token: refreshToken,\n    expires_at: tokenExpiry\n};\n\nmsg.topic = \"INSERT INTO tokens (id, user_id, token, refresh_token, expires_at) VALUES (?, ?, ?, ?, ?)\";\nmsg.payload = [tokenId, user.id, token, refreshToken, tokenExpiry];\n\nmsg.userResponse = {\n    success: true,\n    data: {\n        token: token,\n        refreshToken: refreshToken,\n        message: '登录成功',\n        user: {\n            id: user.id,\n            username: user.username,\n            email: user.email,\n            phone: user.phone,\n            department: user.department,\n            avatar_seed: user.avatar_seed,\n            company: user.company,\n            is_admin: user.is_admin || false\n        }\n    }\n};\n\n// 正常登录 -> 输出1\nreturn [msg, null];\n\n\n",
+        "outputs": 2,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 760,
+        "y": 20,
+        "wires": [
+            [
+                "e2ecf5e1fad297da"
+            ],
+            [
+                "bd6e9432646a2051"
+            ]
+        ]
+    },
+    {
+        "id": "e2ecf5e1fad297da",
+        "type": "mysql",
+        "z": "514ec94e7d382f6a",
+        "mydb": "806ba83c98eb2e99",
+        "name": "保存Token",
+        "x": 970,
+        "y": 20,
+        "wires": [
+            [
+                "851b86051510e225"
+            ]
+        ]
+    },
+    {
+        "id": "851b86051510e225",
+        "type": "function",
+        "z": "514ec94e7d382f6a",
+        "name": "构建登录响应",
+        "func": "// 无论保存token成功或失败，都返回登录成功响应\nmsg.payload = msg.userResponse;\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1240,
+        "y": 40,
+        "wires": [
+            [
+                "bd6e9432646a2051",
+                "25713032e80df106",
+                "d0e0d2b04d5f2580"
+            ]
+        ]
+    },
+    {
+        "id": "efc328b4427f30c1",
+        "type": "http in",
+        "z": "514ec94e7d382f6a",
+        "name": "刷新Token接口",
+        "url": "/api/auth/refresh-token/",
+        "method": "post",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 160,
+        "y": 120,
+        "wires": [
+            [
+                "eebdbea650d41b39"
+            ]
+        ]
+    },
+    {
+        "id": "eebdbea650d41b39",
+        "type": "function",
+        "z": "514ec94e7d382f6a",
+        "name": "处理刷新Token请求",
+        "func": "// 获取刷新令牌\nconst refreshToken = msg.payload.refreshToken;\n\n// 验证参数\nif (!refreshToken) {\n    msg.statusCode = 400;\n    msg.payload = {\n        success: false,\n        error: {\n            code: \"INVALID_PARAMS\",\n            message: \"刷新令牌不能为空\"\n        }\n    };\n    return msg;\n}\n\n// 验证刷新令牌\nconst jwt = global.get('jwt');\nlet decoded;\ntry {\n    decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);\n} catch (error) {\n    msg.statusCode = 401;\n    msg.payload = {\n        success: false,\n        error: {\n            code: \"INVALID_REFRESH_TOKEN\",\n            message: \"刷新令牌无效或已过期\"\n        }\n    };\n    return msg;\n}\n\n// 查询令牌是否存在于数据库\nmsg.topic = \"SELECT * FROM tokens WHERE refresh_token = ? AND user_id = ?\";\nmsg.payload = [refreshToken, decoded.id];\nmsg.decoded = decoded; // 保存解码后的数据以供后续使用\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 370,
+        "y": 120,
+        "wires": [
+            [
+                "586e71e03b192e79"
+            ]
+        ]
+    },
+    {
+        "id": "586e71e03b192e79",
+        "type": "mysql",
+        "z": "514ec94e7d382f6a",
+        "mydb": "806ba83c98eb2e99",
+        "name": "检查Token是否存在",
+        "x": 590,
+        "y": 120,
+        "wires": [
+            [
+                "9b9731b092868eba"
+            ]
+        ]
+    },
+    {
+        "id": "9b9731b092868eba",
+        "type": "function",
+        "z": "514ec94e7d382f6a",
+        "name": "生成新Token",
+        "func": "const tokens = msg.payload;\nconst decoded = msg.decoded;\n\n// 验证令牌是否存在于数据库\nif (tokens.length === 0) {\n    msg.statusCode = 401;\n    msg.payload = {\n        success: false,\n        error: {\n            code: \"INVALID_REFRESH_TOKEN\",\n            message: \"刷新令牌已失效，请重新登录\"\n        }\n    };\n    return msg;\n}\n\n// 获取用户信息\nmsg.topic = \"SELECT id, username, email, role, company FROM users1 WHERE id = ?\";\nmsg.payload = [decoded.id];\nmsg.oldToken = tokens[0]; // 保存旧令牌信息以供后续使用\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 770,
+        "y": 120,
+        "wires": [
+            [
+                "ee014dc649af6e4b"
+            ]
+        ]
+    },
+    {
+        "id": "ee014dc649af6e4b",
+        "type": "mysql",
+        "z": "514ec94e7d382f6a",
+        "mydb": "806ba83c98eb2e99",
+        "name": "获取用户信息",
+        "x": 940,
+        "y": 120,
+        "wires": [
+            [
+                "0cb3db378b2953e8"
+            ]
+        ]
+    },
+    {
+        "id": "0cb3db378b2953e8",
+        "type": "function",
+        "z": "514ec94e7d382f6a",
+        "name": "创建新Token",
+        "func": "const users = msg.payload;\n\n// 用户不存在\nif (users.length === 0) {\n    msg.statusCode = 401;\n    msg.payload = {\n        success: false,\n        error: {\n            code: \"USER_NOT_FOUND\",\n            message: \"用户不存在，请重新登录\"\n        }\n    };\n    return msg;\n}\n\nconst user = users[0];\nconst oldToken = msg.oldToken;\n\n// 生成新令牌\nconst jwt = global.get('jwt');\nconst uuid = global.get('uuid');\n\nconst tokenId = uuid.v4();\nconst refreshTokenId = uuid.v4();\n\n// 设置token过期时间\nconst tokenExpiry = new Date();\ntokenExpiry.setHours(tokenExpiry.getHours() + 24); // 24小时有效\n\n// 创建token payload\nconst tokenPayload = {\n    id: user.id,\n    username: user.username,\n    role: user.role || 'user',\n    company: user.company,\n    jti: tokenId\n};\n\n// 创建refresh token payload\nconst refreshPayload = {\n    id: user.id,\n    jti: refreshTokenId\n};\n\n// 签发token\nconst token = jwt.sign(tokenPayload, process.env.JWT_SECRET, { expiresIn: '24h' });\nconst refreshToken = jwt.sign(refreshPayload, process.env.JWT_REFRESH_SECRET, { expiresIn: '7d' });\n\n// 准备更新token的SQL语句\nmsg.topic = \"UPDATE tokens SET token = ?, refresh_token = ?, expires_at = ? WHERE id = ?\";\nmsg.payload = [token, refreshToken, tokenExpiry, oldToken.id];\n\n// 保存token信息，用于响应\nmsg.tokenResponse = {\n    success: true,\n    data: {\n        token: token,\n        refreshToken: refreshToken\n    }\n};\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1130,
+        "y": 120,
+        "wires": [
+            [
+                "84d6a2b151cb994c"
+            ]
+        ]
+    },
+    {
+        "id": "84d6a2b151cb994c",
+        "type": "mysql",
+        "z": "514ec94e7d382f6a",
+        "mydb": "806ba83c98eb2e99",
+        "name": "更新Token",
+        "x": 810,
+        "y": 180,
+        "wires": [
+            [
+                "04ea003bab93a361"
+            ]
+        ]
+    },
+    {
+        "id": "04ea003bab93a361",
+        "type": "function",
+        "z": "514ec94e7d382f6a",
+        "name": "刷新Token响应",
+        "func": "// 无论更新token成功或失败，都返回新token\nmsg.payload = msg.tokenResponse;\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1040,
+        "y": 180,
+        "wires": [
+            [
+                "bd6e9432646a2051"
+            ]
+        ]
+    },
+    {
+        "id": "6a9db7a3d4d7686c",
+        "type": "http in",
+        "z": "514ec94e7d382f6a",
+        "name": "检查管理员状态接口",
+        "url": "/api/auth/check-admin/",
+        "method": "post",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 170,
+        "y": 260,
+        "wires": [
+            [
+                "ee824beed3b65034"
+            ]
+        ]
+    },
+    {
+        "id": "355a36260d4405ab",
+        "type": "mysql",
+        "z": "514ec94e7d382f6a",
+        "mydb": "806ba83c98eb2e99",
+        "name": "获取用户角色",
+        "x": 600,
+        "y": 260,
+        "wires": [
+            [
+                "9fde5018df03c009"
+            ]
+        ]
+    },
+    {
+        "id": "b9cbbdc381150e77",
+        "type": "http in",
+        "z": "514ec94e7d382f6a",
+        "name": "登出接口",
+        "url": "/api/auth/logout/",
+        "method": "post",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 140,
+        "y": 320,
+        "wires": [
+            [
+                "7dbccb064494de4e"
+            ]
+        ]
+    },
+    {
+        "id": "7dbccb064494de4e",
+        "type": "function",
+        "z": "514ec94e7d382f6a",
+        "name": "处理登出请求",
+        "func": "// 从请求头获取令牌\nconst authHeader = msg.req.headers.authorization;\nif (!authHeader || !authHeader.startsWith('Bearer ')) {\n    msg.statusCode = 400;\n    msg.payload = {\n        success: false,\n        error: {\n            code: \"INVALID_TOKEN\",\n            message: \"未提供有效的令牌\"\n        }\n    };\n    return msg;\n}\n\nconst token = authHeader.substring(7);\n\n// 将令牌加入黑名单\nmsg.topic = \"DELETE FROM tokens WHERE token = ?\";\nmsg.payload = [token];\n\n// 保存响应结果供后续使用\nmsg.logoutResponse = {\n    success: true,\n    message: \"已成功登出\"\n};\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 360,
+        "y": 320,
+        "wires": [
+            [
+                "d332cba5904f325f"
+            ]
+        ]
+    },
+    {
+        "id": "d332cba5904f325f",
+        "type": "mysql",
+        "z": "514ec94e7d382f6a",
+        "mydb": "806ba83c98eb2e99",
+        "name": "将Token加入黑名单",
+        "x": 610,
+        "y": 320,
+        "wires": [
+            [
+                "e8768dc722b54322"
+            ]
+        ]
+    },
+    {
+        "id": "e8768dc722b54322",
+        "type": "function",
+        "z": "514ec94e7d382f6a",
+        "name": "登出响应",
+        "func": "// 无论将令牌加入黑名单是否成功，都返回登出成功响应\nmsg.payload = msg.logoutResponse;\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 780,
+        "y": 320,
+        "wires": [
+            [
+                "bd6e9432646a2051"
+            ]
+        ]
+    },
+    {
+        "id": "bd6e9432646a2051",
+        "type": "http response",
+        "z": "514ec94e7d382f6a",
+        "name": "HTTP响应",
+        "statusCode": "",
+        "headers": {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*"
+        },
+        "x": 1400,
+        "y": 80,
+        "wires": []
+    },
+    {
+        "id": "324a8392b5a934a5",
+        "type": "function",
+        "z": "514ec94e7d382f6a",
+        "name": "处理注册请求",
+        "func": "// 获取注册信息\nconst username = msg.payload.username;\nconst password = msg.payload.password;\nconst email = msg.payload.email;\nconst phone = msg.payload.phone || '';\nconst company = msg.payload.company || '';\nconst company_id = msg.payload.company_id || '';\nconst department = msg.payload.department || '';\nconst department_id = msg.payload.department_id || '';\nconst role = msg.payload.role || 'user';\n\n// 验证参数\nif (!username || !password || !email) {\n    msg.statusCode = 400;\n    msg.payload = {\n        success: false,\n        error: {\n            code: \"INVALID_PARAMS\",\n            message: \"用户名、密码和邮箱不能为空\"\n        }\n    };\n    return msg;\n}\n\n// 验证邮箱格式\nconst emailRegex = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;\nif (!emailRegex.test(email)) {\n    msg.statusCode = 400;\n    msg.payload = {\n        success: false,\n        error: {\n            code: \"INVALID_EMAIL\",\n            message: \"邮箱格式不正确\"\n        }\n    };\n    return msg;\n}\n\n// 设置查询参数，检查用户名和邮箱是否已存在\nmsg.topic = \"SELECT * FROM users1 WHERE username = ? OR email = ?\";\nmsg.payload = [username, email];\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 360,
+        "y": 400,
+        "wires": [
+            [
+                "615ee1c83264aaa1"
+            ]
+        ]
+    },
+    {
+        "id": "615ee1c83264aaa1",
+        "type": "mysql",
+        "z": "514ec94e7d382f6a",
+        "mydb": "806ba83c98eb2e99",
+        "name": "检查用户是否存在",
+        "x": 610,
+        "y": 400,
+        "wires": [
+            [
+                "cc1fe7f973854990"
+            ]
+        ]
+    },
+    {
+        "id": "bce096ab91d12da3",
+        "type": "function",
+        "z": "514ec94e7d382f6a",
+        "name": "准备创建用户",
+        "func": "const bcrypt = global.get('bcrypt');\nif (!bcrypt) {\n    throw new Error('bcrypt module not found');\n}\n\nconst uuid = global.get('uuid');\n\n// 生成用户ID\nconst userId = uuid.v4();\n\n// 对密码进行加密\nconst salt = bcrypt.genSaltSync(10);\nif (!salt) {\n    throw new Error('Failed to generate salt');\n}\n\nconst hashedPassword = bcrypt.hashSync(msg.req.body.password, salt);\nif (!hashedPassword) {\n    throw new Error('Password hashing failed');\n}\n\n// 构建用户对象\nconst newUser = {\n    id: userId,\n    username: msg.req.body.username,\n    password: hashedPassword,\n    email: msg.req.body.email,\n    phone: msg.req.body.phone || '',\n    company: msg.req.body.company || '',\n    department: msg.req.body.department || '',\n    status: 1\n};\n\n// 设置SQL插入语句\nmsg.topic = \"INSERT INTO users1 (uuid, username, password, email, phone, company,department,  status) VALUES (?,  ?,  ?, ?, ?, ?, ?, ?)\";\nmsg.payload = [\n    userId, \n    newUser.username, \n    newUser.password, \n    newUser.email, \n    newUser.phone, \n    newUser.company, \n    newUser.department, \n    newUser.status\n];\n\n// 保存新用户对象，用于响应\nmsg.newUser = newUser;\n\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 980,
+        "y": 400,
+        "wires": [
+            [
+                "9ed4c64de1f442a9"
+            ]
+        ]
+    },
+    {
+        "id": "9ed4c64de1f442a9",
+        "type": "mysql",
+        "z": "514ec94e7d382f6a",
+        "mydb": "806ba83c98eb2e99",
+        "name": "创建用户",
+        "x": 1140,
+        "y": 400,
+        "wires": [
+            [
+                "94b2c2ed156d3149"
+            ]
+        ]
+    },
+    {
+        "id": "94b2c2ed156d3149",
+        "type": "function",
+        "z": "514ec94e7d382f6a",
+        "name": "注册响应",
+        "func": "// 创建用户成功后的响应\n\n// 不返回密码等敏感信息\nconst userInfo = {\n    id: msg.newUser.id,\n    username: msg.newUser.username,\n    email: msg.newUser.email,\n    company: msg.newUser.company,\n    department: msg.newUser.department,\n    role: msg.newUser.role\n};\n\nmsg.payload = {\n    success: true,\n    data: userInfo\n};\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1280,
+        "y": 400,
+        "wires": [
+            [
+                "bd6e9432646a2051"
+            ]
+        ]
+    },
+    {
+        "id": "cc1fe7f973854990",
+        "type": "function",
+        "z": "514ec94e7d382f6a",
+        "name": "function 65",
+        "func": "// 处理查询结果，检查是否已有用户\nif (msg.payload && msg.payload.length > 0) {\n    // 如果查询到已有用户，返回400错误\n    msg.statusCode = 400;\n    msg.payload = {\n        message: '该邮箱已被注册'\n    };\n    return [msg,null];\n} else {\n    // 如果没有重复用户，则继续处理创建新用户的逻辑\n    return [null,msg];\n}\n",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 790,
+        "y": 400,
+        "wires": [
+            [
+                "bd6e9432646a2051"
+            ],
+            [
+                "bce096ab91d12da3"
+            ]
+        ]
+    },
+    {
+        "id": "419564095f3b5838",
+        "type": "function",
+        "z": "514ec94e7d382f6a",
+        "name": "function 18",
+        "func": "\nconst query = `\n    SELECT * FROM company;\n`;\nmsg.topic = query;\nreturn msg;\n\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 350,
+        "y": 500,
+        "wires": [
+            [
+                "c2e080ff30e25432"
+            ]
+        ]
+    },
+    {
+        "id": "0b21bbd31fa67cf8",
+        "type": "http in",
+        "z": "514ec94e7d382f6a",
+        "name": "获取公司信息",
+        "url": "api/companies",
+        "method": "get",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 150,
+        "y": 500,
+        "wires": [
+            [
+                "419564095f3b5838"
+            ]
+        ]
+    },
+    {
+        "id": "c2e080ff30e25432",
+        "type": "mysql",
+        "z": "514ec94e7d382f6a",
+        "mydb": "806ba83c98eb2e99",
+        "name": "",
+        "x": 530,
+        "y": 500,
+        "wires": [
+            [
+                "update-user-response"
+            ]
+        ]
+    },
+    {
+        "id": "2718baf06a75c02e",
+        "type": "http in",
+        "z": "514ec94e7d382f6a",
+        "name": "获取用户列表",
+        "url": "api/users",
+        "method": "get",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 150,
+        "y": 560,
+        "wires": [
+            [
+                "7eb2adb19fc8700a"
+            ]
+        ]
+    },
+    {
+        "id": "7eb2adb19fc8700a",
+        "type": "function",
+        "z": "514ec94e7d382f6a",
+        "name": "function 19",
+        "func": "\nconst query = `\n    SELECT * FROM users1;\n`;\nmsg.topic = query;\nreturn msg;\n\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 350,
+        "y": 560,
+        "wires": [
+            [
+                "5a2c0b8258e11c08"
+            ]
+        ]
+    },
+    {
+        "id": "5a2c0b8258e11c08",
+        "type": "mysql",
+        "z": "514ec94e7d382f6a",
+        "mydb": "806ba83c98eb2e99",
+        "name": "",
+        "x": 530,
+        "y": 560,
+        "wires": [
+            [
+                "update-user-response"
+            ]
+        ]
+    },
+    {
+        "id": "update-user-response",
+        "type": "http response",
+        "z": "514ec94e7d382f6a",
+        "name": "Send Updated User",
+        "statusCode": "200",
+        "headers": {
+            "content-type": "application/json"
+        },
+        "x": 1320,
+        "y": 620,
+        "wires": []
+    },
+    {
+        "id": "delete-user-endpoint",
+        "type": "http in",
+        "z": "514ec94e7d382f6a",
+        "name": "删除用户",
+        "url": "/api/users/:id",
+        "method": "delete",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 140,
+        "y": 700,
+        "wires": [
+            [
+                "8caf43095817a5c0"
+            ]
+        ]
+    },
+    {
+        "id": "delete-user-query",
+        "type": "mysql",
+        "z": "514ec94e7d382f6a",
+        "mydb": "806ba83c98eb2e99",
+        "name": "Delete User",
+        "x": 550,
+        "y": 700,
+        "wires": [
+            [
+                "check-delete-result"
+            ]
+        ]
+    },
+    {
+        "id": "check-delete-result",
+        "type": "function",
+        "z": "514ec94e7d382f6a",
+        "name": "Check Delete Result",
+        "func": "const result = msg.payload;\n\nif (result.affectedRows === 0) {\n    msg.statusCode = 404;\n    msg.payload = { error: '用户不存在' };\n    return [null, msg];\n}\n\nmsg.payload = { message: '删除用户成功' };\nreturn [msg, null];",
+        "outputs": 2,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 800,
+        "y": 700,
+        "wires": [
+            [
+                "update-user-response"
+            ],
+            [
+                "update-user-response"
+            ]
+        ]
+    },
+    {
+        "id": "8caf43095817a5c0",
+        "type": "function",
+        "z": "514ec94e7d382f6a",
+        "name": "function 4",
+        "func": "const userId = msg.req.params.id; // 获取请求中的用户ID\n\nif (!userId) {\n    msg.statusCode = 400;  // 如果未传入 ID，返回 400\n    msg.payload = { error: '缺少用户ID' };\n    return [null, msg];\n}\n\n// 删除用户记录\nmsg.topic = `DELETE FROM users1 WHERE id = ${userId}`;\n\nreturn [msg, null];\n\n\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 360,
+        "y": 700,
+        "wires": [
+            [
+                "delete-user-query"
+            ]
+        ]
+    },
+    {
+        "id": "d4489cc0a3cb72c3",
+        "type": "http in",
+        "z": "514ec94e7d382f6a",
+        "name": "更新用户角色",
+        "url": "/api/users/:id/role",
+        "method": "put",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 150,
+        "y": 600,
+        "wires": [
+            [
+                "3fb88bf70869f5a4"
+            ]
+        ]
+    },
+    {
+        "id": "3fb88bf70869f5a4",
+        "type": "function",
+        "z": "514ec94e7d382f6a",
+        "name": "Prepare Update Query",
+        "func": "const userId = msg.req.params.id;\nconst updates = msg.payload;\n\n// 防止更新密码 (需要单独的更改密码接口)\ndelete updates.password;\n\n// 防止更新created_at字段\ndelete updates.created_at;\n\n// 确保 updated_at 字段是有效的日期时间格式\nif (updates.updated_at) {\n    const validDateTime = new Date(updates.updated_at).toISOString().slice(0, 19).replace('T', ' ');\n    updates.updated_at = validDateTime; // 更新为正确的格式\n}\n\n// 构建SET子句\nconst setClauses = [];\nconst params = [];\n\nfor (const [key, value] of Object.entries(updates)) {\n    if (value !== undefined && value !== null) {\n        setClauses.push(`${key} = ?`);\n        params.push(value);\n    }\n}\n\nif (setClauses.length === 0) {\n    msg.statusCode = 400;\n    msg.payload = { error: '没有提供要更新的字段' };\n    return [null, msg];\n}\n\n// 添加用户ID作为WHERE条件的参数\nparams.push(userId);\n\nmsg.payload = params;\nmsg.topic = `UPDATE users1 SET ${setClauses.join(', ')} WHERE id = ?`;\n\nreturn [msg, null];\n\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 360,
+        "y": 620,
+        "wires": [
+            [
+                "b0b7bbddca8ecce6"
+            ]
+        ]
+    },
+    {
+        "id": "b0b7bbddca8ecce6",
+        "type": "mysql",
+        "z": "514ec94e7d382f6a",
+        "mydb": "806ba83c98eb2e99",
+        "name": "Update User",
+        "x": 550,
+        "y": 620,
+        "wires": [
+            [
+                "d6f48a18b4c26137"
+            ]
+        ]
+    },
+    {
+        "id": "d6f48a18b4c26137",
+        "type": "function",
+        "z": "514ec94e7d382f6a",
+        "name": "Check Update Result",
+        "func": "const result = msg.payload;  // 获取前一个节点的结果\nconst userId = msg.req.params.id;  // 获取传入的用户ID\n\n// 判断数据库写入是否成功\nif (result.affectedRows === 0) {\n    msg.statusCode = 404;  // 设置状态码为404，表示写入失败\n    msg.payload = { error: '写入失败，用户不存在' };  // 错误信息\n    return [null, msg];  // 返回错误响应\n}\n\n// 写入成功后，执行查询操作\nmsg.topic = `SELECT * FROM users1 WHERE id = ?`;  // SQL查询语句，使用占位符\nmsg.payload = [userId]; // 作为参数数组传递（注意需要是数组格式）\n\n// 返回查询操作的结果\nreturn [msg, null];  // 返回包含查询操作的消息\n\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 740,
+        "y": 620,
+        "wires": [
+            [
+                "45934bfdab0feae0"
+            ]
+        ]
+    },
+    {
+        "id": "45934bfdab0feae0",
+        "type": "mysql",
+        "z": "514ec94e7d382f6a",
+        "mydb": "806ba83c98eb2e99",
+        "name": "Get Updated User",
+        "x": 950,
+        "y": 620,
+        "wires": [
+            [
+                "update-user-response"
+            ]
+        ]
+    },
+    {
+        "id": "25713032e80df106",
+        "type": "debug",
+        "z": "514ec94e7d382f6a",
+        "name": "debug 30",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1220,
+        "y": 280,
+        "wires": []
+    },
+    {
+        "id": "625e5d5293364150",
+        "type": "http in",
+        "z": "514ec94e7d382f6a",
+        "name": "更新用户角色",
+        "url": "/api/users/:id",
+        "method": "put",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 150,
+        "y": 640,
+        "wires": [
+            [
+                "3fb88bf70869f5a4"
+            ]
+        ]
+    },
+    {
+        "id": "0d04136b6093fc90",
+        "type": "http in",
+        "z": "514ec94e7d382f6a",
+        "name": "",
+        "url": "/api/users/roles",
+        "method": "get",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 150,
+        "y": 820,
+        "wires": [
+            [
+                "62951dbbeed2dea9"
+            ]
+        ]
+    },
+    {
+        "id": "62951dbbeed2dea9",
+        "type": "function",
+        "z": "514ec94e7d382f6a",
+        "name": "角色检查",
+        "func": "const userId = msg.req.query.userId;\n\n\n// 查询用户角色\nmsg.topic = \"SELECT is_admin FROM users1 WHERE id = ?\";\nmsg.payload = [userId]; // 👈 传入数组形式用于替换占位符\n\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 360,
+        "y": 820,
+        "wires": [
+            [
+                "b7b5895aa5356e42"
+            ]
+        ]
+    },
+    {
+        "id": "b7b5895aa5356e42",
+        "type": "mysql",
+        "z": "514ec94e7d382f6a",
+        "mydb": "806ba83c98eb2e99",
+        "name": "",
+        "x": 530,
+        "y": 820,
+        "wires": [
+            [
+                "50be8f665c2a1aa8"
+            ]
+        ]
+    },
+    {
+        "id": "50be8f665c2a1aa8",
+        "type": "function",
+        "z": "514ec94e7d382f6a",
+        "name": "function 93",
+        "func": "const roleId = msg.payload[0].is_admin;\n\n\n// 查询用户角色\nmsg.topic = \"SELECT name FROM roles WHERE id = ?\";\nmsg.payload = [roleId]; // 👈 传入数组形式用于替换占位符\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 710,
+        "y": 820,
+        "wires": [
+            [
+                "bdc3304808cfdba3"
+            ]
+        ]
+    },
+    {
+        "id": "bdc3304808cfdba3",
+        "type": "mysql",
+        "z": "514ec94e7d382f6a",
+        "mydb": "806ba83c98eb2e99",
+        "name": "",
+        "x": 870,
+        "y": 820,
+        "wires": [
+            [
+                "f5404d9885f45d9a"
+            ]
+        ]
+    },
+    {
+        "id": "f5404d9885f45d9a",
+        "type": "http response",
+        "z": "514ec94e7d382f6a",
+        "name": "",
+        "statusCode": "",
+        "headers": {},
+        "x": 1070,
+        "y": 800,
+        "wires": []
+    },
+    {
+        "id": "process_register",
+        "type": "function",
+        "z": "514ec94e7d382f6a",
+        "name": "处理用户注册",
+        "func": "const { username, email, password, phone, department, company } = msg.payload;\n\n// 检查必填字段\nif (!username || !email || !password) {\n    msg.statusCode = 400;\n    msg.payload = { message: '用户名、邮箱和密码为必填项' };\n    return [null, msg];\n}\n\n// 先检查邮箱是否已存在\nmsg.topic = 'SELECT * FROM users.users1 WHERE email = ?';\nmsg.payload = [email];\nmsg.registerData = { username, email, password, phone, department, company };\n\nreturn [msg, null];",
+        "outputs": 2,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 380,
+        "y": 1000,
+        "wires": [
+            [
+                "check_existing_user"
+            ],
+            [
+                "register_error"
+            ]
+        ]
+    },
+    {
+        "id": "check_existing_user",
+        "type": "mysql",
+        "z": "514ec94e7d382f6a",
+        "mydb": "806ba83c98eb2e99",
+        "name": "检查用户是否存在",
+        "x": 610,
+        "y": 960,
+        "wires": [
+            [
+                "validate_user_registration"
+            ]
+        ]
+    },
+    {
+        "id": "validate_user_registration",
+        "type": "function",
+        "z": "514ec94e7d382f6a",
+        "name": "验证用户注册",
+        "func": "if (msg.payload.length > 0) {\n    msg.statusCode = 400;\n    msg.payload = { message: '该邮箱已被注册' };\n    return [null, msg];\n}\n\n// 生成密码哈希和头像种子\nconst bcrypt = global.get('bcrypt') || require('bcrypt');\nconst hashedPassword = bcrypt.hashSync(msg.registerData.password, 10);\nconst avatarSeed = Math.random().toString(36).substring(2, 15);\n\n// 插入新用户\nmsg.topic = 'INSERT INTO users.users1 (username, email, password, phone, department, company, avatar_seed, status) VALUES (?, ?, ?, ?, ?, ?, ?, 1)';\nmsg.payload = [\n    msg.registerData.username,\n    msg.registerData.email,\n    hashedPassword,\n    msg.registerData.phone,\n    msg.registerData.department,\n    msg.registerData.company,\n    avatarSeed\n];\n\nreturn [msg, null];",
+        "outputs": 2,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 860,
+        "y": 960,
+        "wires": [
+            [
+                "insert_new_user"
+            ],
+            [
+                "register_error"
+            ]
+        ]
+    },
+    {
+        "id": "insert_new_user",
+        "type": "mysql",
+        "z": "514ec94e7d382f6a",
+        "mydb": "806ba83c98eb2e99",
+        "name": "插入新用户",
+        "x": 1090,
+        "y": 960,
+        "wires": [
+            [
+                "register_success"
+            ]
+        ]
+    },
+    {
+        "id": "register_success",
+        "type": "function",
+        "z": "514ec94e7d382f6a",
+        "name": "注册成功",
+        "func": "msg.statusCode = 201;\nmsg.payload = { message: '注册成功' };\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1280,
+        "y": 960,
+        "wires": [
+            [
+                "register_response"
+            ]
+        ]
+    },
+    {
+        "id": "register_error",
+        "type": "function",
+        "z": "514ec94e7d382f6a",
+        "name": "注册错误",
+        "func": "if (!msg.statusCode) {\n    msg.statusCode = 500;\n    msg.payload = { message: '服务器错误' };\n}\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1100,
+        "y": 1020,
+        "wires": [
+            [
+                "register_response"
+            ]
+        ]
+    },
+    {
+        "id": "register_response",
+        "type": "http response",
+        "z": "514ec94e7d382f6a",
+        "name": "注册响应",
+        "statusCode": "",
+        "headers": {
+            "Content-Type": "application/json"
+        },
+        "x": 1380,
+        "y": 1040,
+        "wires": []
+    },
+    {
+        "id": "process_login",
+        "type": "function",
+        "z": "514ec94e7d382f6a",
+        "name": "处理用户登录",
+        "func": "const { email, password } = msg.payload;\n\nif (!email || !password) {\n    msg.statusCode = 400;\n    msg.payload = { message: '邮箱和密码为必填项' };\n    return [null, msg];\n}\n\nmsg.topic = 'SELECT * FROM users.users1 WHERE email = ? AND status = 1';\nmsg.payload = [email];\nmsg.loginPassword = password;\n\nreturn [msg, null];",
+        "outputs": 2,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 380,
+        "y": 1060,
+        "wires": [
+            [
+                "find_user"
+            ],
+            [
+                "login_error"
+            ]
+        ]
+    },
+    {
+        "id": "find_user",
+        "type": "mysql",
+        "z": "514ec94e7d382f6a",
+        "mydb": "806ba83c98eb2e99",
+        "name": "查找用户",
+        "x": 620,
+        "y": 1060,
+        "wires": [
+            [
+                "validate_login"
+            ]
+        ]
+    },
+    {
+        "id": "validate_login",
+        "type": "function",
+        "z": "514ec94e7d382f6a",
+        "name": "验证登录",
+        "func": "if (msg.payload.length === 0) {\n    msg.statusCode = 401;\n    msg.payload = { message: '邮箱或密码错误' };\n    return [null, msg];\n}\n\nconst user = msg.payload[0];\nconst bcrypt = global.get('bcrypt') || require('bcrypt');\n\nif (!bcrypt.compareSync(msg.loginPassword, user.password)) {\n    msg.statusCode = 401;\n    msg.payload = { message: '邮箱或密码错误' };\n    return [null, msg];\n}\n\nmsg.statusCode = 200;\nmsg.payload = {\n    message: '登录成功',\n    user: {\n        id: user.id,\n        username: user.username,\n        email: user.email,\n        phone: user.phone,\n        department: user.department,\n        avatar_seed: user.avatar_seed,\n        company: user.company\n    }\n};\n\nreturn [msg, null];",
+        "outputs": 2,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 850,
+        "y": 1060,
+        "wires": [
+            [
+                "login_response"
+            ],
+            [
+                "login_error"
+            ]
+        ]
+    },
+    {
+        "id": "login_error",
+        "type": "function",
+        "z": "514ec94e7d382f6a",
+        "name": "登录错误",
+        "func": "if (!msg.statusCode) {\n    msg.statusCode = 500;\n    msg.payload = { message: '服务器错误' };\n}\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 820,
+        "y": 1120,
+        "wires": [
+            [
+                "login_response"
+            ]
+        ]
+    },
+    {
+        "id": "login_response",
+        "type": "http response",
+        "z": "514ec94e7d382f6a",
+        "name": "登录响应",
+        "statusCode": "",
+        "headers": {
+            "Content-Type": "application/json"
+        },
+        "x": 1400,
+        "y": 1100,
+        "wires": []
+    },
+    {
+        "id": "ee824beed3b65034",
+        "type": "function",
+        "z": "514ec94e7d382f6a",
+        "name": "处理管理员检查请求",
+        "func": "// 获取用户ID\nconst userId = msg.payload.userId;\n\n// 验证参数\nif (!userId) {\n    msg.statusCode = 400;\n    msg.payload = {\n        success: false,\n        error: {\n            code: \"INVALID_PARAMS\",\n            message: \"用户ID不能为空\"\n        }\n    };\n    return msg;\n}\n\n// 查询用户管理员状态\nmsg.topic = \"SELECT is_admin FROM users1 WHERE id = ?\";\nmsg.payload = [userId];\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 380,
+        "y": 260,
+        "wires": [
+            [
+                "355a36260d4405ab"
+            ]
+        ]
+    },
+    {
+        "id": "9fde5018df03c009",
+        "type": "function",
+        "z": "514ec94e7d382f6a",
+        "name": "管理员检查响应",
+        "func": "const users = msg.payload;\n\n// 用户不存在\nif (users.length === 0) {\n    msg.statusCode = 404;\n    msg.payload = {\n        success: false,\n        error: {\n            code: \"USER_NOT_FOUND\",\n            message: \"用户不存在\"\n        }\n    };\n    return msg;\n}\n\nconst user = users[0];\n\n// 检查用户管理员状态\nconst adminValue = user.is_admin || 0;\nconst isAdmin = adminValue === 1 || adminValue === true;\n\nmsg.payload = {\n    success: true,\n    data: {\n        is_admin: adminValue,\n        isAdmin: isAdmin\n    }\n};\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 800,
+        "y": 260,
+        "wires": [
+            [
+                "bd6e9432646a2051"
+            ]
+        ]
+    },
+    {
+        "id": "d0e0d2b04d5f2580",
+        "type": "debug",
+        "z": "514ec94e7d382f6a",
+        "name": "debug 41",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1440,
+        "y": 180,
+        "wires": []
+    },
+    {
+        "id": "8d46292d35ddbc49",
+        "type": "function",
+        "z": "514ec94e7d382f6a",
+        "name": "验证密码",
+        "func": "const users = msg.payload;  // payload 是用户数组\nconst password = msg.req.body.password; // 获取前端提交的密码\n\n// 全局依赖\nconst bcrypt = global.get('bcrypt');\nconst jwt = global.get('jwt');\nconst uuid = global.get('uuid');\nconst jwtSecret = global.get('jwtSecret');\nconst jwtRefreshSecret = global.get('jwtRefreshSecret');\n\n// 用户不存在\nif (!users || users.length === 0) {\n    return [null, {\n            \"error\": {\n                \"code\": \"ERROR_CODE\",\n                \"message\": \"用户不存在'\",\n                \"success\": false,   \n            }\n    }];\n}\n\nconst user = users[0];\n\n// 密码不匹配\nconst passwordMatch = bcrypt.compareSync(password, user.password);\nif (!passwordMatch) {\n    return [null, {\n            \"error\": {\n                \"code\": \"ERROR_CODE\",\n                \"message\": \"用户名或密码错误\",\n                \"success\": false,\n            }\n    }];\n}\n\n// 登录成功：生成 JWT 和 Refresh Token\nconst tokenId = uuid.v4();\nconst refreshTokenId = uuid.v4();\n\nconst tokenExpiry = new Date();\ntokenExpiry.setHours(tokenExpiry.getHours() + 24); // 24小时有效\n\nconst tokenPayload = {\n    id: user.id,\n    username: user.username,\n    role: user.role || 'user',\n    company: user.company,\n    jti: tokenId\n};\n\nconst refreshPayload = {\n    id: user.id,\n    jti: refreshTokenId\n};\n\nconst token = jwt.sign(tokenPayload, jwtSecret, { expiresIn: '24h' });\nconst refreshToken = jwt.sign(refreshPayload, jwtRefreshSecret, { expiresIn: '7d' });\n\nmsg.tokenInfo = {\n    id: tokenId,\n    user_id: user.id,\n    token: token,\n    refresh_token: refreshToken,\n    expires_at: tokenExpiry\n};\n\nmsg.topic = \"INSERT INTO tokens (id, user_id, token, refresh_token, expires_at) VALUES (?, ?, ?, ?, ?)\";\nmsg.payload = [tokenId, user.id, token, refreshToken, tokenExpiry];\n\nmsg.userResponse = {\n    success: true,\n    data: {\n        token: token,\n        refreshToken: refreshToken,\n        message: '登录成功',\n        user: {\n            id: user.id,\n            username: user.username,\n            email: user.email,\n            phone: user.phone,\n            department: user.department,\n            avatar_seed: user.avatar_seed,\n            company: user.company,\n            is_admin: user.is_admin || false\n        }\n    }\n};\n\n// 正常登录 -> 输出1\nreturn [msg, null];\n\n\n",
+        "outputs": 2,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 940,
+        "y": 1180,
+        "wires": [
+            [
+                "23bff53cd1019cf5"
+            ],
+            []
+        ]
+    },
+    {
+        "id": "23bff53cd1019cf5",
+        "type": "mysql",
+        "z": "514ec94e7d382f6a",
+        "mydb": "806ba83c98eb2e99",
+        "name": "保存Token",
+        "x": 1150,
+        "y": 1180,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "91b8b91cf3c425b5",
+        "type": "http in",
+        "z": "514ec94e7d382f6a",
+        "name": "登录接口",
+        "url": "/api/auth/login/",
+        "method": "post",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 120,
+        "y": 80,
+        "wires": [
+            [
+                "2b3e427d203d6fee",
+                "d0e0d2b04d5f2580"
+            ]
+        ]
+    },
+    {
+        "id": "8c4f600ddf823760",
+        "type": "http in",
+        "z": "514ec94e7d382f6a",
+        "name": "注册接口",
+        "url": "/api/auth/register/",
+        "method": "post",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 120,
+        "y": 20,
+        "wires": [
+            [
+                "324a8392b5a934a5"
+            ]
+        ]
+    },
+    {
+        "id": "806ba83c98eb2e99",
+        "type": "MySQLdatabase",
+        "name": "",
+        "host": "192.168.1.108",
+        "port": "13307",
+        "db": "users",
+        "tz": "",
+        "charset": "UTF8"
+    }
+]

@@ -1,48 +1,92 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
-import { useColorScheme } from 'react-native';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { Appearance } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getThemeColors, ColorUtils } from '../styles/StyleGuide';
 
 const ThemeContext = createContext();
 
 export const ThemeProvider = ({ children }) => {
-  const systemColorScheme = useColorScheme();
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [followSystem, setFollowSystem] = useState(true);
 
   const toggleTheme = () => {
-    setIsDarkMode(prev => !prev);
+    setIsDarkMode(!isDarkMode);
     setFollowSystem(false);
+    // 保存用户偏好
+    AsyncStorage.setItem('theme_preference', JSON.stringify({
+      isDarkMode: !isDarkMode,
+      followSystem: false
+    }));
   };
 
   const toggleFollowSystem = () => {
-    setFollowSystem(prev => !prev);
-    if (!followSystem) {
+    const newFollowSystem = !followSystem;
+    setFollowSystem(newFollowSystem);
+    if (newFollowSystem) {
+      const systemColorScheme = Appearance.getColorScheme();
       setIsDarkMode(systemColorScheme === 'dark');
     }
+    // 保存用户偏好
+    AsyncStorage.setItem('theme_preference', JSON.stringify({
+      isDarkMode: newFollowSystem ? (Appearance.getColorScheme() === 'dark') : isDarkMode,
+      followSystem: newFollowSystem
+    }));
   };
 
+  // 初始化主题设置
+  useEffect(() => {
+    const initializeTheme = async () => {
+      try {
+        const savedPreference = await AsyncStorage.getItem('theme_preference');
+        if (savedPreference) {
+          const { isDarkMode: savedDarkMode, followSystem: savedFollowSystem } = JSON.parse(savedPreference);
+          setFollowSystem(savedFollowSystem);
+          if (savedFollowSystem) {
+            const systemColorScheme = Appearance.getColorScheme();
+            setIsDarkMode(systemColorScheme === 'dark');
+          } else {
+            setIsDarkMode(savedDarkMode);
+          }
+        } else {
+          // 默认跟随系统
+          const systemColorScheme = Appearance.getColorScheme();
+          setIsDarkMode(systemColorScheme === 'dark');
+        }
+      } catch (error) {
+        console.warn('Failed to load theme preference:', error);
+        // 回退到系统主题
+        const systemColorScheme = Appearance.getColorScheme();
+        setIsDarkMode(systemColorScheme === 'dark');
+      }
+    };
+
+    initializeTheme();
+  }, []);
+
+  // 监听系统主题变化
   useEffect(() => {
     if (followSystem) {
-      setIsDarkMode(systemColorScheme === 'dark');
+      const subscription = Appearance.addChangeListener(({ colorScheme }) => {
+        setIsDarkMode(colorScheme === 'dark');
+      });
+      return () => subscription?.remove();
     }
-  }, [systemColorScheme, followSystem]);
+  }, [followSystem]);
+
+  // 获取当前主题颜色
+  const colors = getThemeColors(isDarkMode);
 
   const theme = {
     isDarkMode,
     toggleTheme,
     followSystem,
     toggleFollowSystem,
-    colors: {
-      background: isDarkMode ? '#1a1a1a' : '#f5f5f5',
-      card: isDarkMode ? '#2a2a2a' : '#ffffff',
-      text: isDarkMode ? '#ffffff' : '#333333',
-      headerBackground: isDarkMode ? '#1a1a1a' : '#2196F3',
-      headerText: '#ffffff',
-      tabBarBackground: isDarkMode ? '#1a1a1a' : '#ffffff',
-      tabBarActive: isDarkMode ? '#81b0ff' : '#2196F3',
-      tabBarInactive: isDarkMode ? '#666666' : 'gray',
-      primary: isDarkMode ? '#81b0ff' : '#2196F3',
-      border: isDarkMode ? '#444444' : '#dddddd'
-    },
+    colors,
+    // 颜色工具函数
+    ColorUtils,
+    // 便捷方法
+    getStatusColor: (status) => ColorUtils.getStatusColor(status, colors),
+    withOpacity: (color, opacity) => ColorUtils.withOpacity(color, opacity),
   };
 
   return (
@@ -54,8 +98,11 @@ export const ThemeProvider = ({ children }) => {
 
 export const useTheme = () => {
   const context = useContext(ThemeContext);
-  if (context === undefined) {
+  if (!context) {
     throw new Error('useTheme must be used within a ThemeProvider');
   }
   return context;
 };
+
+// 导出主题相关工具
+export { getThemeColors, ColorUtils };

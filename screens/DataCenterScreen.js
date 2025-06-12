@@ -1,10 +1,13 @@
 import React from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
+import { createCommonStyles, DesignTokens } from '../styles/StyleGuide';
 import { Ionicons } from '@expo/vector-icons';
 
 function DataCenterScreen({ navigation }) {
   const { colors, isDarkMode } = useTheme();
+  const commonStyles = createCommonStyles(colors, isDarkMode);
+  const styles = createStyles(colors, isDarkMode);
 
   const menuItems = [
     {
@@ -27,7 +30,7 @@ function DataCenterScreen({ navigation }) {
   const renderMenuItem = (item) => (
     <TouchableOpacity
       key={item.id}
-      style={[styles.card, { backgroundColor: colors.card }]}
+      style={styles.card}
       onPress={item.onPress}
     >
       <View style={styles.iconContainer}>
@@ -38,8 +41,8 @@ function DataCenterScreen({ navigation }) {
           style={styles.icon}
         />
       </View>
-      <Text style={[styles.cardTitle, { color: colors.text }]}>{item.title}</Text>
-      <Text style={[styles.cardDescription, { color: colors.text }]}>
+      <Text style={styles.cardTitle}>{item.title}</Text>
+      <Text style={styles.cardDescription}>
         {item.description}
       </Text>
     </TouchableOpacity>
@@ -47,7 +50,7 @@ function DataCenterScreen({ navigation }) {
 
   return (
     <ScrollView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={styles.container}
       contentContainerStyle={styles.contentContainer}
     >
 
@@ -58,56 +61,65 @@ function DataCenterScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  contentContainer: {
-    padding: 16,
-  },
-  pageTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 20,
-    marginLeft: 4,
-  },
-  cardGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
-  card: {
-    width: '48%',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-    alignItems: 'center',
-  },
-  iconContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: 'rgba(0, 0, 0, 0.05)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  cardDescription: {
-    fontSize: 12,
-    textAlign: 'center',
-    opacity: 0.7,
-  },
-});
+// 创建样式函数，使用设计令牌
+const createStyles = (colors, isDarkMode) => {
+  const { spacing, typography, borderRadius, shadows } = DesignTokens;
+  
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    contentContainer: {
+      padding: spacing.lg,
+    },
+    pageTitle: {
+      fontSize: typography.sizes.xxl,
+      fontWeight: typography.weights.bold,
+      color: colors.text,
+      marginBottom: spacing.xl,
+      marginLeft: spacing.xs,
+    },
+    cardGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'space-between',
+    },
+    card: {
+      width: '48%',
+      backgroundColor: colors.card,
+      borderRadius: borderRadius.lg,
+      padding: spacing.lg,
+      marginBottom: spacing.lg,
+      ...shadows.md,
+      alignItems: 'center',
+      borderWidth: isDarkMode ? 1 : 0,
+      borderColor: colors.border,
+    },
+    iconContainer: {
+      width: 64,
+      height: 64,
+      borderRadius: 32,
+      backgroundColor: colors.primary + '20',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: spacing.md,
+      ...shadows.sm,
+    },
+    cardTitle: {
+      fontSize: typography.sizes.lg,
+      fontWeight: typography.weights.semibold,
+      color: colors.text,
+      marginBottom: spacing.sm,
+      textAlign: 'center',
+    },
+    cardDescription: {
+      fontSize: typography.sizes.sm,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      lineHeight: typography.lineHeights.relaxed,
+    },
+  });
+};
 
 export default DataCenterScreen;

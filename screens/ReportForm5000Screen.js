@@ -4,6 +4,7 @@ import { useTheme } from '../context/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import axios from 'axios';
+import { reportApi } from '../api/apiService';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { uploadFileToWebDAV } from './FileUploadScreen';
@@ -99,9 +100,10 @@ const ReportFormScreen = ({ route }) => {
     
     setIsCheckingReport(true);
     try {
-      const response = await axios.get(`https://nodered.jzz77.cn:9003/api/reports5000/exists?date=${formData.date}&operator=${formData.operator}`);
+      const response = await reportApi.checkReport5000Exists({ date: formData.date, operator: formData.operator });
       
-      if (response.data && response.data.exists) {
+      // 后端直接返回 {"exists": true/false} 格式
+      if (response && response.exists) {
         // 格式化日期为"X月X日"的形式
         const dateParts = formData.date.split('-');
         const month = parseInt(dateParts[1]);
@@ -251,10 +253,12 @@ const ReportFormScreen = ({ route }) => {
       };
 
       // 提交到服务器
-      const response = await axios.post('https://nodered.jzz77.cn:9003/api/reports5000', processedData);
+      const response = await reportApi.createReport5000(processedData);
       
-      if (response.status === 201) {
-        Alert.alert('成功', '报告已提交');
+      // 后端使用UPSERT机制，成功返回数据即表示操作成功（新增或更新）
+      if (response && response.message) {
+        // 根据后端返回的消息显示相应提示
+        Alert.alert('成功', response.message || '报告已提交');
         // 只在成功时清空图片和表单数据
         setImages([]);
         setFormData({
@@ -285,7 +289,7 @@ const ReportFormScreen = ({ route }) => {
         // 重置日期编辑状态
         setAllowDateEdit(false);
       } else {
-        throw new Error('提交失败');
+        throw new Error('提交失败：服务器响应异常');
       }
     } catch (error) {
       console.error('提交失败:', error);
@@ -428,7 +432,7 @@ const ReportFormScreen = ({ route }) => {
       const uploadPromises = images.map(async (uri, index) => {
         // 使用生产报告ID生成唯一的图片文件名
         const timestamp = Date.now();
-        const imageFileName = `PROD_${reportId}_IMAGE_${index + 1}_${timestamp}.jpg`;
+        const imageFileName = `5000T_${reportId}_IMAGE_${index + 1}_${timestamp}.jpg`;
         
         const file = {
           uri,
@@ -436,8 +440,8 @@ const ReportFormScreen = ({ route }) => {
           type: 'image/jpeg'
         };
         
-        // 上传到 Nextcloud，使用报告ID作为标识
-        return await uploadFileToWebDAV(file, 'reports', reportId);
+        // 上传到 Nextcloud 5000吨处理厂日报专用文件夹
+        return await uploadFileToWebDAV(file, 'report/report_5000', reportId);
       });
   
       const imageUrls = await Promise.all(uploadPromises);

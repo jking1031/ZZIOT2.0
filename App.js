@@ -5,7 +5,7 @@ import * as FileSystem from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { ThemeProvider } from './context/ThemeContext';
+import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { AuthProvider } from './context/AuthContext';
 import SplashScreen from './screens/SplashScreen';
 import HomeScreen from './screens/HomeScreen';
@@ -29,10 +29,8 @@ import ReportForm5000Screen from './screens/ReportForm5000Screen';
 import ReportFormSludgeScreen from './screens/ReportFormSludgeScreen';
 import FileUploadTestScreen from './screens/FileUploadTestScreen';
 import UserManagementScreen from './screens/UserManagementScreen';
-// 导入工单相关页面
-import TicketListScreen from './screens/TicketListScreen';
-import TicketDetailScreen from './screens/TicketDetailScreen';
-import CreateTicketScreen from './screens/CreateTicketScreen';
+import ApiManagementScreen from './screens/ApiManagementScreen';
+// 工单相关页面已删除
 import LabDataScreen from './screens/LabDataScreen';
 import SludgeDataEntryScreen from './screens/SludgeDataEntryScreen';
 import ReportFormPumpStationScreen from './screens/ReportFormPumpStationScreen';
@@ -42,6 +40,8 @@ import PacCalculatorScreen from './screens/PacCalculatorScreen';
 import PamCalculatorScreen from './screens/PamCalculatorScreen';
 import DosingCalculatorScreen from './screens/DosingCalculatorScreen';
 import ExcessSludgeCalculatorScreen from './screens/ExcessSludgeCalculatorScreen';
+// 导入DAV文件管理器
+import DavScreen from './screens/DavScreen';
 // 添加错误边界组件
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -219,6 +219,7 @@ const styles = StyleSheet.create({
 });
 
 function AppContent({ showSplash, onSplashFinish }) {
+  const { colors } = useTheme();
 
   return (
     <NavigationContainer>
@@ -230,7 +231,7 @@ function AppContent({ showSplash, onSplashFinish }) {
           screenOptions={{
             headerShown: false,
             headerStyle: {
-              backgroundColor: 'rgba(33, 150, 243, 0.8)',
+              backgroundColor: colors.headerBackground,
               height: Platform.OS === 'ios' ? 65 : 60,
               elevation: 0,
               shadowOpacity: 0,
@@ -240,7 +241,7 @@ function AppContent({ showSplash, onSplashFinish }) {
             headerBackground: () => (
               <View style={{
                 flex: 1,
-                backgroundColor: 'rgba(33, 150, 243, 0.8)'
+                backgroundColor: colors.headerBackground
               }} />
             ),
             headerTitleContainerStyle: {
@@ -249,7 +250,7 @@ function AppContent({ showSplash, onSplashFinish }) {
               left: Platform.OS === 'android' ? undefined : undefined,
             },
             headerStatusBarHeight: Platform.OS === 'android' ? StatusBar.currentHeight : undefined,
-            headerTintColor: '#fff',
+            headerTintColor: colors.headerText,
             headerTitleStyle: {
               fontWeight: 'bold',
               fontSize: 18
@@ -446,33 +447,7 @@ function AppContent({ showSplash, onSplashFinish }) {
             }}
           />
           
-          {/* 工单系统相关屏幕 */}
-          <Stack.Screen
-            name="工单列表"
-            component={TicketListScreen}
-            options={{
-              title: '工单管理',
-              headerShown: true
-            }}
-          />
-          
-          <Stack.Screen
-            name="工单详情"
-            component={TicketDetailScreen}
-            options={{
-              title: '工单详情',
-              headerShown: true
-            }}
-          />
-          
-          <Stack.Screen
-            name="创建工单"
-            component={CreateTicketScreen}
-            options={{
-              title: '创建工单',
-              headerShown: true
-            }}
-          />
+          {/* 工单系统相关屏幕已删除 */}
 
           <Stack.Screen
             name="文件上传"
@@ -487,6 +462,14 @@ function AppContent({ showSplash, onSplashFinish }) {
             component={UserManagementScreen}
             options={{
               title: '用户管理',
+              headerShown: true
+            }}
+          />
+          <Stack.Screen
+            name="ApiManagementScreen"
+            component={ApiManagementScreen}
+            options={{
+              title: 'API管理',
               headerShown: true
             }}
           />
@@ -519,6 +502,14 @@ function AppContent({ showSplash, onSplashFinish }) {
             component={ExcessSludgeCalculatorScreen}
             options={{
               title: '剩余污泥计算器',
+              headerShown: true
+            }}
+          />
+          <Stack.Screen
+            name="文件管理"
+            component={DavScreen}
+            options={{
+              title: 'Nextcloud文件管理',
               headerShown: true
             }}
           />

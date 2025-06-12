@@ -4,6 +4,7 @@ import { useTheme } from '../context/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import axios from 'axios';
+import { reportApi } from '../api/apiService';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { uploadFileToWebDAV } from './FileUploadScreen';
@@ -118,9 +119,13 @@ const ReportFormScreen = ({ route }) => {
     
     setIsCheckingReport(true);
     try {
-      const response = await axios.get(`https://nodered.jzz77.cn:9003/api/reports/exists?date=${formData.date}&operator=${formData.operator}`);
+      const response = await reportApi.checkReportExists({
+        date: formData.date,
+        operator: formData.operator
+      });
       
-      if (response.data && response.data.exists) {
+      // 后端直接返回 {"exists": true/false} 格式
+      if (response && response.exists) {
         // 格式化日期为"X月X日"的形式
         const dateParts = formData.date.split('-');
         const month = parseInt(dateParts[1]);
@@ -287,10 +292,11 @@ const ReportFormScreen = ({ route }) => {
       };
 
       // 提交到服务器
-      const response = await axios.post('https://nodered.jzz77.cn:9003/api/reports', processedData);
+      const response = await reportApi.createReport(processedData);
       
-      if (response.status === 201) {
-        Alert.alert('成功', '报告已提交');
+      // 后端使用UPSERT机制，成功返回数据即表示操作成功（新增或更新）
+      if (response && response.message) {
+        Alert.alert('成功', response.message || '报告已提交');
         // 只在成功时清空图片和表单数据
         setImages([]);
         setFormData({
@@ -325,7 +331,7 @@ const ReportFormScreen = ({ route }) => {
         // 重置日期编辑状态
         setAllowDateEdit(false);
       } else {
-        throw new Error('提交失败');
+        throw new Error('提交失败：服务器响应异常');
       }
     } catch (error) {
       console.error('提交失败:', error);
@@ -484,8 +490,8 @@ const ReportFormScreen = ({ route }) => {
           type: 'image/jpeg'
         };
         
-        // 上传到 Nextcloud，使用报告ID作为标识
-        return await uploadFileToWebDAV(file, 'reports', reportId);
+        // 上传到 Nextcloud 高铁污水厂日报专用文件夹
+        return await uploadFileToWebDAV(file, 'report/report_gt', reportId);
       });
   
       const imageUrls = await Promise.all(uploadPromises);

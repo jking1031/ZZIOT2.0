@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons'; // 导入Ionicons图标
 import axios from 'axios';
 import * as Device from 'expo-device'; // 导入设备信息模块
 import AsyncStorage from '@react-native-async-storage/async-storage'; // 导入AsyncStorage
+import { siteApi, logApi } from '../api/apiService';
 
 // 添加安全的toFixed函数
 const safeToFixed = (value, digits = 2) => {
@@ -480,13 +481,12 @@ function SiteDetailScreen({ route, navigation }) {
     controllerRef.current = controller;
 
     try {
-      const response = await axios.get(`https://nodered.jzz77.cn:9003/api/sites/site/${siteId}`, {
-        signal: controller.signal,
-        timeout: 10000
-      });
+      const response = await siteApi.getSiteDetail(siteId);
+      console.log('站点详情API响应:', response);
 
-      if (response.data) {
-        const data = response.data;
+      // 直接使用响应数据，不需要 .data 属性
+      const data = response;
+      if (data) {
         if (data.indata) setInData(data.indata);
         if (data.outdata) setOutData(data.outdata);
         if (data.devices) setDevices(data.devices);
@@ -662,13 +662,7 @@ function SiteDetailScreen({ route, navigation }) {
       
       // 发送日志到服务器
       try {
-        const response = await axios.post('https://nodered.jzz77.cn:9003/api/logs', logData, {
-          timeout: 10000, // 增加超时时间
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          }
-        });
+        const response = await logApi.createLog(logData);
         console.log('操作日志已记录:', response.status);
       } catch (apiError) {
         console.error('发送日志到服务器失败:', apiError.message);
@@ -1349,16 +1343,11 @@ function SiteDetailScreen({ route, navigation }) {
   // 保留原有HTTP控制命令逻辑作为备份
   const sendCommand = async (command) => {
     try {
-      const response = await axios.post(`https://nodered.jzz77.cn:9003/api/site/${siteId}/command`, command, {
-        timeout: 10000,
-        validateStatus: function (status) {
-          return status >= 200 && status < 300;
-        }
-      });
+      const response = await siteApi.sendCommand(siteId, command);
       
       // 发送命令后立即获取最新数据
       await fetchSiteDetail();
-      return response.data;
+      return response;
     } catch (error) {
       console.error('发送控制命令失败:', error);
       throw error;
@@ -2727,23 +2716,25 @@ function SiteDetailScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 15,
+    padding: 16,
   },
   connectionStatusContainer: {
-    marginBottom: 15,
-    padding: 12,
-    borderRadius: 10,
+    marginBottom: 16,
+    padding: 16,
+    borderRadius: 12,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.06)',
   },
   connectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 6,
+    marginBottom: 8,
   },
   statusGroup: {
     flex: 1,
@@ -2751,32 +2742,40 @@ const styles = StyleSheet.create({
   connectionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: 6,
   },
   connectionStatus: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginRight: 8,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
   },
   connectionText: {
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 15,
+    fontWeight: '600',
+    letterSpacing: 0.2,
   },
   lastUpdateText: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#666666',
-    marginRight: 8,
+    marginRight: 10,
+    fontWeight: '500',
+    letterSpacing: 0.1,
   },
   section: {
-    marginBottom: 20,
+    marginBottom: 24,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 12,
-    letterSpacing: 0.5,
-    opacity: 0.9,
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 16,
+    letterSpacing: 0.3,
+    opacity: 0.95,
   },
   cardGrid: {
     flexDirection: 'row',
@@ -2785,116 +2784,132 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '48%',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 10,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
     borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.05)',
+    borderColor: 'rgba(0, 0, 0, 0.06)',
     backgroundColor: '#FFFFFF',
+    transform: [{ scale: 1 }],
   },
   cardTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    marginBottom: 6,
-    letterSpacing: 0.2,
-    opacity: 0.9,
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 8,
+    letterSpacing: 0.3,
+    opacity: 0.95,
   },
   dataContainer: {
     flexDirection: 'row',
     alignItems: 'baseline',
   },
   dataValue: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginRight: 3,
-    letterSpacing: 0.3,
+    fontSize: 22,
+    fontWeight: '800',
+    marginRight: 4,
+    letterSpacing: 0.2,
   },
   dataUnit: {
-    fontSize: 11,
-    opacity: 0.8,
+    fontSize: 12,
+    opacity: 0.85,
+    fontWeight: '500',
   },
   deviceControlContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 10,
   },
   deviceStatus: {
-    fontSize: 13,
-    fontWeight: '600',
-    marginRight: 6,
+    fontSize: 14,
+    fontWeight: '700',
+    marginRight: 8,
     letterSpacing: 0.2,
   },
   alarmStatus: {
     color: '#FF5252',
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
     backgroundColor: 'rgba(255, 82, 82, 0.15)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 82, 82, 0.3)',
   },
   controlButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 6,
     color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '700',
     overflow: 'hidden',
     textShadowColor: 'rgba(0, 0, 0, 0.3)',
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 1,
+    textShadowRadius: 2,
+    letterSpacing: 0.2,
   },
   frequencySetpoint: {
-    fontSize: 11,
-    marginTop: 4,
-    opacity: 0.8,
+    fontSize: 12,
+    marginTop: 6,
+    opacity: 0.85,
     letterSpacing: 0.1,
+    fontWeight: '500',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   modalContent: {
-    width: '80%',
-    borderRadius: 10,
-    padding: 20,
+    width: '85%',
+    borderRadius: 16,
+    padding: 24,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 15,
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 20,
     textAlign: 'center',
+    letterSpacing: 0.3,
   },
   frequencyInput: {
-    borderWidth: 1,
-    borderRadius: 5,
-    padding: 10,
-    marginBottom: 15,
+    borderWidth: 1.5,
+    borderRadius: 8,
+    padding: 14,
+    marginBottom: 18,
     fontSize: 16,
+    fontWeight: '500',
   },
   modalButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    marginTop: 8,
   },
   modalButton: {
     flex: 1,
-    paddingVertical: 10,
-    borderRadius: 5,
-    marginHorizontal: 5,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginHorizontal: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   cancelButton: {
     backgroundColor: '#FF5252',
@@ -2906,7 +2921,8 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     textAlign: 'center',
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   // 新增样式
   wsStatusContainer: {
@@ -2924,85 +2940,121 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   statusBadge: {
-    marginTop: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 4,
+    marginTop: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
     borderWidth: 1,
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(255, 255, 255, 0.8)'
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   noPermissionBadge: {
-    marginTop: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 4,
-    borderWidth: 1,
+    marginTop: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1.5,
     borderColor: '#FF5252',
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(255, 82, 82, 0.1)'
+    backgroundColor: 'rgba(255, 82, 82, 0.12)',
+    shadowColor: '#FF5252',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
   },
   noPermissionText: {
     color: '#FF5252',
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   refreshButton: {
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: 'rgba(33, 150, 243, 0.1)',
+    padding: 10,
+    borderRadius: 22,
+    backgroundColor: 'rgba(33, 150, 243, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
-    height: 36,
-    width: 36,
+    height: 40,
+    width: 40,
+    shadowColor: '#2196F3',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(33, 150, 243, 0.2)',
   },
   refreshingButton: {
     backgroundColor: 'rgba(33, 150, 243, 0.6)',
+    transform: [{ scale: 0.95 }],
   },
   timeAndRefreshContainer: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   trendBadge: {
-    marginTop: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 4,
+    marginTop: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
     alignSelf: 'flex-start',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   warningBadge: {
-    marginTop: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 4,
-    borderWidth: 1,
+    marginTop: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1.5,
     borderColor: '#FF9800',
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(255, 152, 0, 0.1)'
+    backgroundColor: 'rgba(255, 152, 0, 0.12)',
+    shadowColor: '#FF9800',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
   },
   warningText: {
     color: '#FF9800',
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   runtimeContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 8,
+    marginTop: 12,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0, 0, 0, 0.08)',
   },
   runtimeItem: {
     flex: 1,
     alignItems: 'center',
   },
   runtimeValue: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 20,
+    fontWeight: '800',
     color: '#2196F3',
+    letterSpacing: 0.2,
   },
   runtimeLabel: {
-    fontSize: 11,
-    color: '#666666',
-    marginTop: 2,
+    fontSize: 12,
+    marginTop: 4,
+    opacity: 0.85,
+    fontWeight: '500',
+    letterSpacing: 0.1,
   },
   runtimeDivider: {
     width: 1,
@@ -3227,29 +3279,38 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 8,
   },
   visibilityToggle: {
-    padding: 4,
-    borderRadius: 4,
-    borderWidth: 1,
+    padding: 6,
+    borderRadius: 6,
+    borderWidth: 1.5,
     borderColor: '#2196F3',
     alignItems: 'center',
+    shadowColor: '#2196F3',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+    backgroundColor: 'rgba(33, 150, 243, 0.05)',
   },
   visibilityText: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#2196F3',
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   visibilityTextDisabled: {
     color: '#FF5252',
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   modalLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    marginTop: 10,
-    marginBottom: 4,
+    fontSize: 15,
+    fontWeight: '600',
+    marginTop: 12,
+    marginBottom: 6,
+    letterSpacing: 0.2,
   },
   processCoefficient: {
     fontSize: 12,
