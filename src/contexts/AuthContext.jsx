@@ -1,6 +1,9 @@
-import { createContext, useContext, useReducer } from 'react';
+import React, { createContext, useContext, useReducer } from 'react';
 
-const AuthContext = createContext();
+const AuthContext = createContext({
+  user: null,
+  dispatch: () => {}
+});
 
 const authReducer = (state, action) => {
   switch (action.type) {
@@ -25,4 +28,4 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
-export const useAuth = () => useContext(AuthContext); 
+export const useAuth = () => useContext(AuthContext);

@@ -30,6 +30,9 @@ import ReportFormSludgeScreen from './screens/ReportFormSludgeScreen';
 import FileUploadTestScreen from './screens/FileUploadTestScreen';
 import UserManagementScreen from './screens/UserManagementScreen';
 import ApiManagementScreen from './screens/ApiManagementScreen';
+import OAuth2ConfigScreen from './screens/OAuth2ConfigScreen';
+import LoginScreen from './screens/LoginScreen';
+import RegisterScreen from './screens/RegisterScreen';
 // 工单相关页面已删除
 import LabDataScreen from './screens/LabDataScreen';
 import SludgeDataEntryScreen from './screens/SludgeDataEntryScreen';
@@ -42,6 +45,10 @@ import DosingCalculatorScreen from './screens/DosingCalculatorScreen';
 import ExcessSludgeCalculatorScreen from './screens/ExcessSludgeCalculatorScreen';
 // 导入DAV文件管理器
 import DavScreen from './screens/DavScreen';
+// 导入部门权限管理页面
+import DepartmentPermissionScreen from './screens/DepartmentPermissionScreen';
+// 导入部门权限使用示例
+import DepartmentPermissionUsageExample from './examples/DepartmentPermissionUsageExample';
 // 添加错误边界组件
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -474,6 +481,30 @@ function AppContent({ showSplash, onSplashFinish }) {
             }}
           />
           <Stack.Screen
+            name="OAuth2ConfigScreen"
+            component={OAuth2ConfigScreen}
+            options={{
+              title: 'OAuth2配置',
+              headerShown: true
+            }}
+          />
+          <Stack.Screen
+            name="Login"
+            component={LoginScreen}
+            options={{
+              title: '登录',
+              headerShown: false
+            }}
+          />
+          <Stack.Screen
+            name="Register"
+            component={RegisterScreen}
+            options={{
+              title: '注册',
+              headerShown: false
+            }}
+          />
+          <Stack.Screen
             name="PAC计算器"
             component={PacCalculatorScreen}
             options={{
@@ -511,6 +542,22 @@ function AppContent({ showSplash, onSplashFinish }) {
             options={{
               title: 'Nextcloud文件管理',
               headerShown: true
+            }}
+          />
+          <Stack.Screen
+            name="DepartmentPermissionScreen"
+            component={DepartmentPermissionScreen}
+            options={{
+              title: '部门权限管理',
+              headerShown: false
+            }}
+          />
+          <Stack.Screen
+            name="DepartmentPermissionUsageExample"
+            component={DepartmentPermissionUsageExample}
+            options={{
+              title: '部门权限使用示例',
+              headerShown: false
             }}
           />
         </Stack.Navigator>

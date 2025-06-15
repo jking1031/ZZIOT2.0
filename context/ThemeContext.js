@@ -3,7 +3,12 @@ import { Appearance } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getThemeColors, ColorUtils } from '../styles/StyleGuide';
 
-const ThemeContext = createContext();
+const ThemeContext = createContext({
+  theme: 'light',
+  toggleTheme: () => {},
+  colors: {},
+  isDarkMode: false
+});
 
 export const ThemeProvider = ({ children }) => {
   const [isDarkMode, setIsDarkMode] = useState(false);

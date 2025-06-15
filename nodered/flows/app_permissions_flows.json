@@ -1,0 +1,981 @@
+[
+  {
+    "id": "app_permissions_tab",
+    "type": "tab",
+    "label": "App权限管理API",
+    "disabled": false,
+    "info": "App权限管理系统的Node-RED API流程，提供完整的权限管理接口",
+    "env": []
+  },
+  {
+    "id": "mysql_config",
+    "type": "MySQLdatabase",
+    "name": "权限管理数据库",
+    "host": "localhost",
+    "port": "3306",
+    "db": "app_permissions",
+    "tz": "Asia/Shanghai",
+    "charset": "utf8mb4"
+  },
+  {
+    "id": "get_permission_modules",
+    "type": "http in",
+    "z": "app_permissions_tab",
+    "name": "获取权限模块",
+    "url": "/api/permission-modules",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 140,
+    "y": 80,
+    "wires": [
+      [
+        "prepare_modules_query"
+      ]
+    ]
+  },
+  {
+    "id": "prepare_modules_query",
+    "type": "function",
+    "z": "app_permissions_tab",
+    "name": "准备权限模块查询",
+    "func": "msg.topic = `\n    SELECT \n        id,\n        module_key,\n        module_name,\n        description,\n        sort_order,\n        is_active,\n        created_at,\n        updated_at\n    FROM permission_modules \n    WHERE is_active = TRUE \n    ORDER BY sort_order ASC\n`;\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 340,
+    "y": 80,
+    "wires": [
+      [
+        "query_permission_modules"
+      ]
+    ]
+  },
+  {
+    "id": "query_permission_modules",
+    "type": "mysql",
+    "z": "app_permissions_tab",
+    "mydb": "mysql_config",
+    "name": "执行权限模块查询",
+    "x": 540,
+    "y": 80,
+    "wires": [
+      [
+        "format_modules_response"
+      ]
+    ]
+  },
+  {
+    "id": "format_modules_response",
+    "type": "function",
+    "z": "app_permissions_tab",
+    "name": "格式化模块响应",
+    "func": "// 格式化权限模块响应\ntry {\n    if (msg.payload && Array.isArray(msg.payload)) {\n        msg.payload = {\n            success: true,\n            data: msg.payload,\n            message: '获取权限模块成功',\n            timestamp: new Date().toISOString()\n        };\n    } else {\n        msg.payload = {\n            success: false,\n            data: [],\n            error: '未找到权限模块数据',\n            timestamp: new Date().toISOString()\n        };\n    }\n} catch (error) {\n    msg.payload = {\n        success: false,\n        data: [],\n        error: '处理权限模块数据时出错: ' + error.message,\n        timestamp: new Date().toISOString()\n    };\n}\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 740,
+    "y": 80,
+    "wires": [
+      [
+        "send_response"
+      ]
+    ]
+  },
+  {
+    "id": "get_page_permissions",
+    "type": "http in",
+    "z": "app_permissions_tab",
+    "name": "获取页面权限",
+    "url": "/api/page-permissions",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 140,
+    "y": 140,
+    "wires": [
+      [
+        "query_page_permissions"
+      ]
+    ]
+  },
+  {
+    "id": "query_page_permissions",
+    "type": "function",
+    "z": "app_permissions_tab",
+    "name": "查询页面权限",
+    "func": "const moduleId = msg.req.query.moduleId;\n\nlet sql = `\n    SELECT \n        pp.id,\n        pp.permission_id,\n        pp.permission_name,\n        pp.module_id,\n        pp.description,\n        pp.route_path,\n        pp.icon,\n        pp.sort_order,\n        pp.is_active,\n        pm.module_name,\n        pm.module_key\n    FROM page_permissions pp\n    JOIN permission_modules pm ON pp.module_id = pm.id\n    WHERE pp.is_active = TRUE\n`;\n\nif (moduleId) {\n    sql += ` AND pp.module_id = ${moduleId}`;\n}\n\nsql += ` ORDER BY pm.sort_order ASC, pp.sort_order ASC`;\n\nmsg.topic = sql;\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 340,
+    "y": 140,
+    "wires": [
+      [
+        "execute_page_permissions_query"
+      ]
+    ]
+  },
+  {
+    "id": "execute_page_permissions_query",
+    "type": "mysql",
+    "z": "app_permissions_tab",
+    "mydb": "mysql_config",
+    "name": "执行页面权限查询",
+    "x": 560,
+    "y": 140,
+    "wires": [
+      [
+        "format_page_permissions_response"
+      ]
+    ]
+  },
+  {
+    "id": "format_page_permissions_response",
+    "type": "function",
+    "z": "app_permissions_tab",
+    "name": "格式化页面权限响应",
+    "func": "// 格式化页面权限响应\ntry {\n    if (msg.payload && Array.isArray(msg.payload)) {\n        msg.payload = {\n            success: true,\n            data: msg.payload,\n            message: '获取页面权限成功',\n            timestamp: new Date().toISOString()\n        };\n    } else {\n        msg.payload = {\n            success: false,\n            data: [],\n            error: '未找到页面权限数据',\n            timestamp: new Date().toISOString()\n        };\n    }\n} catch (error) {\n    msg.payload = {\n        success: false,\n        data: [],\n        error: '处理页面权限数据时出错: ' + error.message,\n        timestamp: new Date().toISOString()\n    };\n}\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 780,
+    "y": 140,
+    "wires": [
+      [
+        "send_response"
+      ]
+    ]
+  },
+  {
+    "id": "get_departments",
+    "type": "http in",
+    "z": "app_permissions_tab",
+    "name": "获取部门列表",
+    "url": "/api/departments",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 140,
+    "y": 200,
+    "wires": [
+      [
+        "query_departments"
+      ]
+    ]
+  },
+  {
+    "id": "query_departments",
+    "type": "function",
+    "z": "app_permissions_tab",
+    "name": "查询部门",
+    "func": "msg.topic = `\n    SELECT \n        id,\n        department_key,\n        department_name,\n        description,\n        color,\n        parent_id,\n        is_system,\n        is_active,\n        sort_order,\n        created_at,\n        updated_at\n    FROM departments \n    WHERE is_active = TRUE \n    ORDER BY sort_order ASC\n`;\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 320,
+    "y": 200,
+    "wires": [
+      [
+        "execute_departments_query"
+      ]
+    ]
+  },
+  {
+    "id": "execute_departments_query",
+    "type": "mysql",
+    "z": "app_permissions_tab",
+    "mydb": "mysql_config",
+    "name": "执行部门查询",
+    "x": 520,
+    "y": 200,
+    "wires": [
+      [
+        "format_departments_response"
+      ]
+    ]
+  },
+  {
+    "id": "format_departments_response",
+    "type": "function",
+    "z": "app_permissions_tab",
+    "name": "格式化部门响应",
+    "func": "// 格式化部门响应\ntry {\n    if (msg.payload && Array.isArray(msg.payload)) {\n        msg.payload = {\n            success: true,\n            data: msg.payload,\n            message: '获取部门列表成功',\n            timestamp: new Date().toISOString()\n        };\n    } else {\n        msg.payload = {\n            success: false,\n            data: [],\n            error: '未找到部门数据',\n            timestamp: new Date().toISOString()\n        };\n    }\n} catch (error) {\n    msg.payload = {\n        success: false,\n        data: [],\n        error: '处理部门数据时出错: ' + error.message,\n        timestamp: new Date().toISOString()\n    };\n}\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 720,
+    "y": 200,
+    "wires": [
+      [
+        "send_response"
+      ]
+    ]
+  },
+  {
+    "id": "create_department",
+    "type": "http in",
+    "z": "app_permissions_tab",
+    "name": "创建部门",
+    "url": "/api/departments",
+    "method": "post",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 140,
+    "y": 230,
+    "wires": [
+      [
+        "validate_create_department"
+      ]
+    ]
+  },
+  {
+    "id": "validate_create_department",
+    "type": "function",
+    "z": "app_permissions_tab",
+    "name": "验证创建部门参数",
+    "func": "const { department_key, department_name, description, color, parent_id, sort_order } = msg.payload;\n\nif (!department_key || !department_name) {\n    msg.statusCode = 400;\n    msg.payload = { \n        error: '缺少必要参数',\n        required: ['department_key', 'department_name']\n    };\n    return msg;\n}\n\n// 检查部门键是否已存在\nmsg.topic = `\n    SELECT COUNT(*) as count \n    FROM departments \n    WHERE department_key = '${department_key}'\n`;\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 360,
+    "y": 230,
+    "wires": [
+      [
+        "check_department_exists"
+      ]
+    ]
+  },
+  {
+    "id": "check_department_exists",
+    "type": "mysql",
+    "z": "app_permissions_tab",
+    "mydb": "mysql_config",
+    "name": "检查部门是否存在",
+    "x": 580,
+    "y": 230,
+    "wires": [
+      [
+        "process_department_check"
+      ]
+    ]
+  },
+  {
+    "id": "process_department_check",
+    "type": "function",
+    "z": "app_permissions_tab",
+    "name": "处理部门检查结果",
+    "func": "const count = msg.payload && msg.payload.length > 0 ? msg.payload[0].count : 0;\n\nif (count > 0) {\n    msg.statusCode = 400;\n    msg.payload = {\n        error: '部门键已存在',\n        message: '该部门键已被使用，请选择其他键值'\n    };\n    return msg;\n}\n\n// 准备插入部门数据\nconst { department_key, department_name, description, color, parent_id, sort_order } = msg.req.body;\n\nconst insertSql = `\n    INSERT INTO departments (\n        department_key, \n        department_name, \n        description, \n        color, \n        parent_id, \n        sort_order,\n        is_system,\n        is_active,\n        created_at,\n        updated_at\n    ) VALUES (\n        '${department_key}',\n        '${department_name}',\n        ${description ? `'${description}'` : 'NULL'},\n        ${color ? `'${color}'` : 'NULL'},\n        ${parent_id ? parent_id : 'NULL'},\n        ${sort_order || 999},\n        FALSE,\n        TRUE,\n        NOW(),\n        NOW()\n    )\n`;\n\nmsg.topic = insertSql;\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 780,
+    "y": 230,
+    "wires": [
+      [
+        "execute_create_department"
+      ]
+    ]
+  },
+  {
+    "id": "execute_create_department",
+    "type": "mysql",
+    "z": "app_permissions_tab",
+    "mydb": "mysql_config",
+    "name": "执行创建部门",
+    "x": 980,
+    "y": 230,
+    "wires": [
+      [
+        "format_create_department_response"
+      ]
+    ]
+  },
+  {
+    "id": "format_create_department_response",
+    "type": "function",
+    "z": "app_permissions_tab",
+    "name": "格式化创建部门响应",
+    "func": "try {\n    if (msg.payload && msg.payload.insertId) {\n        msg.payload = {\n            success: true,\n            data: {\n                id: msg.payload.insertId,\n                department_key: msg.req.body.department_key,\n                department_name: msg.req.body.department_name,\n                description: msg.req.body.description,\n                color: msg.req.body.color,\n                parent_id: msg.req.body.parent_id,\n                sort_order: msg.req.body.sort_order || 999,\n                is_system: false,\n                is_active: true\n            },\n            message: '部门创建成功',\n            timestamp: new Date().toISOString()\n        };\n    } else {\n        msg.payload = {\n            success: false,\n            error: '创建部门失败',\n            timestamp: new Date().toISOString()\n        };\n    }\n} catch (error) {\n    msg.payload = {\n        success: false,\n        error: '创建部门时出错: ' + error.message,\n        timestamp: new Date().toISOString()\n    };\n}\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 1180,
+    "y": 230,
+    "wires": [
+      [
+        "send_response"
+      ]
+    ]
+  },
+  {
+    "id": "get_user_permissions",
+    "type": "http in",
+    "z": "app_permissions_tab",
+    "name": "获取用户权限",
+    "url": "/api/user-permissions/:ruoyiUserId",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 140,
+    "y": 290,
+    "wires": [
+      [
+        "query_user_permissions"
+      ]
+    ]
+  },
+  {
+    "id": "query_user_permissions",
+    "type": "function",
+    "z": "app_permissions_tab",
+    "name": "查询用户权限",
+    "func": "const ruoyiUserId = msg.req.params.ruoyiUserId;\n\nif (!ruoyiUserId) {\n    msg.statusCode = 400;\n    msg.payload = { error: '缺少用户ID参数' };\n    return msg;\n}\n\nmsg.topic = `\n    SELECT \n        uep.ruoyi_user_id,\n        uep.permission_id,\n        uep.permission_key,\n        uep.permission_name,\n        uep.route_path,\n        uep.module_name,\n        uep.effective_level,\n        uep.permission_source,\n        uep.expires_at,\n        d.department_name,\n        d.department_key,\n        d.color as department_color\n    FROM user_effective_permissions uep\n    JOIN user_departments ud ON uep.ruoyi_user_id = ud.ruoyi_user_id AND uep.department_id = ud.department_id\n    JOIN departments d ON ud.department_id = d.id\n    WHERE uep.ruoyi_user_id = '${ruoyiUserId}'\n        AND uep.effective_level > 0\n    ORDER BY uep.module_name ASC, uep.permission_name ASC\n`;\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 340,
+    "y": 290,
+    "wires": [
+      [
+        "execute_user_permissions_query"
+      ]
+    ]
+  },
+  {
+    "id": "execute_user_permissions_query",
+    "type": "mysql",
+    "z": "app_permissions_tab",
+    "mydb": "mysql_config",
+    "name": "执行用户权限查询",
+    "x": 580,
+    "y": 290,
+    "wires": [
+      [
+        "format_user_permissions_response"
+      ]
+    ]
+  },
+  {
+    "id": "format_user_permissions_response",
+    "type": "function",
+    "z": "app_permissions_tab",
+    "name": "格式化用户权限响应",
+    "func": "// 格式化用户权限响应\ntry {\n    if (msg.payload && Array.isArray(msg.payload)) {\n        msg.payload = {\n            success: true,\n            data: msg.payload,\n            message: '获取用户权限成功',\n            timestamp: new Date().toISOString()\n        };\n    } else {\n        msg.payload = {\n            success: false,\n            data: [],\n            error: '未找到用户权限数据',\n            timestamp: new Date().toISOString()\n        };\n    }\n} catch (error) {\n    msg.payload = {\n        success: false,\n        data: [],\n        error: '处理用户权限数据时出错: ' + error.message,\n        timestamp: new Date().toISOString()\n    };\n}\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 780,
+    "y": 290,
+    "wires": [
+      [
+        "send_response"
+      ]
+    ]
+  },
+  {
+    "id": "check_permission",
+    "type": "http in",
+    "z": "app_permissions_tab",
+    "name": "检查权限",
+    "url": "/api/check-permission",
+    "method": "post",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 120,
+    "y": 350,
+    "wires": [
+      [
+        "validate_check_permission"
+      ]
+    ]
+  },
+  {
+    "id": "validate_check_permission",
+    "type": "function",
+    "z": "app_permissions_tab",
+    "name": "验证权限检查参数",
+    "func": "const { ruoyiUserId, permissionId, requiredLevel } = msg.payload;\n\nif (!ruoyiUserId || !permissionId || requiredLevel === undefined) {\n    msg.statusCode = 400;\n    msg.payload = { \n        error: '缺少必要参数',\n        required: ['ruoyiUserId', 'permissionId', 'requiredLevel']\n    };\n    return msg;\n}\n\nif (typeof requiredLevel !== 'number' || requiredLevel < 0 || requiredLevel > 3) {\n    msg.statusCode = 400;\n    msg.payload = { \n        error: '权限级别必须是0-3之间的数字'\n    };\n    return msg;\n}\n\nmsg.topic = `\n    SELECT\n        MAX(uep.effective_level) AS max_level\n    FROM user_effective_permissions uep\n    WHERE uep.ruoyi_user_id = '${ruoyiUserId}'\n        AND uep.permission_key = '${permissionId}'\n        AND (uep.expires_at IS NULL OR uep.expires_at > NOW())\n`;\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 340,
+    "y": 320,
+    "wires": [
+      [
+        "execute_check_permission_query"
+      ]
+    ]
+  },
+  {
+    "id": "execute_check_permission_query",
+    "type": "mysql",
+    "z": "app_permissions_tab",
+    "mydb": "mysql_config",
+    "name": "执行权限检查查询",
+    "x": 580,
+    "y": 320,
+    "wires": [
+      [
+        "process_check_permission_result"
+      ]
+    ]
+  },
+  {
+    "id": "process_check_permission_result",
+    "type": "function",
+    "z": "app_permissions_tab",
+    "name": "处理权限检查结果",
+    "func": "const { ruoyiUserId, permissionId, requiredLevel } = msg.req.body;\nconst maxLevel = msg.payload && msg.payload.length > 0 ? msg.payload[0].max_level : 0;\n\nconst hasPermission = maxLevel >= requiredLevel;\n\nmsg.payload = {\n    hasPermission: hasPermission,\n    userLevel: maxLevel || 0,\n    requiredLevel: requiredLevel,\n    ruoyiUserId: ruoyiUserId,\n    permissionId: permissionId,\n    timestamp: new Date().toISOString()\n};\n\n// 记录权限检查日志\nif (!hasPermission) {\n    // 可以在这里添加审计日志记录\n    node.warn(`权限检查失败: 用户${ruoyiUserId}尝试访问${permissionId}，需要级别${requiredLevel}，实际级别${maxLevel}`);\n}\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 800,
+    "y": 320,
+    "wires": [
+      [
+        "send_response"
+      ]
+    ]
+  },
+  {
+    "id": "get_department_permissions",
+    "type": "http in",
+    "z": "app_permissions_tab",
+    "name": "获取部门权限",
+    "url": "/api/department-permissions/:departmentId",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 140,
+    "y": 380,
+    "wires": [
+      [
+        "query_department_permissions"
+      ]
+    ]
+  },
+  {
+    "id": "query_department_permissions",
+    "type": "function",
+    "z": "app_permissions_tab",
+    "name": "查询部门权限",
+    "func": "const departmentId = msg.req.params.departmentId;\n\nif (!departmentId) {\n    msg.statusCode = 400;\n    msg.payload = { error: '缺少部门ID参数' };\n    return msg;\n}\n\nmsg.topic = `\n    SELECT \n        d.id as department_id,\n        d.department_name,\n        d.department_key,\n        pp.id as permission_id,\n        pp.permission_id as permission_key,\n        pp.permission_name,\n        pp.route_path,\n        pp.icon,\n        pm.module_name,\n        pm.module_key,\n        COALESCE(dpp.permission_level, 0) as permission_level,\n        dpp.granted_by,\n        dpp.granted_at\n    FROM departments d\n    CROSS JOIN page_permissions pp\n    JOIN permission_modules pm ON pp.module_id = pm.id\n    LEFT JOIN department_page_permissions dpp ON d.id = dpp.department_id AND pp.id = dpp.permission_id\n    WHERE d.id = ${departmentId}\n        AND d.is_active = TRUE\n        AND pp.is_active = TRUE\n        AND pm.is_active = TRUE\n    ORDER BY pm.sort_order ASC, pp.sort_order ASC\n`;\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 360,
+    "y": 380,
+    "wires": [
+      [
+        "execute_department_permissions_query"
+      ]
+    ]
+  },
+  {
+    "id": "execute_department_permissions_query",
+    "type": "mysql",
+    "z": "app_permissions_tab",
+    "mydb": "mysql_config",
+    "name": "执行部门权限查询",
+    "x": 600,
+    "y": 380,
+    "wires": [
+      [
+        "format_department_permissions_response"
+      ]
+    ]
+  },
+  {
+    "id": "format_department_permissions_response",
+    "type": "function",
+    "z": "app_permissions_tab",
+    "name": "格式化部门权限响应",
+    "func": "// 格式化部门权限响应\ntry {\n    if (msg.payload && Array.isArray(msg.payload)) {\n        msg.payload = {\n            success: true,\n            data: msg.payload,\n            message: '获取部门权限成功',\n            timestamp: new Date().toISOString()\n        };\n    } else {\n        msg.payload = {\n            success: false,\n            data: [],\n            error: '未找到部门权限数据',\n            timestamp: new Date().toISOString()\n        };\n    }\n} catch (error) {\n    msg.payload = {\n        success: false,\n        data: [],\n        error: '处理部门权限数据时出错: ' + error.message,\n        timestamp: new Date().toISOString()\n    };\n}\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 800,
+    "y": 380,
+    "wires": [
+      [
+        "send_response"
+      ]
+    ]
+  },
+  {
+    "id": "update_department_permissions",
+    "type": "http in",
+    "z": "app_permissions_tab",
+    "name": "更新部门权限",
+    "url": "/api/department-permissions/:departmentId",
+    "method": "put",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 140,
+    "y": 440,
+    "wires": [
+      [
+        "validate_update_department_permissions"
+      ]
+    ]
+  },
+  {
+    "id": "validate_update_department_permissions",
+    "type": "function",
+    "z": "app_permissions_tab",
+    "name": "验证部门权限更新",
+    "func": "const departmentId = msg.req.params.departmentId;\nconst { permissions, grantedBy } = msg.payload;\n\nif (!departmentId || !permissions || !Array.isArray(permissions)) {\n    msg.statusCode = 400;\n    msg.payload = { \n        error: '缺少必要参数',\n        required: ['departmentId', 'permissions (array)']\n    };\n    return msg;\n}\n\n// 验证权限数据格式 - 支持前端发送的permission_id和permission_level字段\nfor (let perm of permissions) {\n    // 检查是否包含必要字段（支持两种格式）\n    const permissionId = perm.permissionId || perm.permission_id;\n    const level = perm.level !== undefined ? perm.level : perm.permission_level;\n    \n    if (!permissionId || level === undefined) {\n        msg.statusCode = 400;\n        msg.payload = { \n            error: '权限数据格式错误',\n            required: 'permissions数组中每个元素需要包含permissionId/permission_id和level/permission_level'\n        };\n        return msg;\n    }\n    \n    if (typeof level !== 'number' || level < 0 || level > 3) {\n        msg.statusCode = 400;\n        msg.payload = { \n            error: '权限级别必须是0-3之间的数字'\n        };\n        return msg;\n    }\n}\n\n// 保存原始数据到context中，供后续节点使用\nmsg.departmentId = departmentId;\nmsg.grantedBy = grantedBy || 'system';\nmsg.validatedPermissions = [];\n\n// 收集需要插入的权限\nfor (let perm of permissions) {\n    // 兼容两种字段格式\n    const permissionId = perm.permissionId || perm.permission_id;\n    const level = perm.level !== undefined ? perm.level : perm.permission_level;\n    \n    if (level > 0) { // 只插入有权限的记录\n        msg.validatedPermissions.push({\n            permissionId: permissionId,\n            level: level\n        });\n    }\n}\n\n// 第一步：删除现有权限\nmsg.topic = `DELETE FROM department_page_permissions WHERE department_id = ${departmentId}`;\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 380,
+    "y": 440,
+    "wires": [
+      [
+        "execute_delete_department_permissions"
+      ]
+    ]
+  },
+  {
+    "id": "execute_delete_department_permissions",
+    "type": "mysql",
+    "z": "app_permissions_tab",
+    "mydb": "mysql_config",
+    "name": "删除现有权限",
+    "x": 620,
+    "y": 440,
+    "wires": [
+      [
+        "prepare_insert_permissions"
+      ]
+    ]
+  },
+  {
+    "id": "prepare_insert_permissions",
+    "type": "function",
+    "z": "app_permissions_tab",
+    "name": "准备插入权限",
+    "func": "// 检查是否有权限需要插入\nif (!msg.validatedPermissions || msg.validatedPermissions.length === 0) {\n    // 没有权限需要插入，直接返回成功响应\n    msg.payload = {\n        success: true,\n        message: '部门权限更新成功（仅删除）',\n        timestamp: new Date().toISOString(),\n        affectedRows: msg.payload.affectedRows || 0\n    };\n    return [null, msg]; // 跳过插入\n}\n\n// 构建查询权限ID的SQL，将字符串权限标识转换为数字ID\nconst permissionKeys = msg.validatedPermissions.map(perm => `'${perm.permissionId.replace(/'/g, \"''\")}'`).join(',');\n\nconst queryPermissionIdsSql = `\n    SELECT permission_id, id as numeric_id \n    FROM page_permissions \n    WHERE permission_id IN (${permissionKeys}) \n    AND is_active = TRUE\n`;\n\nmsg.topic = queryPermissionIdsSql;\n\nreturn [msg, null];",
+    "outputs": 2,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 840,
+    "y": 440,
+    "wires": [
+      [
+        "execute_insert_permissions"
+      ],
+      [
+        "send_response"
+      ]
+    ]
+  },
+  {
+    "id": "execute_insert_permissions",
+    "type": "mysql",
+    "z": "app_permissions_tab",
+    "mydb": "mysql_config",
+    "name": "查询权限ID",
+    "x": 1060,
+    "y": 400,
+    "wires": [
+      [
+        "map_permission_ids"
+      ]
+    ]
+  },
+  {
+    "id": "map_permission_ids",
+    "type": "function",
+    "z": "app_permissions_tab",
+    "name": "映射权限ID并插入",
+    "func": "// 获取查询结果\nconst permissionIdMap = {};\nif (msg.payload && Array.isArray(msg.payload)) {\n    msg.payload.forEach(row => {\n        permissionIdMap[row.permission_id] = row.numeric_id;\n    });\n}\n\n// 构建插入SQL，使用数字ID\nconst values = [];\nfor (let perm of msg.validatedPermissions) {\n    const numericId = permissionIdMap[perm.permissionId];\n    if (numericId) {\n        values.push(`(${msg.departmentId}, ${numericId}, ${perm.level}, '${msg.grantedBy.replace(/'/g, \"''\").replace(/\\\\/g, \"\\\\\\\\\")}', NOW())`);\n    } else {\n        // 如果找不到对应的权限ID，记录错误但继续处理其他权限\n        node.warn(`权限ID ${perm.permissionId} 在数据库中不存在`);\n    }\n}\n\nif (values.length === 0) {\n    // 没有有效的权限需要插入\n    msg.payload = {\n        success: true,\n        message: '部门权限更新成功（无有效权限插入）',\n        timestamp: new Date().toISOString(),\n        affectedRows: 0\n    };\n    return [null, msg]; // 跳过插入，直接返回响应\n}\n\nconst insertSql = `INSERT INTO department_page_permissions (department_id, permission_id, permission_level, granted_by, granted_at)\nVALUES\n    ${values.join(',\\n    ')}\nON DUPLICATE KEY UPDATE\n    permission_level = VALUES(permission_level),\n    granted_by = VALUES(granted_by),\n    granted_at = VALUES(granted_at),\n    updated_at = NOW()`;\n\nmsg.topic = insertSql;\n\nreturn [msg, null];",
+    "outputs": 2,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 1280,
+    "y": 400,
+    "wires": [
+      [
+        "execute_final_insert"
+      ],
+      [
+        "send_response"
+      ]
+    ]
+  },
+  {
+    "id": "execute_final_insert",
+    "type": "mysql",
+    "z": "app_permissions_tab",
+    "mydb": "mysql_config",
+    "name": "执行最终插入",
+    "x": 1500,
+    "y": 360,
+    "wires": [
+      [
+        "format_update_response"
+      ]
+    ]
+  },
+  {
+    "id": "format_update_response",
+    "type": "function",
+    "z": "app_permissions_tab",
+    "name": "格式化更新响应",
+    "func": "msg.payload = {\n    success: true,\n    message: '部门权限更新成功',\n    timestamp: new Date().toISOString(),\n    affectedRows: msg.payload.affectedRows || 0\n};\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 1720,
+    "y": 360,
+    "wires": [
+      [
+        "send_response"
+      ]
+    ]
+  },
+  {
+    "id": "get_user_departments",
+    "type": "http in",
+    "z": "app_permissions_tab",
+    "name": "获取用户部门",
+    "url": "/api/user-departments/:ruoyiUserId",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 140,
+    "y": 500,
+    "wires": [
+      [
+        "query_user_departments"
+      ]
+    ]
+  },
+  {
+    "id": "query_user_departments",
+    "type": "function",
+    "z": "app_permissions_tab",
+    "name": "查询用户部门",
+    "func": "const ruoyiUserId = msg.req.params.ruoyiUserId;\n\nif (!ruoyiUserId) {\n    msg.statusCode = 400;\n    msg.payload = { error: '缺少用户ID参数' };\n    return msg;\n}\n\nmsg.topic = `\n    SELECT \n        ud.id,\n        ud.ruoyi_user_id,\n        ud.department_id,\n        ud.role,\n        ud.is_primary,\n        ud.joined_at,\n        d.department_name,\n        d.department_key,\n        d.description,\n        d.color\n    FROM user_departments ud\n    JOIN departments d ON ud.department_id = d.id\n    WHERE ud.ruoyi_user_id = '${ruoyiUserId}'\n        AND d.is_active = TRUE\n    ORDER BY ud.is_primary DESC, d.sort_order ASC\n`;\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 340,
+    "y": 500,
+    "wires": [
+      [
+        "execute_user_departments_query"
+      ]
+    ]
+  },
+  {
+    "id": "execute_user_departments_query",
+    "type": "mysql",
+    "z": "app_permissions_tab",
+    "mydb": "mysql_config",
+    "name": "执行用户部门查询",
+    "x": 560,
+    "y": 500,
+    "wires": [
+      [
+        "format_user_departments_response"
+      ]
+    ]
+  },
+  {
+    "id": "format_user_departments_response",
+    "type": "function",
+    "z": "app_permissions_tab",
+    "name": "格式化用户部门响应",
+    "func": "// 格式化用户部门响应\ntry {\n    if (msg.payload && Array.isArray(msg.payload)) {\n        msg.payload = {\n            success: true,\n            data: msg.payload,\n            message: '获取用户部门成功',\n            timestamp: new Date().toISOString()\n        };\n    } else {\n        msg.payload = {\n            success: false,\n            data: [],\n            error: '未找到用户部门数据',\n            timestamp: new Date().toISOString()\n        };\n    }\n} catch (error) {\n    msg.payload = {\n        success: false,\n        data: [],\n        error: '处理用户部门数据时出错: ' + error.message,\n        timestamp: new Date().toISOString()\n    };\n}\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 760,
+    "y": 500,
+    "wires": [
+      [
+        "send_response"
+      ]
+    ]
+  },
+  {
+    "id": "assign_user_department",
+    "type": "http in",
+    "z": "app_permissions_tab",
+    "name": "分配用户部门",
+    "url": "/api/user-departments",
+    "method": "post",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 140,
+    "y": 560,
+    "wires": [
+      [
+        "validate_assign_user_department"
+      ]
+    ]
+  },
+  {
+    "id": "validate_assign_user_department",
+    "type": "function",
+    "z": "app_permissions_tab",
+    "name": "验证用户部门分配",
+    "func": "const { ruoyiUserId, departmentId, role, isPrimary } = msg.payload;\n\nif (!ruoyiUserId || !departmentId) {\n    msg.statusCode = 400;\n    msg.payload = { \n        error: '缺少必要参数',\n        required: ['ruoyiUserId', 'departmentId']\n    };\n    return msg;\n}\n\nconst validRoles = ['member', 'leader', 'admin'];\nconst userRole = role || 'member';\n\nif (!validRoles.includes(userRole)) {\n    msg.statusCode = 400;\n    msg.payload = { \n        error: '无效的角色类型',\n        validRoles: validRoles\n    };\n    return msg;\n}\n\nmsg.topic = `\n    INSERT INTO user_departments (ruoyi_user_id, department_id, role, is_primary, joined_at)\n    VALUES ('${ruoyiUserId}', ${departmentId}, '${userRole}', ${isPrimary ? 'TRUE' : 'FALSE'}, NOW())\n    ON DUPLICATE KEY UPDATE\n        role = VALUES(role),\n        is_primary = VALUES(is_primary),\n        updated_at = NOW()\n`;\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 360,
+    "y": 560,
+    "wires": [
+      [
+        "execute_assign_user_department"
+      ]
+    ]
+  },
+  {
+    "id": "execute_assign_user_department",
+    "type": "mysql",
+    "z": "app_permissions_tab",
+    "mydb": "mysql_config",
+    "name": "执行用户部门分配",
+    "x": 580,
+    "y": 560,
+    "wires": [
+      [
+        "format_assign_response"
+      ]
+    ]
+  },
+  {
+    "id": "format_assign_response",
+    "type": "function",
+    "z": "app_permissions_tab",
+    "name": "格式化分配响应",
+    "func": "msg.payload = {\n    success: true,\n    message: '用户部门分配成功',\n    timestamp: new Date().toISOString(),\n    insertId: msg.payload.insertId\n};\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 800,
+    "y": 560,
+    "wires": [
+      [
+        "send_response"
+      ]
+    ]
+  },
+  {
+    "id": "get_permission_stats",
+    "type": "http in",
+    "z": "app_permissions_tab",
+    "name": "获取权限统计",
+    "url": "/api/permission-stats",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 140,
+    "y": 620,
+    "wires": [
+      [
+        "query_permission_stats"
+      ]
+    ]
+  },
+  {
+    "id": "query_permission_stats",
+    "type": "function",
+    "z": "app_permissions_tab",
+    "name": "查询权限统计",
+    "func": "msg.topic = `\n    SELECT \n        department_id,\n        department_name,\n        granted_permissions,\n        total_permissions,\n        permission_coverage,\n        user_count\n    FROM department_permission_stats\n    ORDER BY permission_coverage DESC, department_name ASC\n`;\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 340,
+    "y": 620,
+    "wires": [
+      [
+        "execute_permission_stats_query"
+      ]
+    ]
+  },
+  {
+    "id": "execute_permission_stats_query",
+    "type": "mysql",
+    "z": "app_permissions_tab",
+    "mydb": "mysql_config",
+    "name": "执行权限统计查询",
+    "x": 560,
+    "y": 620,
+    "wires": [
+      [
+        "format_permission_stats_response"
+      ]
+    ]
+  },
+  {
+    "id": "format_permission_stats_response",
+    "type": "function",
+    "z": "app_permissions_tab",
+    "name": "格式化权限统计响应",
+    "func": "// 格式化权限统计响应\ntry {\n    if (msg.payload && Array.isArray(msg.payload)) {\n        msg.payload = {\n            success: true,\n            data: msg.payload,\n            message: '获取权限统计成功',\n            timestamp: new Date().toISOString()\n        };\n    } else {\n        msg.payload = {\n            success: false,\n            data: [],\n            error: '未找到权限统计数据',\n            timestamp: new Date().toISOString()\n        };\n    }\n} catch (error) {\n    msg.payload = {\n        success: false,\n        data: [],\n        error: '处理权限统计数据时出错: ' + error.message,\n        timestamp: new Date().toISOString()\n    };\n}\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 760,
+    "y": 620,
+    "wires": [
+      [
+        "send_response"
+      ]
+    ]
+  },
+  {
+    "id": "send_response",
+    "type": "http response",
+    "z": "app_permissions_tab",
+    "name": "发送响应",
+    "statusCode": "",
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8",
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization"
+    },
+    "x": 1000,
+    "y": 300,
+    "wires": []
+  },
+  {
+    "id": "handle_cors_options",
+    "type": "http in",
+    "z": "app_permissions_tab",
+    "name": "处理CORS预检",
+    "url": "/api/*",
+    "method": "options",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 140,
+    "y": 680,
+    "wires": [
+      [
+        "cors_response"
+      ]
+    ]
+  },
+  {
+    "id": "cors_response",
+    "type": "function",
+    "z": "app_permissions_tab",
+    "name": "CORS响应",
+    "func": "msg.statusCode = 200;\nmsg.payload = '';\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 320,
+    "y": 680,
+    "wires": [
+      [
+        "send_response"
+      ]
+    ]
+  },
+  {
+    "id": "error_handler",
+    "type": "catch",
+    "z": "app_permissions_tab",
+    "name": "错误处理",
+    "scope": [
+      "validate_update_department_permissions",
+      "execute_delete_department_permissions",
+      "prepare_insert_permissions",
+      "execute_insert_permissions",
+      "query_permission_modules",
+      "execute_page_permissions_query",
+      "execute_departments_query",
+      "execute_user_permissions_query",
+      "execute_check_permission_query",
+      "execute_department_permissions_query"
+    ],
+    "uncaught": false,
+    "x": 120,
+    "y": 740,
+    "wires": [
+      [
+        "format_error_response"
+      ]
+    ]
+  },
+  {
+    "id": "format_error_response",
+    "type": "function",
+    "z": "app_permissions_tab",
+    "name": "格式化错误响应",
+    "func": "// 记录错误到日志，但不触发新的错误事件\nnode.warn('API错误处理: ' + (msg.error ? msg.error.message : '未知错误'));\n\n// 确保状态码和错误信息正确设置\nmsg.statusCode = msg.statusCode || 500;\nmsg.payload = {\n    success: false,\n    error: '服务器内部错误',\n    message: msg.error ? msg.error.message : '未知错误',\n    timestamp: new Date().toISOString()\n};\n\n// 清除错误对象，避免后续处理问题\ndelete msg.error;\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 340,
+    "y": 740,
+    "wires": [
+      [
+        "send_response"
+      ]
+    ]
+  }
+]

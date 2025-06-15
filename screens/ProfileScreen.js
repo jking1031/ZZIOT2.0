@@ -14,19 +14,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createCommonStyles, DesignTokens } from '../styles/StyleGuide';
 import { userApi, otaApi } from '../api/apiService';
 
-// 角色ID与角色信息的映射
-const roleMap = {
-  1: { name: '管理员', description: '系统最高权限，可访问所有功能' },
-  2: { name: '部门管理员', description: '管理部门内的用户和数据' },
-  3: { name: '运行班组', description: '运行相关功能的操作权限' },
-  4: { name: '化验班组', description: '化验数据及相关功能的操作权限' },
-  5: { name: '机电班组', description: '机电设备及相关功能的操作权限' },
-  6: { name: '污泥车间', description: '污泥处理相关功能的操作权限' },
-  7: { name: '5000吨处理站', description: '处理站相关功能的操作权限' },
-  8: { name: '附属设施', description: '附属设施相关功能的操作权限' },
-  9: { name: '访客', description: '只具备基本权限' },
-};
-
 const ProfileScreen = () => {
   const navigation = useNavigation();
   const { isDarkMode, toggleTheme, followSystem, toggleFollowSystem, colors } = useTheme();
@@ -35,16 +22,22 @@ const ProfileScreen = () => {
   const [language, setLanguage] = useState('中文');
   const [showAvatarModal, setShowAvatarModal] = useState(false);
   const [showProfileEditModal, setShowProfileEditModal] = useState(false);
-  const { user, updateUserInfo, logout, userRoles, getUserRoles, isAdmin } = useAuth();
+  const { user, updateUserInfo, logout, userRoles, getUserRoles } = useAuth();
   const [userInfo, setUserInfo] = useState({
     avatar_seed: user?.avatar_seed || Math.random().toString(36).substring(2, 15),
     username: user?.username || '',
+    nickname: user?.nickname || '', // 若依后端姓名字段
+    remark: user?.remark || '', // 若依后端角色备注字段
+    email: user?.email || '', // 邮箱字段
     department: user?.department || '',
     phone: user?.phone || '',
-    company: user?.company || ''
+    company: user?.company || '',
+    displayName: user?.displayName || user?.nickname || user?.username || '未知用户' // 显示名称
   });
   const [editableUserInfo, setEditableUserInfo] = useState({
     username: '',
+    nickname: '', // 若依后端姓名字段
+    email: '', // 邮箱字段
     department: '',
     phone: '',
     company: ''
@@ -67,9 +60,13 @@ const ProfileScreen = () => {
       setUserInfo({
         avatar_seed: user.avatar_seed || Math.random().toString(36).substring(2, 15),
         username: user.username || '',
+        nickname: user.nickname || '', // 若依后端姓名字段
+        remark: user.remark || '', // 若依后端角色备注字段
+        email: user.email || '', // 邮箱字段
         department: user.department || '',
         phone: user.phone || '',
-        company: user.company || ''
+        company: user.company || '',
+        displayName: user.displayName || user.nickname || user.username || '未知用户' // 显示名称
       });
       // 获取用户角色
       fetchUserRoles();
@@ -122,17 +119,22 @@ const ProfileScreen = () => {
       
       console.log('获取到用户角色:', JSON.stringify(fetchedRoles));
       
-      // 如果用户是管理员但没有任何角色，确保显示管理员角色
-      if (fetchedRoles.length === 0 && isAdmin) {
-        console.log('用户是管理员但没有角色，设置为管理员角色');
-        setRoles([{ id: 1, name: '管理员' }]);
+      // 如果获取到的角色为空，并且 user 对象中有 role_name，可以考虑使用它
+      if (fetchedRoles.length === 0 && user && user.role_name) {
+        console.log(`用户角色列表为空，但用户对象中存在 role_name: ${user.role_name}。将其作为角色显示。`);
+        setRoles([{ name: user.role_name }]); // 使用 user.role_name
+      } else if (fetchedRoles.length === 0) {
+        console.log('用户角色列表为空，且用户对象中无 role_name。显示为无特定角色。');
+        // 可以设置一个默认的“无角色”或“用户”状态，或者让其为空由UI处理
+        setRoles([]); 
       }
     } catch (error) {
       console.error('获取用户角色失败:', error);
-      
-      // 错误发生时，如果用户是管理员，显示管理员角色
-      if (isAdmin) {
-        setRoles([{ id: 1, name: '管理员' }]);
+      // 错误发生时，尝试从 user.role_name 回退
+      if (user && user.role_name) {
+        setRoles([{ name: user.role_name }]);
+      } else {
+        setRoles([]); // 或者显示错误状态
       }
     } finally {
       setLoadingRoles(false);
@@ -189,6 +191,8 @@ const ProfileScreen = () => {
   const openProfileEditModal = () => {
     setEditableUserInfo({
       username: userInfo.username,
+      nickname: userInfo.nickname || '', // 若依后端姓名字段
+      email: userInfo.email || '', // 邮箱字段
       department: userInfo.department,
       phone: userInfo.phone,
       company: userInfo.company,
@@ -218,6 +222,8 @@ const ProfileScreen = () => {
       console.log('开始更新用户信息，用户ID:', user.id);
       const response = await userApi.updateUser(user.id, {
           username: editableUserInfo.username,
+          nickname: editableUserInfo.nickname, // 若依后端姓名字段
+          email: editableUserInfo.email, // 邮箱字段
           department: editableUserInfo.department,
           phone: editableUserInfo.phone,
           company: editableUserInfo.company,
@@ -233,15 +239,20 @@ const ProfileScreen = () => {
         setUserInfo(prev => ({
           ...prev,
           username: editableUserInfo.username,
+          nickname: editableUserInfo.nickname, // 若依后端姓名字段
+          email: editableUserInfo.email, // 邮箱字段
           department: editableUserInfo.department,
           phone: editableUserInfo.phone,
           company: editableUserInfo.company,
+          displayName: editableUserInfo.nickname || editableUserInfo.username || '未知用户' // 更新显示名称
         }));
         
         // 同时更新Auth上下文中的用户信息
         if (updateUserInfo) {
           await updateUserInfo({
             username: editableUserInfo.username,
+            nickname: editableUserInfo.nickname, // 若依后端姓名字段
+            email: editableUserInfo.email, // 邮箱字段
             department: editableUserInfo.department,
             phone: editableUserInfo.phone,
             company: editableUserInfo.company,
@@ -254,6 +265,8 @@ const ProfileScreen = () => {
         // 记录日志
         console.log('用户信息已更新到数据库:', {
           username: editableUserInfo.username,
+          nickname: editableUserInfo.nickname,
+          email: editableUserInfo.email,
           department: editableUserInfo.department,
           phone: editableUserInfo.phone,
           company: editableUserInfo.company
@@ -616,21 +629,57 @@ const ProfileScreen = () => {
         </View>
         <View style={styles.infoContainer}>
           <View style={styles.infoRow}>
-            <Text style={[styles.label, { color: colors.text }]}>姓名</Text>
+            <Text style={[styles.label, { color: colors.text }]}>用户名</Text>
             <Text style={[styles.value, { color: colors.text }]}>{userInfo.username}</Text>
           </View>
-          <View style={styles.infoRow}>
-            <Text style={[styles.label, { color: colors.text }]}>公司</Text>
-            <Text style={[styles.value, { color: colors.text }]}>{userInfo.company || '未设置'}</Text>
-          </View>
-          <View style={styles.infoRow}>
-            <Text style={[styles.label, { color: colors.text }]}>部门</Text>
-            <Text style={[styles.value, { color: colors.text }]}>{userInfo.department}</Text>
-          </View>
-          <View style={styles.infoRow}>
-            <Text style={[styles.label, { color: colors.text }]}>联系方式</Text>
-            <Text style={[styles.value, { color: colors.text }]}>{userInfo.phone}</Text>
-          </View>
+          {userInfo.nickname && (
+            <View style={styles.infoRow}>
+              <Text style={[styles.label, { color: colors.text }]}>员工姓名</Text>
+              <Text style={[styles.value, { color: colors.text }]}>{userInfo.nickname}</Text>
+            </View>
+          )}
+          {userInfo.email && (
+            <View style={styles.infoRow}>
+              <Text style={[styles.label, { color: colors.text }]}>员工邮箱</Text>
+              <Text style={[styles.value, { color: colors.text }]}>{userInfo.email}</Text>
+            </View>
+          )}
+          {(user?.mobile || userInfo.phone) && (
+            <View style={styles.infoRow}>
+              <Text style={[styles.label, { color: colors.text }]}>联系方式</Text>
+              <Text style={[styles.value, { color: colors.text }]}>{user?.mobile || userInfo.phone}</Text>
+            </View>
+          )}
+          {user?.dept && (
+            <View style={styles.infoRow}>
+              <Text style={[styles.label, { color: colors.text }]}>公司部门</Text>
+              <Text style={[styles.value, { color: colors.text }]}>{user.dept.name}</Text>
+            </View>
+          )}
+          {user?.posts && user.posts.length > 0 && (
+            <View style={styles.infoRow}>
+              <Text style={[styles.label, { color: colors.text }]}>职位</Text>
+              <Text style={[styles.value, { color: colors.text }]}>{user.posts.map(post => post.name).join(', ')}</Text>
+            </View>
+          )}
+          {user?.sex && (
+            <View style={styles.infoRow}>
+              <Text style={[styles.label, { color: colors.text }]}>性别</Text>
+              <Text style={[styles.value, { color: colors.text }]}>{user.sex === 1 ? '男' : user.sex === 2 ? '女' : '未知'}</Text>
+            </View>
+          )}
+          {user?.loginDate && (
+            <View style={styles.infoRow}>
+              <Text style={[styles.label, { color: colors.text }]}>最后登录</Text>
+              <Text style={[styles.value, { color: colors.text }]}>{new Date(user.loginDate).toLocaleString('zh-CN')}</Text>
+            </View>
+          )}        
+          {userInfo.remark && (
+            <View style={styles.infoRow}>
+              <Text style={[styles.label, { color: colors.text }]}>角色备注</Text>
+              <Text style={[styles.value, { color: colors.text }]}>{userInfo.remark}</Text>
+            </View>
+          )}
           <TouchableOpacity 
             style={styles.changeAvatarButton} 
             onPress={() => setShowAvatarModal(true)}
@@ -662,7 +711,7 @@ const ProfileScreen = () => {
             <ActivityIndicator size="small" color="#FF6700" />
             <Text style={[styles.loadingText, { color: colors.text }]}>加载角色信息...</Text>
           </View>
-        ) : isAdmin && (!roles || roles.length === 0) ? (
+        ) : (user?.role_name === '超级管理员' || user?.role_name === '管理员') && (!roles || roles.length === 0) ? (
           // 对于管理员用户，即使API获取角色失败也显示管理员角色
           <View style={styles.roleItem}>
             <View style={styles.roleHeader}>
@@ -678,12 +727,28 @@ const ProfileScreen = () => {
               系统最高权限，可访问所有功能
             </Text>
           </View>
-        ) : roles && roles.length > 0 ? (
+        ) : (user?.roles && user.roles.length > 0) || (roles && roles.length > 0) ? (
           <>
-            {roles.map((role, index) => {
-              // 尝试获取角色ID，role可能是对象或数字
-              const roleId = typeof role === 'object' ? role.id || role.role_id : role;
-              const roleInfo = roleMap[roleId] || { name: `未知角色(ID:${roleId})`, description: '未定义的角色权限' };
+            {/* 优先显示用户对象中的角色信息 */}
+            {(user?.roles || roles).map((role, index) => {
+              // 处理不同的角色数据结构
+              let roleName, roleDescription, roleId;
+              
+              if (typeof role === 'object') {
+                // OAuth2 返回的角色对象结构
+                roleName = role.name || role.role_name;
+                roleId = role.id || role.role_id;
+                roleDescription = role.description;
+              } else {
+                // 简单的角色ID
+                roleId = role;
+              }
+              
+              // 如果没有角色名称，使用默认值
+              if (!roleName) {
+                roleName = roleId ? `角色(ID:${roleId})` : '未知角色';
+                roleDescription = roleDescription || '暂无详细描述';
+              }
               
               return (
                 <View key={index} style={styles.roleItem}>
@@ -694,10 +759,10 @@ const ProfileScreen = () => {
                       color="#FF6700" 
                       style={styles.roleIcon} 
                     />
-                    <Text style={[styles.roleName, { color: colors.text }]}>{roleInfo.name}</Text>
+                    <Text style={[styles.roleName, { color: colors.text }]}>{roleName}</Text>
                   </View>
                   <Text style={[styles.roleDescription, { color: colors.textSecondary }]}>
-                    {roleInfo.description}
+                    {roleDescription || '角色权限信息'}
                   </Text>
                 </View>
               );
@@ -810,13 +875,38 @@ const ProfileScreen = () => {
             <Text style={[styles.modalTitle, { color: colors.text }]}>编辑个人信息</Text>
             
             <View style={styles.inputContainer}>
-              <Text style={[styles.inputLabel, { color: colors.text }]}>姓名</Text>
+              <Text style={[styles.inputLabel, { color: colors.text }]}>用户名</Text>
               <TextInput
                 style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
                 value={editableUserInfo.username}
                 onChangeText={(text) => setEditableUserInfo(prev => ({ ...prev, username: text }))}
-                placeholder="请输入姓名"
+                placeholder="请输入用户名"
                 placeholderTextColor={colors.textSecondary}
+                editable={!isUpdating}
+              />
+            </View>
+            
+            <View style={styles.inputContainer}>
+              <Text style={[styles.inputLabel, { color: colors.text }]}>姓名</Text>
+              <TextInput
+                style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+                value={editableUserInfo.nickname}
+                onChangeText={(text) => setEditableUserInfo(prev => ({ ...prev, nickname: text }))}
+                placeholder="请输入真实姓名"
+                placeholderTextColor={colors.textSecondary}
+                editable={!isUpdating}
+              />
+            </View>
+            
+            <View style={styles.inputContainer}>
+              <Text style={[styles.inputLabel, { color: colors.text }]}>邮箱</Text>
+              <TextInput
+                style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+                value={editableUserInfo.email}
+                onChangeText={(text) => setEditableUserInfo(prev => ({ ...prev, email: text }))}
+                placeholder="请输入邮箱地址"
+                placeholderTextColor={colors.textSecondary}
+                keyboardType="email-address"
                 editable={!isUpdating}
               />
             </View>

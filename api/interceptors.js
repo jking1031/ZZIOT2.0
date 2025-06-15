@@ -47,7 +47,10 @@ api.interceptors.request.use(
           if (decodedPayload) {
             const payload = JSON.parse(decodedPayload);
             console.log('[令牌解析]', JSON.stringify(payload));
-            console.log('[令牌is_admin]', payload.is_admin, '类型:', typeof payload.is_admin);
+            // 移除了对旧的 is_admin 字段的直接打印，新的角色信息在 role_name 中
+            if (payload.role_name) {
+              console.log('[令牌角色]', payload.role_name, '类型:', typeof payload.role_name);
+            }
           }
         }
       } catch (parseError) {
@@ -185,20 +188,16 @@ function createLocalToken(user) {
     typ: 'JWT'
   };
   
-  // 确保管理员信息的正确处理
-  const adminValue = user.is_admin_value !== undefined ? user.is_admin_value : 
-                    (user.is_admin !== undefined ? user.is_admin : 
-                    (user.isAdmin !== undefined ? user.isAdmin : 
-                    (user.admin !== undefined ? user.admin : 0)));
-  
-  console.log('[创建本地令牌] 管理员状态:', adminValue, '类型:', typeof adminValue);
-  
+  // 根据 role_name 设置角色信息
+  const roleName = user.role_name || 'user'; // 默认为普通用户
+  console.log('[创建本地令牌] 用户角色:', roleName, '类型:', typeof roleName);
+
   // 令牌有效数据
   const payload = {
     id: user.id,
     username: user.username || user.name,
     email: user.email,
-    is_admin: adminValue, // 使用处理过的管理员值
+    role_name: roleName, // 使用新的 role_name 字段
     // 令牌有效期 - 12小时
     exp: Math.floor(Date.now() / 1000) + (12 * 60 * 60),
     iat: Math.floor(Date.now() / 1000)

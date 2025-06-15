@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Platform, StatusBar } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
-import { StyleSheet, View, Text, ImageBackground, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Modal, TextInput, Switch, FlatList, TouchableWithoutFeedback } from 'react-native';
+import { StyleSheet, View, Text, ImageBackground, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Switch, FlatList, TouchableWithoutFeedback, Modal } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { statsApi, authApi, userApi } from '../api/apiService';
@@ -15,15 +15,14 @@ import { useTheme } from '../context/ThemeContext';
 import { createCommonStyles, DesignTokens } from '../styles/StyleGuide';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
-import { Picker } from '@react-native-picker/picker';
-import { ActionSheetIOS } from 'react-native';
+
 const Tab = createBottomTabNavigator();
 
 // 主页面组件
 const MainTab = () => {
   const navigation = useNavigation();
   const { colors, isDarkMode } = useTheme();
-  const { isAdmin } = useAuth();
+  const { user } = useAuth(); // Removed isAdmin, isDeptAdmin
   const [stats, setStats] = useState({
     totalProcessing_in: 0,
     totalProcessing_out: 0,
@@ -53,11 +52,6 @@ const MainTab = () => {
     // 移除此处的StatusBar设置，使用App.js中的全局设置
     // 避免与全局StatusBar设置冲突
   }, [colors, isDarkMode]);
-
-  // 添加调试日志
-  useEffect(() => {
-    console.log('Current isAdmin status:', isAdmin);
-  }, [isAdmin]);
 
   // 添加获取统计数据的函数
   const fetchStats = useCallback(async (isManual = false) => {
@@ -582,8 +576,8 @@ const MainTab = () => {
   useEffect(() => {
     // 注册会话过期监听
     const sessionExpiredListener = EventRegister.addEventListener('SESSION_EXPIRED', () => {
-      // 显示登录弹窗
-      setShowLoginModal(true);
+      // 导航到登录页面
+      navigation.navigate('Login');
     });
     
     return () => {
@@ -1019,7 +1013,7 @@ const MainTab = () => {
         </View>
         
         {/* 管理员功能区域 - 仅管理员可见 */}
-        {isAdmin && (
+        {(user?.role_name === '超级管理员' || user?.role_name === '管理员') && (
           <>
             <View style={styles.divider} />
             
@@ -1048,6 +1042,22 @@ const MainTab = () => {
                 >
                   <Ionicons name="cloud" size={20} color="#2196F3" />
                   <Text style={styles.adminMenuItemText}>API管理</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={styles.adminMenuItem}
+                  onPress={() => navigation.navigate('OAuth2ConfigScreen')}
+                >
+                  <Ionicons name="shield-checkmark" size={20} color="#2196F3" />
+                  <Text style={styles.adminMenuItemText}>OAuth2配置</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={styles.adminMenuItem}
+                  onPress={() => navigation.navigate('DepartmentPermissionScreen')}
+                >
+                  <Ionicons name="business" size={20} color="#2196F3" />
+                  <Text style={styles.adminMenuItemText}>部门权限管理</Text>
                 </TouchableOpacity>
                 
                 {/* 这里添加更多管理员功能按钮 */}
@@ -1113,36 +1123,12 @@ const MainTab = () => {
 const HomeScreen = () => {
   const { isDarkMode, colors } = useTheme();
   const navigation = useNavigation();
-  const { login, user, loading, isAdmin, checkAdminStatus } = useAuth();
-  const [showLoginModal, setShowLoginModal] = useState(false);
-  const [showRegisterModal, setShowRegisterModal] = useState(false);
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [email, setEmail] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
-  const [registerForm, setRegisterForm] = useState({
-    username: '',
-    password: '',
-    confirmPassword: '',
-    email: '',
-    phone: '',
-    company: '',
-    department: ''
-  });
+  const { login, user, loading, checkAdminStatus } = useAuth();
   
   // 新增一个状态来防止未登录用户使用应用
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   
-  // 添加公司和部门选择的状态
-  const [companies, setCompanies] = useState([]);
-  const [departments, setDepartments] = useState([]);
-  const [selectedCompany, setSelectedCompany] = useState('');
-  const [loadingCompanies, setLoadingCompanies] = useState(false);
-  
-  // 添加选择器模态框状态
-  const [showCompanyModal, setShowCompanyModal] = useState(false);
-  const [showDepartmentModal, setShowDepartmentModal] = useState(false);
+
 
   // 设置状态栏颜色 - 简化状态栏设置
   useEffect(() => {
@@ -1150,1236 +1136,112 @@ const HomeScreen = () => {
     // 避免与全局StatusBar设置冲突
   }, [isDarkMode, colors]);
 
-  // 添加调试日志
+  // 用户状态变化处理
   useEffect(() => {
-    console.log('HomeScreen - Current user:', user);
-    console.log('HomeScreen - Current isAdmin status:', isAdmin);
-    
     // 根据用户登录状态设置认证状态
     if (user) {
+      console.log('[HomeScreen] 用户已登录，设置认证状态为true');
       setIsAuthenticated(true);
     } else {
+      console.log('[HomeScreen] 用户未登录，设置认证状态为false');
       setIsAuthenticated(false);
     }
-  }, [user, isAdmin]);
+  }, [user]);
 
   // 加载用户状态，检查登录状态
   useEffect(() => {
-    if (!user && !loading) {
-      console.log('HomeScreen - 用户未登录，检查登录状态');
+    // 只有在没有用户数据且不在加载状态时才检查登录状态
+    if (!user && !loading && !isAuthenticated) {
+      console.log('[HomeScreen] 检查登录状态');
       checkLoginStatus();
-    } else if (user) {
-      // 如果用户已登录，关闭所有模态框
-      console.log('HomeScreen - 用户已登录，关闭所有登录/注册界面');
-      setShowLoginModal(false);
-      setShowRegisterModal(false);
     }
-  }, [user, loading]);
+  }, [user, loading, isAuthenticated]);
 
-  // 监听用户登出事件，重置登录表单状态
-  useEffect(() => {
-    // 监听用户登出事件
-    const logoutListener = EventRegister.addEventListener(
-      'USER_LOGGED_OUT',
-      () => {
-        console.log('收到用户登出事件，重置登录表单');
-        // 重置登录表单
-        setEmail('');
-        setPassword('');
-        setRememberMe(false);
-        // 重置注册表单
-        setRegisterForm({
-          username: '',
-          password: '',
-          confirmPassword: '',
-          email: '',
-          phone: '',
-          company: '',
-          department: ''
-        });
-      }
-    );
-    
-    // 组件卸载时移除监听
-    return () => {
-      EventRegister.removeEventListener(logoutListener);
-    };
-  }, []);
 
-  // 强制显示登录模态框，如果用户未登录
-  useEffect(() => {
-    if (!user && !loading) {
-      console.log('HomeScreen - 强制显示登录界面，因为用户未登录');
-      setShowLoginModal(true);
-      setShowRegisterModal(false); // 确保注册模态框关闭
-      
-      // 重置注册表单
-      setRegisterForm({
-        username: '',
-        password: '',
-        confirmPassword: '',
-        email: '',
-        phone: '',
-        company: '',
-        department: ''
-      });
-    }
-  }, [user, loading]);
 
-  // 添加一个确保模态框状态一致的函数
-  const ensureModalState = (loginVisible, registerVisible) => {
-    console.log(`设置模态框状态: 登录=${loginVisible}, 注册=${registerVisible}`);
-    
-    // 先检查当前状态，避免不必要的状态更新
-    if (showLoginModal !== loginVisible || showRegisterModal !== registerVisible) {
-      // 使用批量更新来同时设置两个模态框的状态
-      setShowLoginModal(loginVisible);
-      setShowRegisterModal(registerVisible);
-    }
-  };
-  
-  // 创建一个延迟函数，用于按顺序执行操作
-  const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-  
-  // 处理从登录切换到注册的逻辑
-  const handleShowRegister = async () => {
-    try {
-      console.log('开始切换到注册界面...');
-      
-      // 关闭登录模态框
-      setShowLoginModal(false);
-      
-      // 等待足够长的时间，确保登录模态框完全关闭
-      await delay(1000);
-      
-      // 然后显示注册模态框
-      console.log('现在显示注册界面');
-      setShowRegisterModal(true);
-    } catch (error) {
-      console.error('切换到注册界面时出错:', error);
-    }
-  };
-  
-  // 处理从注册切换到登录的逻辑
-  const handleBackToLogin = async () => {
-    try {
-      console.log('开始切换到登录界面...');
-      
-      // 关闭注册模态框
-      setShowRegisterModal(false);
-      
-      // 等待足够长的时间，确保注册模态框完全关闭
-      await delay(1000);
-      
-      // 然后显示登录模态框
-      console.log('现在显示登录界面');
-      setShowLoginModal(true);
-    } catch (error) {
-      console.error('切换到登录界面时出错:', error);
-    }
-  };
+
+
+
 
   const checkLoginStatus = async () => {
     try {
+      console.log('[HomeScreen] 开始检查登录状态');
+      
+      // 如果用户已经登录，不需要检查
+      if (user) {
+        console.log('[HomeScreen] 用户已登录，跳过检查');
+        return;
+      }
+
       // 首先检查是否有用户数据
       const userData = await AsyncStorage.getItem('user');
       if (userData) {
         try {
           // 如果存在用户数据，直接恢复登录状态
           const parsedUserData = JSON.parse(userData);
+          console.log('[HomeScreen] 找到本地用户数据，尝试恢复登录状态');
           await login(parsedUserData);
           return;
         } catch (parseError) {
-          console.error('解析用户数据失败:', parseError);
+          console.error('[HomeScreen] 解析用户数据失败:', parseError);
           // 如果解析失败，清除损坏的数据
           await AsyncStorage.removeItem('user');
           // 继续尝试其他登录方式
         }
       }
 
-      // 如果没有用户数据或解析失败，检查是否有保存的登录凭证
-      const savedEmail = await AsyncStorage.getItem('userEmail');
-      const savedPassword = await AsyncStorage.getItem('userPassword');
-      const rememberMeStatus = await AsyncStorage.getItem('rememberMe');
-
-      if (savedEmail && savedPassword && rememberMeStatus === 'true') {
-        // 如果有保存的登录信息，尝试自动登录
-        setEmail(savedEmail);
-        setPassword(savedPassword);
-        setRememberMe(true);
-        try {
-          await handleLogin(true);
-          return;
-        } catch (error) {
-          console.error('自动登录失败:', error);
-          // 自动登录失败，继续显示登录窗口
-        }
-      }
-
-      // 如果既没有用户数据也没有保存的登录凭证，显示登录窗口
-      setShowLoginModal(true);
-    } catch (error) {
-      console.error('检查登录状态失败:', error);
-      setShowLoginModal(true);
-    }
-  };
-
-  const handleLogin = async (isAutoLogin = false) => {
-    // 只在用户主动点击登录按钮时才检查输入值
-    if (isLoading) return;
-
-    // 自动登录时不需要验证输入
-    if (!isAutoLogin && (!email || !password)) {
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      // 第一步：调用登录API获取用户基本信息
-      console.log('第一步：调用登录API获取用户基本信息');
-      const loginResponse = await authApi.login({ email, password });
-      
-      // 处理Node-RED的响应格式 {success: true, data: {user: {...}, token: ...}}
-      let userInfo, token, refreshToken;
-      if (loginResponse && loginResponse.success && loginResponse.data) {
-        // Node-RED格式
-        userInfo = loginResponse.data.user;
-        token = loginResponse.data.token;
-        refreshToken = loginResponse.data.refreshToken;
-        console.log('Node-RED响应格式，用户信息:', userInfo);
-      } else if (loginResponse && loginResponse.user) {
-        // 旧格式兼容
-        userInfo = loginResponse.user;
-        token = loginResponse.token;
-        refreshToken = loginResponse.refreshToken;
-        console.log('传统响应格式，用户信息:', userInfo);
-      } else {
-        throw new Error(loginResponse?.message || '登录响应数据无效');
-      }
-      
-      if (!userInfo) {
-        throw new Error('用户信息缺失');
-      }
-      
-
-      
-      // 检查所有可能的管理员相关字段
-      const adminRelatedFields = [
-        'is_admin', 'isAdmin', 'admin'
-      ];
-      
-      console.log('管理员相关字段检查:');
-      adminRelatedFields.forEach(field => {
-        if (userInfo[field] !== undefined) {
-          console.log(`- ${field}: ${JSON.stringify(userInfo[field])}`);
-        }
-      });
-      console.log('=============================================');
-      
-      // 第二步：调用login函数存储用户基本信息，包含token信息
-      console.log('第二步：调用登录函数，存储用户信息并查询管理员状态');
-      const completeUserData = {
-        ...userInfo,
-        token: token,
-        refreshToken: refreshToken
-      };
-      await login(completeUserData); // 传递包含token的完整用户数据
-      
-      // 如果未选择记住密码，清除之前可能保存的登录信息
-      if (!rememberMe) {
-        await AsyncStorage.removeItem('userEmail');
-        await AsyncStorage.removeItem('userPassword');
-        await AsyncStorage.removeItem('rememberMe');
-      }
-      
-      // 保存登录信息（如果选择了记住密码）
-      if (rememberMe && email && password) {
-        await AsyncStorage.setItem('userEmail', email);
-        await AsyncStorage.setItem('userPassword', password);
-        await AsyncStorage.setItem('rememberMe', 'true');
-      }
-      
-      // 第三步：登录成功后，关闭登录弹窗
-      console.log('第三步：登录成功，关闭登录弹窗');
-      setShowLoginModal(false);
-      
-      // 登录完成，记录最终状态信息
-      console.log('登录过程完成，当前管理员状态:', isAdmin);
-      const userDataStr = await AsyncStorage.getItem('user');
-      if (userDataStr) {
-        const parsedUser = JSON.parse(userDataStr);
-        console.log('最终用户信息中的管理员值:', 
-                   '是否管理员:', parsedUser.is_admin, 
-                   '原始值:', parsedUser.is_admin_value);
-      }
-
-    } catch (error) {
-      console.error('登录失败:', error);
-      let errorMessage = '登录失败';
-      
-      if (error.response) {
-        errorMessage = error.response.data?.message || '服务器返回错误，请稍后重试';
-      } else if (error.request) {
-        errorMessage = '网络连接失败，请检查网络设置';
-      } else {
-        errorMessage = error.message || '登录过程中发生错误，请重试';
-      }
-      // 只在非自动登录情况下显示错误提示
-      if (!isAutoLogin) {
-        Alert.alert('错误', errorMessage);
-      }
-      // 如果是自动登录失败，回传错误便于调用者处理
-      if (isAutoLogin) {
-        throw new Error(errorMessage);
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleRegister = async () => {
-    console.log('开始处理注册请求...');
-    
-    if (!registerForm.username || !registerForm.password || !registerForm.confirmPassword ||
-        !registerForm.email || !registerForm.phone || !registerForm.company || !registerForm.department) {
-      console.log('注册表单填写不完整');
-      Alert.alert('提示', '请填写完整注册信息');
-      return;
-    }
-
-    if (registerForm.password !== registerForm.confirmPassword) {
-      console.log('两次输入的密码不一致');
-      Alert.alert('提示', '两次输入的密码不一致');
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      console.log('发送注册请求到API...');
-      console.log('请求数据:', JSON.stringify({
-        username: registerForm.username,
-        email: registerForm.email,
-        phone: registerForm.phone,
-        company: registerForm.company,
-        department: registerForm.department
-      }));
-      
-      const data = await authApi.register({
-        username: registerForm.username,
-        password: registerForm.password,
-        email: registerForm.email,
-        phone: registerForm.phone,
-        company: registerForm.company,
-        department: registerForm.department
-      });
-
-      console.log('注册API响应:', data);
-      
-      // 检查响应数据
-      if (data) {
-        console.log('注册成功，显示成功提示');
-        
-        // 保存注册成功的邮箱，用于登录页面自动填充
-        const registeredEmail = registerForm.email;
-        
-        // 清空注册表单
-        setRegisterForm({
-          username: '',
-          password: '',
-          confirmPassword: '',
-          email: '',
-          phone: '',
-          company: '',
-          department: ''
-        });
-        
-        // 注册成功，显示更明确的成功提示
-        Alert.alert(
-          '注册成功', 
-          '您的账号已创建成功，请使用新账号登录系统。', 
-          [
-            {
-              text: '确定',
-              onPress: () => {
-                console.log('注册成功，准备跳转到登录页面');
-                
-                // 使用新的ensureModalState函数
-                // 延迟执行，确保Alert关闭后再切换界面
-                setTimeout(() => {
-                  // 预填充登录表单中的邮箱 
-                  setEmail(registeredEmail);
-                  setPassword('');
-                  
-                  // 先关闭所有模态框
-                  ensureModalState(false, false);
-                  
-                  // 等待一段时间后再显示登录模态框
-                  setTimeout(() => {
-                    console.log('注册成功后打开登录界面');
-                    ensureModalState(true, false);
-                  }, 500);
-                }, 300);
-              }
-            }
-          ]
-        );
+      // 如果没有用户数据且用户未登录，导航到登录页面
+      if (!user && !loading) {
+        console.log('[HomeScreen] 没有用户数据，跳转到登录页面');
+        navigation.navigate('Login');
       }
     } catch (error) {
-      console.error('注册请求失败:', error);
-      let errorMessage = '注册失败，请稍后重试';
-      
-      if (error.response) {
-        console.error('服务器响应错误:', error.response.status, error.response.data);
-        errorMessage = error.response.data?.message || '服务器返回错误，请稍后重试';
-      } else if (error.request) {
-        console.error('无法连接到服务器:', error.request);
-        errorMessage = '网络连接失败，请检查网络设置';
-      } else {
-        console.error('请求配置错误:', error.message);
-        errorMessage = error.message || '发送注册请求时发生错误';
-      }
-      
-      Alert.alert('注册失败', errorMessage);
-    } finally {
-      setIsLoading(false);
+      console.error('[HomeScreen] 检查登录状态失败:', error);
+      navigation.navigate('Login');
     }
   };
 
-  // 获取公司列表
-  const fetchCompanies = async () => {
-    setLoadingCompanies(true);
-    try {
-      const data = await userApi.getCompanies();
-      
-      if (data && Array.isArray(data)) {
-        console.log('获取到公司列表:', data.length);
-        setCompanies(data);
-        if (data.length > 0) {
-          setSelectedCompany(data[0].id.toString());
-          // 预加载第一个公司的部门
-          updateDepartments(data[0]);
-        }
-      } else {
-        console.log('服务器返回的公司数据格式不正确:', data);
-      }
-    } catch (error) {
-      console.error('获取公司列表失败:', error);
-      Alert.alert('提示', '获取公司列表失败，请稍后再试或直接联系管理员。');
-    } finally {
-      setLoadingCompanies(false);
-    }
-  };
 
-  // 根据选中的公司更新部门列表
-  const updateDepartments = (company) => {
-    if (!company) return;
-    
-    const deptList = [];
-    // 从department1到department10收集所有非空部门
-    for (let i = 1; i <= 10; i++) {
-      const deptKey = `department${i}`;
-      if (company[deptKey] && company[deptKey].trim() !== '') {
-        deptList.push({
-          id: i,
-          name: company[deptKey]
-        });
-      }
-    }
-    
-    console.log('获取到部门列表:', deptList.length);
-    setDepartments(deptList);
-    
-    // 如果有部门，默认选择第一个
-    if (deptList.length > 0) {
-      setRegisterForm(prev => ({
-        ...prev,
-        department: deptList[0].name
-      }));
-    } else {
-      setRegisterForm(prev => ({
-        ...prev,
-        department: ''
-      }));
-    }
-  };
 
-  // 当选择公司改变时
-  const handleCompanyChange = (companyId) => {
-    setSelectedCompany(companyId);
-    
-    // 查找对应的公司对象
-    const selectedCompanyObj = companies.find(c => c.id.toString() === companyId);
-    if (selectedCompanyObj) {
-      // 更新表单中的公司名称
-      setRegisterForm(prev => ({
-        ...prev,
-        company: selectedCompanyObj.company_name
-      }));
-      
-      // 更新部门列表
-      updateDepartments(selectedCompanyObj);
-    }
-  };
 
-  // 注册模态框打开时获取公司列表
-  useEffect(() => {
-    if (showRegisterModal) {
-      fetchCompanies();
-    }
-  }, [showRegisterModal]);
 
-  // 处理公司选择 - iOS平台
-  const handleCompanySelectIOS = () => {
-    if (loadingCompanies || companies.length === 0) {
-      Alert.alert('提示', '公司数据加载中或暂无公司数据');
-      return;
-    }
-    
-    const options = companies.map(company => company.company_name);
-    options.push('取消');
-    
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        options,
-        cancelButtonIndex: options.length - 1,
-        title: '选择公司',
-      },
-      (buttonIndex) => {
-        if (buttonIndex !== options.length - 1) {
-          const selectedCompanyObj = companies[buttonIndex];
-          setSelectedCompany(selectedCompanyObj.id.toString());
-          setRegisterForm(prev => ({
-            ...prev,
-            company: selectedCompanyObj.company_name
-          }));
-          updateDepartments(selectedCompanyObj);
-        }
-      }
-    );
-  };
 
-  // 处理部门选择 - iOS平台
-  const handleDepartmentSelectIOS = () => {
-    if (departments.length === 0) {
-      Alert.alert('提示', '该公司暂无部门数据');
-      return;
-    }
-    
-    const options = departments.map(dept => dept.name);
-    options.push('取消');
-    
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        options,
-        cancelButtonIndex: options.length - 1,
-        title: '选择部门',
-      },
-      (buttonIndex) => {
-        if (buttonIndex !== options.length - 1) {
-          setRegisterForm(prev => ({
-            ...prev,
-            department: departments[buttonIndex].name
-          }));
-        }
-      }
-    );
-  };
 
   // 公司选择器组件
-  const CompanySelector = () => (
-    <View style={styles.selectorContainer}>
-      <Text style={[styles.selectorLabel, { color: colors.text }]}>公司</Text>
-      <TouchableOpacity
-        style={[styles.selectorButton, { backgroundColor: colors.background }]}
-        onPress={Platform.OS === 'ios' ? handleCompanySelectIOS : () => setShowCompanyModal(true)}
-        disabled={loadingCompanies}
-      >
-        {loadingCompanies ? (
-          <ActivityIndicator size="small" color="#FF6700" style={{ marginRight: 10 }} />
-        ) : null}
-        <Text 
-          style={[
-            styles.selectorButtonText, 
-            { color: registerForm.company ? colors.text : colors.textSecondary }
-          ]}
-          numberOfLines={1}
-        >
-          {registerForm.company || '请选择公司'}
-        </Text>
-        <Ionicons 
-          name="chevron-down" 
-          size={16} 
-          color={colors.textSecondary} 
-          style={{ marginLeft: 'auto' }} 
-        />
-      </TouchableOpacity>
-    </View>
-  );
 
-  // 部门选择器组件
-  const DepartmentSelector = () => (
-    <View style={styles.selectorContainer}>
-      <Text style={[styles.selectorLabel, { color: colors.text }]}>部门</Text>
-      <TouchableOpacity
-        style={[styles.selectorButton, { backgroundColor: colors.background }]}
-        onPress={Platform.OS === 'ios' ? handleDepartmentSelectIOS : () => setShowDepartmentModal(true)}
-        disabled={departments.length === 0}
-      >
-        <Text 
-          style={[
-            styles.selectorButtonText, 
-            { color: registerForm.department ? colors.text : colors.textSecondary }
-          ]}
-          numberOfLines={1}
-        >
-          {registerForm.department || (departments.length === 0 ? '请先选择公司' : '请选择部门')}
-        </Text>
-        <Ionicons 
-          name="chevron-down" 
-          size={16} 
-          color={colors.textSecondary} 
-          style={{ marginLeft: 'auto' }} 
-        />
-      </TouchableOpacity>
-    </View>
-  );
 
   // 添加样式
   const styles = StyleSheet.create({
-    modalContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: 'rgba(0, 0, 0, 0.65)',
-    },
-    modalContent: {
-      width: '85%',
-      padding: 28,
-      borderRadius: 18,
-      elevation: 8,
-      shadowColor: '#000',
-      shadowOffset: {
-        width: 0,
-        height: 4
-      },
-      shadowOpacity: 0.3,
-      shadowRadius: 6,
-    },
-    rememberMeContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginBottom: 16,
-      marginTop: 8,
-    },
-    checkbox: {
-      width: 22,
-      height: 22,
-      borderWidth: 1.5,
-      borderColor: '#FF6700',
-      borderRadius: 5,
-      marginRight: 12,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    checkboxChecked: {
-      backgroundColor: '#FF6700',
-    },
-    rememberMeText: {
-      fontSize: 15,
-      color: colors.text,
-    },
-    modalTitle: {
-      fontSize: 26,
-      fontWeight: 'bold',
-      marginBottom: 24,
-      textAlign: 'center',
-      color: colors.text,
-      letterSpacing: 0.5,
-    },
-    input: {
-      width: '100%',
-      height: 52,
-      borderWidth: 1.5,
-      borderColor: isDarkMode ? 'rgba(255,255,255,0.2)' : '#ddd',
-      borderRadius: 10,
-      paddingHorizontal: 16,
-      marginBottom: 20,
-      fontSize: 16,
-    },
-    loginButton: {
-      width: '100%',
-      height: 52,
-      borderRadius: 10,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginTop: 16,
-      backgroundColor: '#FF6700',
-      shadowColor: '#FF6700',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.25,
-      shadowRadius: 3,
-      elevation: 4,
-    },
-    loginButtonText: {
-      color: '#fff',
-      fontSize: 17,
-      fontWeight: 'bold',
-      letterSpacing: 0.5,
-    },
-    registerButton: {
-      marginTop: 24,
-      padding: 12,
-    },
-    registerButtonText: {
-      fontSize: 14,
-      textAlign: 'center',
-      fontWeight: '500',
-      color: '#FF6700',
-    },
-    errorText: {
-      color: colors.error,
-    },
     container: {
       flex: 1,
       backgroundColor: isDarkMode ? '#121212' : '#F5F5F7',
-    },
-    // 选择器样式
-    selectorContainer: {
-      width: '100%',
-      marginBottom: 20,
-    },
-    selectorLabel: {
-      fontSize: 14,
-      marginBottom: 8,
-      fontWeight: '500',
-    },
-    selectorButton: {
-      width: '100%',
-      height: 52,
-      borderWidth: 1.5,
-      borderColor: isDarkMode ? 'rgba(255,255,255,0.2)' : '#ddd',
-      borderRadius: 10,
-      paddingHorizontal: 16,
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    selectorButtonText: {
-      fontSize: 16,
-      flex: 1,
-    },
-    pickerModalContainer: {
-      flex: 1,
-      justifyContent: 'flex-end',
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    },
-    pickerModalContent: {
-      backgroundColor: colors.card,
-      borderTopLeftRadius: 20,
-      borderTopRightRadius: 20,
-      paddingTop: 20,
-      paddingBottom: Platform.OS === 'ios' ? 40 : 20,
-      maxHeight: '80%',
-    },
-    pickerModalHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingHorizontal: 20,
-      paddingBottom: 15,
-      borderBottomWidth: 1,
-      borderBottomColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
-    },
-    pickerModalTitle: {
-      fontSize: 18,
-      fontWeight: '600',
-      color: colors.text,
-    },
-    pickerModalCloseButton: {
-      padding: 8,
-    },
-    listContainer: {
-      paddingHorizontal: 5,
-    },
-    listItem: {
-      paddingVertical: 16,
-      paddingHorizontal: 20,
-      borderBottomWidth: 1,
-      borderBottomColor: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    listItemText: {
-      fontSize: 16,
-      color: colors.text,
-    },
-    listItemSelected: {
-      backgroundColor: isDarkMode ? 'rgba(255,103,0,0.2)' : 'rgba(255,103,0,0.05)',
-    },
-    checkIcon: {
-      marginLeft: 'auto',
-    },
-    emptyListContainer: {
-      padding: 20,
-      alignItems: 'center',
-    },
-    emptyListText: {
-      fontSize: 16,
-      color: colors.textSecondary,
-      textAlign: 'center',
     },
   });
 
   // HomeScreen组件内
 
   // 在主要渲染逻辑中添加认证状态检查
-  if (!isAuthenticated && !loading) {
-    // 如果用户未登录且不在加载状态，只显示登录界面，不显示应用内容
-    console.log('HomeScreen - 用户未认证，只显示登录/注册界面');
+  if (!isAuthenticated && !loading && !user) {
+    // 只有在用户未登录、不在加载状态且没有用户数据时才跳转
+    console.log('[HomeScreen] 用户未认证，准备跳转到登录页面');
+    // 使用setTimeout避免在渲染过程中立即导航
+    setTimeout(() => {
+      navigation.navigate('Login');
+    }, 100);
+    return null;
+  }
+
+  // 如果正在加载，显示加载状态
+  if (loading) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.background }}>
-        {/* 登录模态框 */}
-        <Modal
-          key="loginModal"
-          animationType="slide"
-          transparent={true}
-          visible={showLoginModal}
-          onRequestClose={() => {
-            console.log('防止关闭登录模态框，用户必须登录');
-            // 不允许用户关闭登录模态框
-          }}
-          hardwareAccelerated={true}
-          statusBarTranslucent={false}
-        >
-          <View style={[styles.modalContainer, { backgroundColor: 'rgba(0, 0, 0, 0.5)' }]}>
-            <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>用户登录</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: colors.background, color: colors.text }]}
-                placeholder="邮箱/账号"
-                placeholderTextColor={colors.textSecondary}
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-              />
-              <TextInput
-                style={[styles.input, { backgroundColor: colors.background, color: colors.text }]}
-                placeholder="密码"
-                placeholderTextColor={colors.textSecondary}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-              />
-              <View style={styles.rememberMeContainer}>
-                <TouchableOpacity 
-                  style={[styles.checkbox, rememberMe && styles.checkboxChecked]}
-                  onPress={() => setRememberMe(!rememberMe)}
-                >
-                  {rememberMe && <Ionicons name="checkmark" size={16} color="#fff" />}
-                </TouchableOpacity>
-                <Text style={[styles.rememberMeText, { color: colors.text }]}>记住密码</Text>
-              </View>
-              <TouchableOpacity
-                style={[styles.loginButton, { backgroundColor: colors.primary }]}
-                onPress={handleLogin}
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.loginButtonText}>登录</Text>
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.registerButton}
-                onPress={handleShowRegister}
-              >
-                <Text style={[styles.registerButtonText, { color: colors.primary }]}>没有账号？立即注册</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
-        
-        {/* 注册模态框 */}
-        <Modal
-          key="registerModal"
-          animationType="slide"
-          transparent={true}
-          visible={showRegisterModal}
-          onRequestClose={() => {
-            console.log('用户尝试关闭注册模态框');
-            handleBackToLogin();
-          }}
-          hardwareAccelerated={true}
-          statusBarTranslucent={false}
-        >
-          <View style={[styles.modalContainer, { backgroundColor: 'rgba(0, 0, 0, 0.5)' }]}>
-            <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>注册</Text>
-              
-              <ScrollView style={{ width: '100%' }}>
-                <TextInput
-                  style={[styles.input, { backgroundColor: colors.background, color: colors.text }]}
-                  placeholder="用户名"
-                  placeholderTextColor={colors.textSecondary}
-                  value={registerForm.username}
-                  onChangeText={(text) => setRegisterForm(prev => ({ ...prev, username: text }))}
-                />
-                <TextInput
-                  style={[styles.input, { backgroundColor: colors.background, color: colors.text }]}
-                  placeholder="密码"
-                  placeholderTextColor={colors.textSecondary}
-                  value={registerForm.password}
-                  onChangeText={(text) => setRegisterForm(prev => ({ ...prev, password: text }))}
-                  secureTextEntry
-                />
-                <TextInput
-                  style={[styles.input, { backgroundColor: colors.background, color: colors.text }]}
-                  placeholder="确认密码"
-                  placeholderTextColor={colors.textSecondary}
-                  value={registerForm.confirmPassword}
-                  onChangeText={(text) => setRegisterForm(prev => ({ ...prev, confirmPassword: text }))}
-                  secureTextEntry
-                />
-                <TextInput
-                  style={[styles.input, { backgroundColor: colors.background, color: colors.text }]}
-                  placeholder="邮箱"
-                  placeholderTextColor={colors.textSecondary}
-                  value={registerForm.email}
-                  onChangeText={(text) => setRegisterForm(prev => ({ ...prev, email: text }))}
-                  keyboardType="email-address"
-                />
-                <TextInput
-                  style={[styles.input, { backgroundColor: colors.background, color: colors.text }]}
-                  placeholder="手机号码"
-                  placeholderTextColor={colors.textSecondary}
-                  value={registerForm.phone}
-                  onChangeText={(text) => setRegisterForm(prev => ({ ...prev, phone: text }))}
-                  keyboardType="phone-pad"
-                />
-                
-                {/* 公司选择器 */}
-                <CompanySelector />
-                
-                {/* 部门选择器 */}
-                <DepartmentSelector />
-                
-              </ScrollView>
-              
-              <TouchableOpacity
-                style={[styles.loginButton, { backgroundColor: colors.primary }]}
-                onPress={handleRegister}
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.loginButtonText}>注册</Text>
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.registerButton}
-                onPress={handleBackToLogin}
-              >
-                <Text style={[styles.registerButtonText, { color: colors.primary }]}>已有账号？立即登录</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
-        
-        {/* 背景视图，当用户未认证时显示 */}
-        <View style={{ 
-          flex: 1, 
-          justifyContent: 'center', 
-          alignItems: 'center',
-          padding: 20,
-          backgroundColor: colors.background
-        }}>
-          <Text style={{ 
-            fontSize: 22, 
-            fontWeight: 'bold', 
-            color: colors.primary,
-            marginBottom: 20,
-            textAlign: 'center'
-          }}>
-            正泽物联系统平台
-          </Text>
-          <Text style={{ 
-            fontSize: 16, 
-            color: colors.text,
-            textAlign: 'center',
-            marginBottom: 30
-          }}>
-            请登录后使用系统功能
-          </Text>
-        </View>
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={{ color: colors.text }}>加载中...</Text>
       </View>
     );
   }
 
   return (
     <>
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={showLoginModal}
-        onRequestClose={() => setShowLoginModal(false)}
-        hardwareAccelerated={true} // 启用硬件加速以提高在真机上的性能
-        statusBarTranslucent={false} // 避免状态栏透明导致的布局问题
-      >
-        <View style={[styles.modalContainer, { backgroundColor: 'rgba(0, 0, 0, 0.5)' }]}>
-          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>登录</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.background, color: colors.text }]}
-              placeholder="邮箱"
-              placeholderTextColor={colors.textSecondary}
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.background, color: colors.text }]}
-              placeholder="密码"
-              placeholderTextColor={colors.textSecondary}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
-            <View style={styles.rememberMeContainer}>
-              <TouchableOpacity 
-                style={[styles.checkbox, rememberMe && styles.checkboxChecked]}
-                onPress={() => setRememberMe(!rememberMe)}
-              >
-                {rememberMe && <Ionicons name="checkmark" size={16} color="#fff" />}
-              </TouchableOpacity>
-              <Text style={[styles.rememberMeText, { color: colors.text }]}>记住密码</Text>
-            </View>
-            <TouchableOpacity
-              style={[styles.loginButton, { backgroundColor: colors.primary }]}
-              onPress={handleLogin}
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.loginButtonText}>登录</Text>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.registerButton}
-              onPress={handleShowRegister}
-            >
-              <Text style={[styles.registerButtonText, { color: colors.primary }]}>没有账号？立即注册</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={showRegisterModal}
-        onRequestClose={() => setShowRegisterModal(false)}
-        hardwareAccelerated={true} // 启用硬件加速以提高在真机上的性能
-        statusBarTranslucent={false} // 避免状态栏透明导致的布局问题
-      >
-        <View style={[styles.modalContainer, { backgroundColor: 'rgba(0, 0, 0, 0.5)' }]}>
-          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>注册</Text>
-            
-            <ScrollView style={{ width: '100%' }}>
-              <TextInput
-                style={[styles.input, { backgroundColor: colors.background, color: colors.text }]}
-                placeholder="用户名"
-                placeholderTextColor={colors.textSecondary}
-                value={registerForm.username}
-                onChangeText={(text) => setRegisterForm(prev => ({ ...prev, username: text }))}
-              />
-              <TextInput
-                style={[styles.input, { backgroundColor: colors.background, color: colors.text }]}
-                placeholder="密码"
-                placeholderTextColor={colors.textSecondary}
-                value={registerForm.password}
-                onChangeText={(text) => setRegisterForm(prev => ({ ...prev, password: text }))}
-                secureTextEntry
-              />
-              <TextInput
-                style={[styles.input, { backgroundColor: colors.background, color: colors.text }]}
-                placeholder="确认密码"
-                placeholderTextColor={colors.textSecondary}
-                value={registerForm.confirmPassword}
-                onChangeText={(text) => setRegisterForm(prev => ({ ...prev, confirmPassword: text }))}
-                secureTextEntry
-              />
-              <TextInput
-                style={[styles.input, { backgroundColor: colors.background, color: colors.text }]}
-                placeholder="邮箱"
-                placeholderTextColor={colors.textSecondary}
-                value={registerForm.email}
-                onChangeText={(text) => setRegisterForm(prev => ({ ...prev, email: text }))}
-                keyboardType="email-address"
-              />
-              <TextInput
-                style={[styles.input, { backgroundColor: colors.background, color: colors.text }]}
-                placeholder="手机号码"
-                placeholderTextColor={colors.textSecondary}
-                value={registerForm.phone}
-                onChangeText={(text) => setRegisterForm(prev => ({ ...prev, phone: text }))}
-                keyboardType="phone-pad"
-              />
-              
-              {/* 公司选择器 */}
-              <CompanySelector />
-              
-              {/* 部门选择器 */}
-              <DepartmentSelector />
-              
-            </ScrollView>
-            
-            <TouchableOpacity
-              style={[styles.loginButton, { backgroundColor: colors.primary }]}
-              onPress={handleRegister}
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.loginButtonText}>注册</Text>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.registerButton}
-              onPress={handleBackToLogin}
-            >
-              <Text style={[styles.registerButtonText, { color: colors.primary }]}>已有账号？立即登录</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-      
-      {/* Android公司选择模态框 */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={showCompanyModal}
-        onRequestClose={() => setShowCompanyModal(false)}
-        hardwareAccelerated={true} 
-        statusBarTranslucent={false}
-      >
-        <View style={styles.pickerModalContainer}>
-          <View style={styles.pickerModalContent}>
-            <View style={styles.pickerModalHeader}>
-              <Text style={styles.pickerModalTitle}>选择公司</Text>
-              <TouchableOpacity 
-                style={styles.pickerModalCloseButton} 
-                onPress={() => setShowCompanyModal(false)}
-              >
-                <Ionicons name="close" size={24} color={colors.text} />
-              </TouchableOpacity>
-            </View>
-            
-            {loadingCompanies ? (
-              <View style={{ padding: 30, alignItems: 'center' }}>
-                <ActivityIndicator size="large" color="#FF6700" />
-                <Text style={{ marginTop: 15, color: colors.text }}>加载中...</Text>
-              </View>
-            ) : companies.length === 0 ? (
-              <View style={styles.emptyListContainer}>
-                <Text style={styles.emptyListText}>暂无公司数据</Text>
-              </View>
-            ) : (
-              <FlatList
-                data={companies}
-                style={styles.listContainer}
-                keyExtractor={(item) => item.id.toString()}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={[
-                      styles.listItem,
-                      selectedCompany === item.id.toString() && styles.listItemSelected
-                    ]}
-                    onPress={() => {
-                      handleCompanyChange(item.id.toString());
-                      setShowCompanyModal(false);
-                    }}
-                  >
-                    <Text style={styles.listItemText}>{item.company_name}</Text>
-                    {selectedCompany === item.id.toString() && (
-                      <Ionicons 
-                        name="checkmark" 
-                        size={20} 
-                        color="#FF6700" 
-                        style={styles.checkIcon} 
-                      />
-                    )}
-                  </TouchableOpacity>
-                )}
-              />
-            )}
-          </View>
-        </View>
-      </Modal>
-      
-      {/* Android部门选择模态框 */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={showDepartmentModal}
-        onRequestClose={() => setShowDepartmentModal(false)}
-        hardwareAccelerated={true}
-        statusBarTranslucent={false}
-      >
-        <View style={styles.pickerModalContainer}>
-          <View style={styles.pickerModalContent}>
-            <View style={styles.pickerModalHeader}>
-              <Text style={styles.pickerModalTitle}>选择部门</Text>
-              <TouchableOpacity 
-                style={styles.pickerModalCloseButton} 
-                onPress={() => setShowDepartmentModal(false)}
-              >
-                <Ionicons name="close" size={24} color={colors.text} />
-              </TouchableOpacity>
-            </View>
-            
-            {departments.length === 0 ? (
-              <View style={styles.emptyListContainer}>
-                <Text style={styles.emptyListText}>
-                  {selectedCompany ? '该公司暂无部门数据' : '请先选择公司'}
-                </Text>
-              </View>
-            ) : (
-              <FlatList
-                data={departments}
-                style={styles.listContainer}
-                keyExtractor={(item) => item.id.toString()}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={[
-                      styles.listItem,
-                      registerForm.department === item.name && styles.listItemSelected
-                    ]}
-                    onPress={() => {
-                      setRegisterForm(prev => ({ ...prev, department: item.name }));
-                      setShowDepartmentModal(false);
-                    }}
-                  >
-                    <Text style={styles.listItemText}>{item.name}</Text>
-                    {registerForm.department === item.name && (
-                      <Ionicons 
-                        name="checkmark" 
-                        size={20} 
-                        color="#FF6700" 
-                        style={styles.checkIcon} 
-                      />
-                    )}
-                  </TouchableOpacity>
-                )}
-              />
-            )}
-          </View>
-        </View>
-      </Modal>
-      
       {/* 平台特定导航 */}
       {Platform.OS === 'ios' ? (
         <Tab.Navigator

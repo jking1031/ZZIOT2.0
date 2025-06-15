@@ -218,7 +218,8 @@ export const authApi = {
   refreshToken: (tokenData) => apiService.post('AUTH', 'REFRESH_TOKEN', tokenData),
   logout: () => apiService.post('AUTH', 'LOGOUT', {}),
   checkAdmin: (data) => apiService.post('AUTH', 'CHECK_ADMIN', data),
-  checkAdminStatus: (data) => apiService.post('AUTH', 'CHECK_ADMIN', data)
+  checkAdminStatus: (data) => apiService.post('AUTH', 'CHECK_ADMIN', data),
+  getPermissionInfo: () => apiService.get('AUTH', 'GET_PERMISSION_INFO') // 获取用户权限信息
 };
 
 export const userApi = {

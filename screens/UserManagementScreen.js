@@ -25,23 +25,9 @@ import { Picker } from '@react-native-picker/picker';
 import apiService, { userApi, authApi } from '../api/apiService';
 import { loadApiConfig } from '../api/apiManager';
 
-// 角色定义
-const ROLES = {
-  0: { name: '普通用户', color: '#9E9E9E' }, // 添加默认角色
-  1: { name: '管理员', color: '#4CAF50' },
-  2: { name: '部门管理员', color: '#2196F3' },
-  3: { name: '运行班组', color: '#FF9800' },
-  4: { name: '化验班组', color: '#9C27B0' },
-  5: { name: '机电班组', color: '#E91E63' },
-  6: { name: '污泥车间', color: '#795548' },
-  7: { name: '5000吨处理站', color: '#607D8B' },
-  8: { name: '附属设施', color: '#00BCD4' },
-  9: { name: '备用权限', color: '#FF5722' },
-};
-
 const UserManagementScreen = () => {
   const { colors, isDarkMode } = useTheme();
-  const { isAdmin, user } = useAuth();
+  const { user } = useAuth(); // Removed isAdmin
   const navigation = useNavigation();
   
   const [users, setUsers] = useState([]);
@@ -118,23 +104,31 @@ const UserManagementScreen = () => {
 
   // 检查是否是管理员，如果不是则返回
   useEffect(() => {
-    // 只有管理员(is_admin值为1)才能访问此页面
-    if (!isAdmin || (user?.is_admin !== 1 && user?.is_admin !== true)) {
+    // 只有角色为 'super_admin' 或 'admin' 才能访问此页面
+    if (!user || (user.role_name !== 'super_admin' && user.role_name !== 'admin')) {
       Alert.alert('提示', '只有管理员才能访问此页面');
       navigation.goBack();
     }
-  }, [isAdmin, navigation, user]);
+  }, [navigation, user]);
 
-  // 获取角色名称
+  // 根据角色ID获取角色名称
   const getRoleName = (roleId) => {
-    if (roleId === true) return ROLES[1].name; // 处理布尔类型的管理员标记
-    return ROLES[roleId] ? ROLES[roleId].name : ROLES[0].name;
+    // 实际应用中，这里应该从全局状态或API获取角色名称
+    // 此处仅为示例，后续需要替换为实际的角色管理逻辑
+    if (roleId === 1 || roleId === true) return '管理员';
+    if (roleId === 0 || roleId === false) return '普通用户';
+    // 对于其他角色ID，可以返回一个通用名称或从API获取
+    return `角色 ${roleId}`; // 示例：返回 "角色 ID"
   };
 
-  // 获取角色颜色
+  // 根据角色ID获取角色颜色
   const getRoleColor = (roleId) => {
-    if (roleId === true) return ROLES[1].color; // 处理布尔类型的管理员标记
-    return ROLES[roleId] ? ROLES[roleId].color : ROLES[0].color;
+    // 实际应用中，这里应该从全局状态或API获取角色颜色
+    // 此处仅为示例，后续需要替换为实际的角色管理逻辑
+    if (roleId === 1 || roleId === true) return '#F44336'; // 管理员 - 红色
+    if (roleId === 0 || roleId === false) return '#4CAF50'; // 普通用户 - 绿色
+    // 对于其他角色ID，可以返回一个默认颜色
+    return '#9E9E9E'; // 默认颜色
   };
 
   // 设置标题和状态栏
@@ -1211,25 +1205,26 @@ const UserManagementScreen = () => {
                 <View style={styles.inputGroup}>
                   <Text style={[styles.inputLabel, { color: colors.text }]}>选择用户角色</Text>
                   <View style={styles.roleSelector}>
-                    {Object.keys(ROLES).map(roleId => {
-                      const role = ROLES[roleId];
+                    {[0, 1].map(roleId => { // 仅提供管理员和普通用户选项，后续可扩展
+                      const roleName = getRoleName(roleId);
+                      const roleColor = getRoleColor(roleId);
                       return (
                         <TouchableOpacity
                           key={roleId}
                           style={[
                             styles.roleChip,
-                            { borderColor: role.color },
-                            newUser.is_admin === parseInt(roleId) && { backgroundColor: `${role.color}20` }
+                            { borderColor: roleColor },
+                            newUser.is_admin === roleId && { backgroundColor: `${roleColor}20` }
                           ]}
-                          onPress={() => setNewUser({...newUser, is_admin: parseInt(roleId)})}
+                          onPress={() => setNewUser({...newUser, is_admin: roleId})}
                         >
                           <Text 
                             style={[
                               styles.roleChipText, 
-                              { color: role.color }
+                              { color: roleColor }
                             ]}
                           >
-                            {role.name}
+                            {roleName}
                           </Text>
                         </TouchableOpacity>
                       );
@@ -1369,27 +1364,29 @@ const UserManagementScreen = () => {
                 <View style={styles.inputGroup}>
                   <Text style={[styles.inputLabel, { color: colors.text }]}>用户角色</Text>
                   <View style={styles.roleSelector}>
-                    {Object.keys(ROLES).map(roleId => {
-                      const role = ROLES[roleId];
-                      const isSelected = selectedUser.is_admin === parseInt(roleId) || 
-                                        (selectedUser.is_admin === true && parseInt(roleId) === 1);
+                    {[0, 1].map(roleId => { // 仅提供管理员和普通用户选项，后续可扩展
+                      const roleName = getRoleName(roleId);
+                      const roleColor = getRoleColor(roleId);
+                      const isSelected = selectedUser.is_admin === roleId || 
+                                        (selectedUser.is_admin === true && roleId === 1) || 
+                                        (selectedUser.is_admin === false && roleId === 0);
                       return (
                         <TouchableOpacity
                           key={roleId}
                           style={[
                             styles.roleChip,
-                            { borderColor: role.color },
-                            isSelected && { backgroundColor: `${role.color}20` }
+                            { borderColor: roleColor },
+                            isSelected && { backgroundColor: `${roleColor}20` }
                           ]}
-                          onPress={() => setSelectedUser({...selectedUser, is_admin: parseInt(roleId)})}
+                          onPress={() => setSelectedUser({...selectedUser, is_admin: roleId})}
                         >
                           <Text 
                             style={[
                               styles.roleChipText, 
-                              { color: role.color }
+                              { color: roleColor }
                             ]}
                           >
-                            {role.name}
+                            {roleName}
                           </Text>
                         </TouchableOpacity>
                       );
@@ -1435,7 +1432,39 @@ const UserManagementScreen = () => {
             </View>
             
             <ScrollView style={{ marginBottom: 20 }}>
-              {Object.keys(ROLES).map(roleId => renderRoleItem(parseInt(roleId)))}
+              {[0, 1].map(roleId => { // 仅提供管理员和普通用户选项，后续可扩展
+                const roleName = getRoleName(roleId);
+                const roleColor = getRoleColor(roleId);
+                const isSelected = userToChangeRole && 
+                                  (userToChangeRole.is_admin === roleId || 
+                                  (userToChangeRole.is_admin === true && roleId === 1) || 
+                                  (userToChangeRole.is_admin === false && roleId === 0));
+                return (
+                  <TouchableOpacity
+                    key={roleId}
+                    style={[
+                      styles.roleItem,
+                      isSelected && { backgroundColor: `${roleColor}20` }
+                    ]}
+                    onPress={() => changeUserRole(roleId)}
+                  >
+                    <View style={[styles.roleBadge, { backgroundColor: roleColor }]}>
+                      <Ionicons name="shield" size={18} color="#fff" />
+                    </View>
+                    <Text style={[styles.roleItemText, { color: colors.text }]}>
+                      {roleName}
+                    </Text>
+                    {isSelected && (
+                      <Ionicons 
+                        name="checkmark-circle" 
+                        size={22} 
+                        color={roleColor} 
+                        style={{ marginLeft: 'auto' }}
+                      />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
           </View>
         </View>

@@ -83,7 +83,8 @@ export const API_ENDPOINTS = {
       REGISTER: '/api/auth/register/',
       REFRESH_TOKEN: '/api/auth/refresh-token/',
       LOGOUT: '/api/auth/logout/',
-      CHECK_ADMIN: '/api/auth/check-admin/'
+      CHECK_ADMIN: '/api/auth/check-admin/',
+      GET_PERMISSION_INFO: '/admin-api/system/auth/get-permission-info' // 若依后端权限信息接口
     }
   },
 

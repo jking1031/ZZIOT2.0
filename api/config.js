@@ -8,7 +8,7 @@ import { API_BASE_URLS, getApiUrl } from './apiManager';
 export const BASE_URL = API_BASE_URLS.NODERED?.url || 'https://nodered.jzz77.cn:9003';
 
 // API请求超时时间 (毫秒)
-export const REQUEST_TIMEOUT = 10000;
+export const REQUEST_TIMEOUT = 30000;
 
 // API响应代码
 export const API_RESPONSE_CODES = {

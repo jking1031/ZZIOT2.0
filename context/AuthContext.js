@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { authApi } from '../api/apiService';
@@ -6,20 +6,59 @@ import { CACHE_KEYS } from '../api/config';
 import { saveAuthToken, getAuthToken, clearAuthToken } from '../api/storage';
 import { EventRegister } from '../utils/EventEmitter';
 import { getApiUrl } from '../api/apiManager';
+import OAuth2Service, { DEFAULT_OAUTH2_CONFIG } from '../api/oauth2Service';
 
-const AuthContext = createContext();
+export const AuthContext = createContext({
+  user: null,
+  loading: true,
+  userRoles: [],
+  // isAdmin: false, // Removed
+  // isDeptAdmin: false, // Removed
+  oauth2Service: null,
+  isOAuth2Enabled: false
+});
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [userRoles, setUserRoles] = useState([]);
-  const [isAdmin, setIsAdmin] = useState(false);
+  // const [isAdmin, setIsAdmin] = useState(false); // Removed
+  // const [isDeptAdmin, setIsDeptAdmin] = useState(false); // Removed
+  const [oauth2Service, setOAuth2Service] = useState(null);
+  const [isOAuth2Enabled, setIsOAuth2Enabled] = useState(false);
+
+  // 初始化OAuth2服务
+  useEffect(() => {
+    initializeOAuth2Service();
+  }, []);
 
   // 添加useEffect钩子，确保应用启动时自动加载用户数据
   useEffect(() => {
     // 应用启动时自动加载用户信息
     loadUser();
   }, []);
+
+  // 初始化OAuth2服务
+  const initializeOAuth2Service = async () => {
+    try {
+      // 检查是否启用OAuth2
+      const oauth2Enabled = await AsyncStorage.getItem('oauth2_enabled');
+      const isEnabled = oauth2Enabled === 'true';
+      setIsOAuth2Enabled(isEnabled);
+      
+      if (isEnabled) {
+        // 从存储中获取OAuth2配置，如果没有则使用默认配置
+        const savedConfig = await AsyncStorage.getItem('oauth2_config');
+        const config = savedConfig ? JSON.parse(savedConfig) : DEFAULT_OAUTH2_CONFIG;
+        
+        console.log('[AuthContext] 初始化OAuth2服务:', config.baseUrl);
+        const service = new OAuth2Service(config.baseUrl, config.clientId, config.clientSecret);
+        setOAuth2Service(service);
+      }
+    } catch (error) {
+      console.error('[AuthContext] 初始化OAuth2服务失败:', error);
+    }
+  };
 
   // 添加定期检查令牌有效性的机制
   useEffect(() => {
@@ -60,24 +99,19 @@ export const AuthProvider = ({ children }) => {
       typ: 'JWT'
     };
     
-    // 处理角色信息，优先使用新的角色结构
-    const roleId = userData.role_id || userData.is_admin || 9;
-    const isAdmin = userData.isAdmin || false;
-    const isDeptAdmin = userData.isDeptAdmin || false;
-    const roleName = userData.role_name || '普通用户';
+    // 处理角色信息，基于 userData.role_name
+    let roleName = userData.role_name || '用户'; // Default to '用户' if role_name is not present
     
-    console.log('创建令牌，角色ID:', roleId, '角色名称:', roleName, '管理员:', isAdmin);
+    console.log('创建令牌，角色名称:', roleName);
     
     // 创建令牌的payload部分，包含完整的用户和角色信息
     const payload = {
       id: userData.id,
       username: userData.username || userData.name,
       email: userData.email,
-      is_admin: roleId, // 保持向后兼容
-      role_id: roleId,
       role_name: roleName,
-      isAdmin: isAdmin,
-      isDeptAdmin: isDeptAdmin,
+      // isAdmin and isDeptAdmin are no longer part of the token payload directly
+      // Their information is encapsulated within role_name and department permissions
       // 设置过期时间为12小时后
       exp: Math.floor(Date.now() / 1000) + (12 * 60 * 60),
       iat: Math.floor(Date.now() / 1000)
@@ -225,57 +259,17 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // 简化的角色判断函数
-  const determineUserRole = (userInfo) => {
-    // 优先使用数据库的is_admin字段
-    if (userInfo.is_admin !== undefined && userInfo.is_admin !== null) {
-      const adminValue = parseInt(userInfo.is_admin, 10);
-      if (!isNaN(adminValue) && adminValue >= 0 && adminValue <= 9) {
-        console.log('使用数据库is_admin字段:', adminValue);
-        return adminValue;
-      }
+  // 获取角色信息的辅助函数 (基于 role_name)
+  const getRoleInfo = (userInfo) => {
+    // 优先使用后端提供的角色名
+    if (userInfo && userInfo.role_name) {
+        // isAdmin and isDeptAdmin flags are derived from role_name and department permissions, not stored directly
+        return { name: userInfo.role_name }; 
     }
-    
-    // 如果is_admin无效，检查其他字段
-    if (userInfo.role_id !== undefined) {
-      const roleId = parseInt(userInfo.role_id, 10);
-      if (!isNaN(roleId) && roleId >= 0 && roleId <= 9) {
-        console.log('使用role_id字段:', roleId);
-        return roleId;
-      }
-    }
-    
-    // 检查用户名和邮箱，推断管理员身份
-    if (userInfo.username && userInfo.username.toLowerCase().includes('admin')) {
-      console.log('用户名包含admin，设置为系统管理员');
-      return 1;
-    }
-    
-    if (userInfo.email && userInfo.email.toLowerCase().includes('admin')) {
-      console.log('邮箱包含admin，设置为系统管理员');
-      return 1;
-    }
-    
-    // 默认为访客角色
-    console.log('无法确定角色，设置为访客');
-    return 9;
-  };
-  
-  // 角色权限映射
-  const ROLE_MAPPING = {
-    0: { name: '普通用户', isAdmin: false, isDeptAdmin: false },
-    1: { name: '系统管理员', isAdmin: true, isDeptAdmin: false },
-    2: { name: '部门管理员', isAdmin: false, isDeptAdmin: true },
-    3: { name: '技术员', isAdmin: false, isDeptAdmin: false },
-    4: { name: '主管', isAdmin: false, isDeptAdmin: false },
-    5: { name: '质检员', isAdmin: false, isDeptAdmin: false },
-    6: { name: '维修员', isAdmin: false, isDeptAdmin: false },
-    7: { name: '调度员', isAdmin: false, isDeptAdmin: false },
-    8: { name: '安全员', isAdmin: false, isDeptAdmin: false },
-    9: { name: '访客', isAdmin: false, isDeptAdmin: false }
+    return { name: '用户' }; // Default role
   };
 
-  const login = async (userData) => {
+  const login = async (userData, password = null, skipOAuth2 = false) => {
     try {
       if (!userData) {
         throw new Error('无效的用户数据');
@@ -286,78 +280,193 @@ export const AuthProvider = ({ children }) => {
       console.log('用户ID:', userData.id);
       console.log('用户名:', userData.username);
       console.log('用户Email:', userData.email);
-      console.log('原始管理员状态:', userData.is_admin, '类型:', typeof userData.is_admin);
+      console.log('OAuth2启用状态:', isOAuth2Enabled);
+      console.log('跳过OAuth2登录:', skipOAuth2);
       
-      // 首先保存基本用户信息，不含管理员状态
+      // OAuth2模式登录处理
+      if (isOAuth2Enabled && skipOAuth2) {
+        console.log('[AuthContext] OAuth2模式：直接处理OAuth获取的用户信息');
+        
+        // 输出原始的OAuth2用户信息JSON数据
+        console.log('[AuthContext] OAuth2原始用户数据:', JSON.stringify(userData, null, 2));
+        
+        // 直接处理OAuth获取的用户信息，不再调用API
+        // 优先从 userInfo 中提取详细信息
+        const userInfo = userData.userInfo || {};
+        
+        const processedUserData = {
+          ...userData,
+          // 用户基础信息：优先使用 userInfo 中的数据
+          id: userInfo.id || userData.id || userData.sub,
+          username: userInfo.username || userData.username || userData.preferred_username || userData.email,
+          email: userInfo.email || userData.email,
+          nickname: userInfo.nickname || userData.nickname || userData.name || userData.username,
+          mobile: userInfo.mobile || userData.mobile,
+          sex: userInfo.sex || userData.sex,
+          avatar: userInfo.avatar || userData.avatar,
+          loginIp: userInfo.loginIp || userData.loginIp,
+          loginDate: userInfo.loginDate || userData.loginDate,
+          createTime: userInfo.createTime || userData.createTime,
+          
+          // 角色信息：优先使用 userInfo 中的角色数据
+          roles: userInfo.roles || userData.roles || [],
+          permissions: userData.permissions || [],
+          
+          // 部门信息
+          dept: userInfo.dept || userData.dept,
+          
+          // 职位信息
+          posts: userInfo.posts || userData.posts || [],
+          
+          // 角色名称：优先从 userInfo.roles 中提取
+          role_name: (() => {
+            if (userInfo.roles && userInfo.roles.length > 0) {
+              return userInfo.roles[0].name;
+            }
+            if (userData.roles && userData.roles.length > 0) {
+              return userData.roles[0].name;
+            }
+            // 特殊处理：如果用户名是 admin，默认为超级管理员
+            if ((userInfo.username || userData.username) === 'admin') {
+              return '超级管理员';
+            }
+            return userData.role_name || '普通用户';
+          })()
+        };
+        
+        // 确定用户角色信息 (基于新的逻辑)
+        // isAdmin and isDeptAdmin are derived from role_name and department permissions
+        const roleInfo = getRoleInfo(processedUserData); // 使用新的 getRoleInfo
+        processedUserData.role_name = roleInfo.name; 
+        processedUserData.displayName = processedUserData.nickname || processedUserData.username || '未知用户';
+        
+        console.log('[AuthContext] OAuth2用户信息处理完成:', {
+          username: processedUserData.username,
+          role: processedUserData.role_name
+          // isAdmin and isDeptAdmin are no longer logged here as they are not direct state variables
+        });
+        
+        // 保存用户信息
+        await AsyncStorage.setItem('user', JSON.stringify(processedUserData));
+        setUser(processedUserData);
+        // setIsAdmin(processedUserData.isAdmin); // Removed
+        // setIsDeptAdmin(processedUserData.isDeptAdmin); // Removed
+        setLoading(false);
+        
+        // 保存token
+        if (userData.token) {
+          await saveAuthToken(userData.token);
+          console.log('[AuthContext] OAuth2 token已保存');
+        }
+        
+        console.log('[AuthContext] OAuth2登录流程完成');
+        return true;
+      }
+      
+      // 传统登录模式：需要调用API获取权限信息
+      console.log('[AuthContext] 传统登录模式：获取用户权限信息');
+      
+      // 首先保存基本用户信息
       const initialUserData = {
         ...userData
       };
-      
-      // 保存初始用户信息到本地存储
-      await AsyncStorage.setItem('user', JSON.stringify(initialUserData));
       
       // 更新基本用户状态
       setUser(initialUserData);
       setLoading(false);
       
-      // 简化的角色处理逻辑
+      // 调用若依后端的get-permission-info接口获取完整权限信息
+      try {
+        console.log('[AuthContext] 正在获取用户权限信息...');
+        const permissionResponse = await authApi.getPermissionInfo();
+        
+        // 输出原始的JSON信息
+        console.log('[AuthContext] 原始API响应数据:', JSON.stringify(permissionResponse, null, 2));
+        
+        if (permissionResponse && permissionResponse.data) {
+          const permissionData = permissionResponse.data;
+          console.log('[AuthContext] 权限信息获取成功:', permissionData);
+          console.log('[AuthContext] 权限数据详细信息:', JSON.stringify(permissionData, null, 2));
+          
+          // 更新用户数据，包含权限信息
+          const updatedUserData = {
+            ...initialUserData,
+            // 若依后端权限字段
+            roles: permissionData.roles || [],
+            permissions: permissionData.permissions || [],
+            user: permissionData.user || initialUserData,
+            // 更新角色相关字段
+            roleIds: permissionData.user?.roleIds || [],
+            deptId: permissionData.user?.deptId,
+            postIds: permissionData.user?.postIds || []
+          };
+          
+          // 根据权限信息重新确定用户角色
+          if (permissionData.roles && permissionData.roles.length > 0) {
+            const primaryRole = permissionData.roles[0]; // 使用第一个角色作为主要角色
+            updatedUserData.role_id = primaryRole.id;
+            updatedUserData.role_name = primaryRole.name;
+            updatedUserData.remark = primaryRole.name; // 更新备注字段
+            
+            // 判断是否为管理员角色
+            // Admin status is now determined by role_name (e.g., '超级管理员')
+            // No direct isAdmin flag is set here.
+            updatedUserData.role_name = primaryRole.name; // Ensure role_name is set
+            
+            console.log('[AuthContext] 根据权限信息更新角色:', {
+              roleId: primaryRole.id,
+              roleName: primaryRole.name
+              // isAdmin is no longer logged here
+            });
+          }
+          
+          // 保存更新后的用户信息
+          await AsyncStorage.setItem('user', JSON.stringify(updatedUserData));
+          setUser(updatedUserData);
+          
+          console.log('[AuthContext] 用户权限信息已更新');
+        } else {
+          console.warn('[AuthContext] 权限信息响应为空，使用默认角色处理');
+        }
+      } catch (permissionError) {
+        console.error('[AuthContext] 获取权限信息失败:', permissionError.message);
+        console.log('[AuthContext] 继续使用传统角色推断方式');
+      }
+      
+      // 角色处理逻辑 (基于新的权限系统)
       console.log('登录成功，处理用户角色信息');
       
-      // 确定用户角色
-      const userRole = determineUserRole(userData);
-      const roleInfo = ROLE_MAPPING[userRole] || ROLE_MAPPING[9];
-      
-      console.log('用户角色确定为:', userRole, '-', roleInfo.name);
-      
-      // 更新用户数据，包含角色信息
-      const completeUserData = {
-        ...userData,
-        is_admin: userRole,
-        role_id: userRole,
-        role_name: roleInfo.name,
-        isAdmin: roleInfo.isAdmin,
-        isDeptAdmin: roleInfo.isDeptAdmin
+      let completeUserData = {
+        ...userData
+        // isAdmin and isDeptAdmin are no longer initialized here
       };
-      
-      // 如果后端返回的is_admin字段不完整，尝试查询管理员状态
-      if (userData.is_admin === undefined || userData.is_admin === null) {
-        try {
-          console.log('is_admin字段缺失，查询后端管理员状态');
-          const response = await authApi.checkAdminStatus({ 
-              userId: userData.id
-            },
-            {
-              headers: { 
-                'Content-Type': 'application/json',
-                'user-id': userData.id 
-              }
-            }
-          );
-          
-          console.log('管理员状态查询响应:', JSON.stringify(response.data));
-          
-          // 处理后端返回的管理员状态
-          if (response.data && response.data.data) {
-            const adminValue = response.data.data.is_admin;
-            if (adminValue !== undefined) {
-              completeUserData.is_admin = adminValue;
-              completeUserData.role_id = adminValue;
-              const updatedRoleInfo = ROLE_MAPPING[adminValue] || ROLE_MAPPING[9];
-              completeUserData.role_name = updatedRoleInfo.name;
-              completeUserData.isAdmin = updatedRoleInfo.isAdmin;
-              completeUserData.isDeptAdmin = updatedRoleInfo.isDeptAdmin;
-              console.log('更新用户角色为:', adminValue, '-', updatedRoleInfo.name);
-            }
-          }
-        } catch (adminCheckError) {
-          console.log('查询管理员状态失败，使用推断的角色:', adminCheckError.message);
-        }
+
+      // 如果后端返回了 roles 数组，则优先使用它来确定 role_name
+      if (userData.roles && Array.isArray(userData.roles) && userData.roles.length > 0) {
+        // 使用第一个角色名作为 role_name，或提供一个默认值
+        completeUserData.role_name = userData.roles[0].name || getRoleInfo(completeUserData).name;
+      } else {
+        // If no roles array, use existing role_name or default from getRoleInfo
+        const roleInfo = getRoleInfo(completeUserData);
+        completeUserData.role_name = roleInfo.name;
       }
+
+      // is_admin field is no longer directly used to set isAdmin state.
+      // It might be used by backend, but frontend relies on role_name.
+
+      completeUserData.displayName = userData.nickname || userData.username || '未知用户';
+
+      console.log(`[AuthContext] 最终确定的角色信息:`, {
+        roleName: completeUserData.role_name
+        // isAdmin and isDeptAdmin are no longer logged here
+      });
+      
+      // The checkAdminStatus call is removed as admin status is derived from role_name.
       
       // 更新状态和存储
       await AsyncStorage.setItem('user', JSON.stringify(completeUserData));
       setUser(completeUserData);
-      setIsAdmin(completeUserData.isAdmin);
+      // setIsAdmin(completeUserData.isAdmin); // Removed
       
       // 创建并保存令牌
       console.log('创建令牌，包含完整角色信息');
@@ -376,6 +485,29 @@ export const AuthProvider = ({ children }) => {
           console.error('创建令牌失败');
         }
       }
+      
+      console.log('[AuthContext] 登录成功，用户数据:', completeUserData);
+      
+      // 更新状态
+      setUser(completeUserData);
+      // setIsAdmin(completeUserData.isAdmin || false); // Removed
+      // setIsDeptAdmin(completeUserData.isDeptAdmin || false); // Removed
+      
+      // 保存到本地存储
+      try {
+        await AsyncStorage.setItem('user', JSON.stringify(completeUserData));
+        console.log('[AuthContext] 用户数据已保存到本地存储');
+      } catch (storageError) {
+        console.error('[AuthContext] 保存用户数据到本地存储失败:', storageError);
+        // 即使保存失败，也不影响登录状态
+      }
+      
+      // 确保状态更新完成
+      console.log('[AuthContext] 登录流程完成，当前用户状态:', {
+        username: completeUserData.username,
+        role: completeUserData.role_name
+        // isAdmin and isDeptAdmin are no longer logged here
+      });
       
       console.log('登录流程完成，用户信息和令牌已保存');
       
@@ -406,6 +538,20 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
+      console.log('[AuthContext] 开始登出流程');
+      
+      // 如果启用了OAuth2，先执行OAuth2登出
+      if (isOAuth2Enabled && oauth2Service) {
+        try {
+          console.log('[AuthContext] 执行OAuth2登出');
+          await oauth2Service.logout();
+          console.log('[AuthContext] OAuth2登出成功');
+        } catch (oauth2Error) {
+          console.error('[AuthContext] OAuth2登出失败:', oauth2Error.message);
+          // OAuth2登出失败不应阻止整个登出流程
+        }
+      }
+      
       // 清除所有与用户相关的存储数据
       const keysToRemove = [
         'user',             // 用户基本信息
@@ -424,7 +570,7 @@ export const AuthProvider = ({ children }) => {
       
       await AsyncStorage.multiRemove(keysToRemove);
       
-      // 清除令牌
+      // 清除传统认证令牌
       await clearAuthToken();
       
       // 重置用户状态
@@ -434,10 +580,10 @@ export const AuthProvider = ({ children }) => {
       // 发送全局事件，通知其他组件用户已登出，需要重置状态
       EventRegister.emit('USER_LOGGED_OUT');
       
-      console.log('已成功登出并清理所有用户数据');
+      console.log('[AuthContext] 已成功登出并清理所有用户数据');
       return true;
     } catch (error) {
-      console.error('退出登录失败:', error);
+      console.error('[AuthContext] 退出登录失败:', error);
       return false;
     }
   };
@@ -509,17 +655,11 @@ export const AuthProvider = ({ children }) => {
           
           console.log('已从本地存储恢复用户会话');
           
-          // 将用户数据设置到状态中，但不判断管理员权限
+          // 将用户数据设置到状态中
           setUser(parsedUser);
           
-          // 如果本地存储中有明确的管理员标志，则使用它
-          if (parsedUser.is_admin === true || parsedUser.is_admin === 1 || parsedUser.is_admin === '1') {
-            setIsAdmin(true);
-            console.log('本地存储中用户被标记为管理员');
-          } else {
-            setIsAdmin(false);
-            console.log('本地存储中用户被标记为非管理员');
-          }
+          // Admin status is now derived from role_name, no direct isAdmin flag loading from storage.
+          console.log('用户数据已从本地存储恢复，角色将通过 role_name 和部门权限确定。');
           
           // 立即预加载用户角色信息，而不是使用setTimeout
           try {
@@ -660,62 +800,68 @@ export const AuthProvider = ({ children }) => {
           
           if (firstItem.is_admin !== undefined) {
             adminStatus = firstItem.is_admin === true || firstItem.is_admin === 1 || firstItem.is_admin === '1';
-            // 保存is_admin的原始值，用于后续角色确定
-            const adminValue = firstItem.is_admin;
-            console.log('数组中的is_admin字段:', adminValue, '解析为管理员状态:', adminStatus);
+            // The concept of a separate adminStatus check is being phased out.
+            // Admin status is determined by role_name (e.g., '超级管理员').
+            // This function might be deprecated or significantly changed.
+            // For now, we'll assume role_name is the source of truth.
+            console.log('API权限检查响应 (is_admin):', response.data);
+            // If backend still provides is_admin, it might be used to *update* role_name if necessary,
+            // but not to set a separate isAdmin flag.
+            // Example: if is_admin is true and role_name is not '超级管理员', update role_name.
+            let currentRoleName = userInfo.role_name;
+            let needsUpdate = false;
             
-            // 更新用户数据时保留原始的is_admin值
-            const updatedUserInfo = { 
-              ...userInfo, 
-              is_admin: adminStatus,
-              is_admin_value: adminValue  // 保存原始值
-            };
-            await AsyncStorage.setItem('user', JSON.stringify(updatedUserInfo));
-            setUser(updatedUserInfo);
-            setIsAdmin(adminStatus);
-            
-            // 触发角色更新
-            await getUserRoles(userInfo.id);
-            
-            console.log('管理员权限检查完成，结果已保存到本地');
-            return adminStatus;
+            if (firstItem.is_admin === true || firstItem.is_admin === 1) {
+              if (currentRoleName !== '超级管理员' && currentRoleName !== '管理员') { // Or other admin role names
+                currentRoleName = '超级管理员'; // Or a more specific admin role from backend
+                needsUpdate = true;
+              }
+            }
+
+            if (needsUpdate) {
+              const updatedUserInfo = { 
+                ...userInfo, 
+                role_name: currentRoleName
+              };
+              await AsyncStorage.setItem('user', JSON.stringify(updatedUserInfo));
+              setUser(updatedUserInfo);
+              console.log('用户角色已根据is_admin更新为:', currentRoleName);
+              await getUserRoles(userInfo.id, true); // Force refresh roles
+            }
+            // The function should now return based on the user's role_name, not a separate isAdmin flag.
+            return userInfo.role_name === '超级管理员' || userInfo.role_name === '管理员'; // Example check
+          } else {
+            // If no is_admin field, rely on existing role_name.
+            console.log('API返回的数据中未找到is_admin字段或不适用。');
+            return userInfo.role_name === '超级管理员' || userInfo.role_name === '管理员'; // Example check
           }
-        } 
-        // 处理其他格式的响应
-        else if (response.data && typeof response.data === 'object') {
-          if (response.data.is_admin !== undefined) {
-            adminStatus = response.data.is_admin === true || response.data.is_admin === 1 || response.data.is_admin === '1';
-            // 保存is_admin的原始值
-            const adminValue = response.data.is_admin;
-            console.log('API返回is_admin字段:', adminValue, '解析为管理员状态:', adminStatus);
-            
-            // 更新用户数据并保存到本地存储
-            const updatedUserInfo = { 
-              ...userInfo, 
-              is_admin: adminStatus,
-              is_admin_value: adminValue  // 保存原始值
-            };
-            await AsyncStorage.setItem('user', JSON.stringify(updatedUserInfo));
-            setUser(updatedUserInfo);
-            setIsAdmin(adminStatus);
-            
-            // 触发角色更新
-            await getUserRoles(userInfo.id);
-            
-            console.log('管理员权限检查完成，结果已保存到本地');
-            return adminStatus;
+        } else if (response.data && typeof response.data === 'object' && response.data.is_admin !== undefined) {
+          // Handle object format response
+          if (response.data.is_admin === true || response.data.is_admin === 1) {
+            let currentRoleName = userInfo.role_name;
+            if (currentRoleName !== '超级管理员' && currentRoleName !== '管理员') {
+              currentRoleName = '超级管理员';
+              const updatedUserInfo = { 
+                ...userInfo, 
+                role_name: currentRoleName
+              };
+              await AsyncStorage.setItem('user', JSON.stringify(updatedUserInfo));
+              setUser(updatedUserInfo);
+              console.log('用户角色已根据is_admin更新为:', currentRoleName);
+              await getUserRoles(userInfo.id, true); // Force refresh roles
+            }
           }
+          return userInfo.role_name === '超级管理员' || userInfo.role_name === '管理员';
+        } else {
+          // If no is_admin field, rely on existing role_name.
+          console.log('API返回的数据中未找到is_admin字段或不适用。');
+          return userInfo.role_name === '超级管理员' || userInfo.role_name === '管理员'; // Example check
         }
-        
-        // 如果没有找到is_admin字段，保持当前状态
-        console.log('API返回的数据中未找到is_admin字段');
-        return isAdmin;
       } catch (apiError) {
         console.error('API权限检查失败:', apiError);
-        
-        // API调用失败时，保持当前管理员状态不变
-        console.log('API调用失败，保持当前管理员状态');
-        return isAdmin;
+        // API调用失败时，依赖当前用户的 role_name
+        console.log('API调用失败，依赖当前用户的 role_name');
+        return userInfo.role_name === '超级管理员' || userInfo.role_name === '管理员'; // Example check
       }
     } catch (error) {
       console.error('检查管理员状态失败:', error);
@@ -827,40 +973,14 @@ export const AuthProvider = ({ children }) => {
         
         // 如果API获取失败，从本地数据推断角色
         if (userRoles.length === 0) {
-          // 1. 检查is_admin_value或is_admin字段的值
-          const adminValue = userData.is_admin_value !== undefined ? userData.is_admin_value : userData.is_admin;
-          
-          console.log('用户is_admin值:', adminValue, '类型:', typeof adminValue);
-          
-          // 根据is_admin值确定角色
-          if (adminValue !== undefined) {
-            // 转换为数字，如果可能的话
-            const roleId = typeof adminValue === 'number' ? 
-                adminValue : 
-                (adminValue === '1' || adminValue === true) ? 
-                  1 : parseInt(adminValue);
-                
-            if (!isNaN(roleId) && roleId > 0 && roleId <= 9) {
-              userRoles.push({ id: roleId });
-              console.log(`根据is_admin值=${adminValue}添加角色ID:${roleId}`);
-            } 
-            // 特殊处理值为true的情况（管理员）
-            else if (adminValue === true) {
-              userRoles.push({ id: 1 });
-              console.log('用户is_admin为true，添加管理员角色');
-            }
-          }
-          
-          // 2. 如果没有找到有效角色但用户是管理员
-          if (userRoles.length === 0 && userData.is_admin) {
-            userRoles.push({ id: 1 });
-            console.log('根据is_admin标志添加管理员角色');
-          }
-          
-          // 如果仍然没有角色，分配默认角色
-          if (userRoles.length === 0) {
-            userRoles.push({ id: 3 }); // 默认给运行班组角色
-            console.log('未找到角色，分配默认角色ID:3');
+          // 基于 userData.role_name 构建角色信息
+          if (userData.role_name) {
+            // isAdmin and isDeptAdmin flags are no longer part of the role object here
+            userRoles.push({ name: userData.role_name });
+            console.log(`使用提供的角色名: ${userData.role_name}`);
+          } else {
+            userRoles.push({ name: '用户' }); // 默认角色
+            console.log('未找到特定角色，分配默认用户角色');
           }
         }
         
@@ -923,20 +1043,13 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const toggleAdmin = async (userId, isAdmin) => {
-    try {
-      const userData = JSON.parse(await AsyncStorage.getItem('user'));
-      const response = await axios.post(getApiUrl('USERS', 'TOGGLE_ADMIN'), 
-        { userId, isAdmin },
-        { headers: { 'user-id': userData.id } }
-      );
-      
-      return response.data.success;
-    } catch (error) {
-      console.error('更新管理员状态失败:', error);
-      return false;
-    }
-  };
+  // const toggleAdmin = async (userId, isAdmin) => { // This function is being removed.
+  //   // Admin status should be managed by changing the user's role_name.
+  //   // For example, to make a user an admin, their role_name should be updated to '超级管理员'.
+  //   // This might involve a new function like `updateUserRole(userId, newRoleName)`.
+  //   console.warn('toggleAdmin is deprecated. Manage admin status via role_name.');
+  //   return false;
+  // };
 
   const toggleUserStatus = async (userId, status) => {
     try {
@@ -953,27 +1066,122 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // OAuth2配置管理方法
+  const enableOAuth2 = async (config) => {
+    try {
+      console.log('[AuthContext] 启用OAuth2认证');
+      await AsyncStorage.setItem('oauth2_enabled', 'true');
+      await AsyncStorage.setItem('oauth2_config', JSON.stringify(config));
+      
+      // 重新初始化OAuth2服务
+      const service = new OAuth2Service(config.baseUrl, config.clientId, config.clientSecret);
+      setOAuth2Service(service);
+      setIsOAuth2Enabled(true);
+      
+      console.log('[AuthContext] OAuth2认证已启用');
+      return true;
+    } catch (error) {
+      console.error('[AuthContext] 启用OAuth2失败:', error);
+      return false;
+    }
+  };
+  
+  const disableOAuth2 = async () => {
+    try {
+      console.log('[AuthContext] 禁用OAuth2认证');
+      await AsyncStorage.setItem('oauth2_enabled', 'false');
+      
+      // 清除OAuth2相关的令牌
+      if (oauth2Service) {
+        await oauth2Service.clearTokens();
+      }
+      
+      setOAuth2Service(null);
+      setIsOAuth2Enabled(false);
+      
+      console.log('[AuthContext] OAuth2认证已禁用');
+      return true;
+    } catch (error) {
+      console.error('[AuthContext] 禁用OAuth2失败:', error);
+      return false;
+    }
+  };
+  
+  const getOAuth2Config = async () => {
+    try {
+      const savedConfig = await AsyncStorage.getItem('oauth2_config');
+      return savedConfig ? JSON.parse(savedConfig) : DEFAULT_OAUTH2_CONFIG;
+    } catch (error) {
+      console.error('[AuthContext] 获取OAuth2配置失败:', error);
+      return DEFAULT_OAUTH2_CONFIG;
+    }
+  };
+  
+  const updateOAuth2Config = async (config) => {
+    try {
+      console.log('[AuthContext] 更新OAuth2配置');
+      await AsyncStorage.setItem('oauth2_config', JSON.stringify(config));
+      
+      // 如果OAuth2已启用，重新初始化服务
+      if (isOAuth2Enabled) {
+        const service = new OAuth2Service(config.baseUrl, config.clientId, config.clientSecret);
+        setOAuth2Service(service);
+      }
+      
+      console.log('[AuthContext] OAuth2配置已更新');
+      return true;
+    } catch (error) {
+      console.error('[AuthContext] 更新OAuth2配置失败:', error);
+      return false;
+    }
+  };
+  
+  const getOAuth2TokenInfo = async () => {
+    try {
+      if (!oauth2Service) {
+        return null;
+      }
+      
+      const tokenInfo = await oauth2Service.getTokenInfo();
+      return tokenInfo;
+    } catch (error) {
+      console.error('[AuthContext] 获取OAuth2令牌信息失败:', error);
+      return null;
+    }
+  };
+
   return (
     <AuthContext.Provider value={{ 
       user, 
       loading, 
       userRoles, 
-      isAdmin, 
+      // isAdmin, // Removed
+      // isDeptAdmin, // Removed
       login, 
       logout, 
       loadUser, 
       updateUserInfo, 
       register, 
-      checkAdminStatus, 
+      // checkAdminStatus, // Removed or functionality absorbed into role_name logic
       getAllUsers, 
       getAllRoles, 
       getUserRoles,
       preloadUserRoles, 
       assignRole, 
       removeRole, 
-      toggleAdmin, 
+      // toggleAdmin, // Removed
       toggleUserStatus,
       refreshToken,
+      // 角色相关辅助函数
+      getRoleInfo, 
+      // OAuth2相关方法和状态
+      isOAuth2Enabled,
+      oauth2Service,
+      enableOAuth2,
+      disableOAuth2,
+      getOAuth2Config,
+      updateOAuth2Config,
+      getOAuth2TokenInfo,
       checkTokenValidity
     }}>
       {children}

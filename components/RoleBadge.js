@@ -1,74 +1,47 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { useRole } from '../hooks/useRole';
-
 /**
  * 角色徽章组件
  * 显示用户角色信息的可视化组件
  */
 const RoleBadge = ({ 
-  userId = null, 
-  roleId = null, 
+  roleId = null,
+  roleObject = null, // 新增：支持角色对象
   showIcon = true, 
   size = 'medium',
   style = {},
   textStyle = {}
 }) => {
-  const { roleInfo, roleName, isAdmin, isDeptAdmin } = useRole();
+  // 处理不同的角色数据源
+  let displayRoleName;
 
-  // 如果指定了roleId，使用指定的角色信息
-  const displayRoleId = roleId || roleInfo.roleId || 9;
-  const displayRoleName = roleId ? getRoleNameById(roleId) : roleName;
-  const displayIsAdmin = roleId ? getRoleInfoById(roleId).isAdmin : isAdmin;
-  const displayIsDeptAdmin = roleId ? getRoleInfoById(roleId).isDeptAdmin : isDeptAdmin;
-
-  // 根据角色ID获取角色名称
-  function getRoleNameById(id) {
-    const ROLE_MAPPING = {
-      1: '超级管理员',
-      2: '系统管理员', 
-      3: '部门管理员',
-      4: '技术人员',
-      5: '操作员',
-      6: '查看者',
-      7: '客户',
-      8: '访客',
-      9: '普通用户'
-    };
-    return ROLE_MAPPING[id] || '普通用户';
-  }
-
-  // 根据角色ID获取角色信息
-  function getRoleInfoById(id) {
-    const ROLE_MAPPING = {
-      1: { name: '超级管理员', isAdmin: true, isDeptAdmin: false },
-      2: { name: '系统管理员', isAdmin: true, isDeptAdmin: false },
-      3: { name: '部门管理员', isAdmin: false, isDeptAdmin: true },
-      4: { name: '技术人员', isAdmin: false, isDeptAdmin: false },
-      5: { name: '操作员', isAdmin: false, isDeptAdmin: false },
-      6: { name: '查看者', isAdmin: false, isDeptAdmin: false },
-      7: { name: '客户', isAdmin: false, isDeptAdmin: false },
-      8: { name: '访客', isAdmin: false, isDeptAdmin: false },
-      9: { name: '普通用户', isAdmin: false, isDeptAdmin: false }
-    };
-    return ROLE_MAPPING[id] || ROLE_MAPPING[9];
+  if (roleObject && typeof roleObject === 'object') {
+    // 优先使用传入的角色对象
+    displayRoleName = roleObject.name || (roleObject.id ? `角色 (ID: ${roleObject.id})` : '未知角色');
+  } else if (roleId) {
+    // 如果只传入 roleId，则显示 ID
+    displayRoleName = `角色 (ID: ${roleId})`;
+  } else {
+    // 默认显示为普通用户
+    displayRoleName = '普通用户';
   }
 
   // 获取角色颜色
   const getRoleColor = () => {
-    if (displayIsAdmin) return '#e74c3c'; // 红色 - 管理员
-    if (displayIsDeptAdmin) return '#f39c12'; // 橙色 - 部门管理员
-    if (displayRoleId <= 4) return '#3498db'; // 蓝色 - 技术人员
-    if (displayRoleId <= 6) return '#2ecc71'; // 绿色 - 操作员/查看者
+    // 根据 displayRoleName 决定颜色
+    if (displayRoleName === '超级管理员' || displayRoleName === '系统管理员' || displayRoleName === '管理员') return '#e74c3c'; // 红色 - 管理员
+    if (displayRoleName === '部门管理员') return '#f39c12'; // 橙色 - 部门管理员
+    // 更多颜色逻辑可以根据新的权限系统添加，例如基于部门角色
+    // 示例：if (displayRoleName.startsWith('部门')) return '#2980b9'; // 蓝色 - 部门相关角色
     return '#95a5a6'; // 灰色 - 其他
   };
 
   // 获取角色图标
   const getRoleIcon = () => {
-    if (displayIsAdmin) return '👑'; // 管理员
-    if (displayIsDeptAdmin) return '🏢'; // 部门管理员
-    if (displayRoleId <= 4) return '🔧'; // 技术人员
-    if (displayRoleId <= 6) return '👤'; // 操作员/查看者
+    // 根据 displayRoleName 决定图标
+    if (displayRoleName === '超级管理员' || displayRoleName === '系统管理员' || displayRoleName === '管理员') return '👑'; // 管理员
+    if (displayRoleName === '部门管理员') return '🏢'; // 部门管理员
+    // 更多图标逻辑可以根据新的权限系统添加
     return '👥'; // 其他
   };
 
@@ -150,23 +123,26 @@ const styles = StyleSheet.create({
 
 export default RoleBadge;
 
-// 便捷的角色徽章组件
+// 便捷的角色徽章组件 - 基于新的逻辑调整或移除
+// 考虑到 roleId 不再直接映射到特定角色名称，这些便捷组件可能需要调整
+// 例如，可以改为传递 roleObject 或特定的 isAdmin/isDeptAdmin 标志
+
+// 示例：如果仍需 AdminBadge，可以这样定义（假设管理员角色对象有特定属性）
 export const AdminBadge = (props) => (
-  <RoleBadge {...props} roleId={1} />
+  <RoleBadge {...props} roleObject={{ name: '管理员', isAdmin: true }} />
 );
 
-export const DeptAdminBadge = (props) => (
-  <RoleBadge {...props} roleId={3} />
-);
-
-export const TechnicianBadge = (props) => (
-  <RoleBadge {...props} roleId={4} />
-);
-
-export const OperatorBadge = (props) => (
-  <RoleBadge {...props} roleId={5} />
-);
-
-export const ViewerBadge = (props) => (
-  <RoleBadge {...props} roleId={6} />
-);
+// 其他便捷徽章可以类似调整或移除，取决于新权限系统的设计
+// 如果不再需要基于固定ID的便捷徽章，可以移除以下组件：
+// export const DeptAdminBadge = (props) => (
+//   <RoleBadge {...props} roleObject={{ name: '部门管理员', isDeptAdmin: true }} />
+// );
+// export const TechnicianBadge = (props) => (
+//   <RoleBadge {...props} roleObject={{ name: '技术人员' }} />
+// );
+// export const OperatorBadge = (props) => (
+//   <RoleBadge {...props} roleObject={{ name: '操作员' }} />
+// );
+// export const ViewerBadge = (props) => (
+//   <RoleBadge {...props} roleObject={{ name: '查看者' }} />
+// );
