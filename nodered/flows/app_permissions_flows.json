@@ -348,7 +348,7 @@
     "type": "function",
     "z": "app_permissions_tab",
     "name": "查询用户权限",
-    "func": "const ruoyiUserId = msg.req.params.ruoyiUserId;\n\nif (!ruoyiUserId) {\n    msg.statusCode = 400;\n    msg.payload = { error: '缺少用户ID参数' };\n    return msg;\n}\n\nmsg.topic = `\n    SELECT \n        uep.ruoyi_user_id,\n        uep.permission_id,\n        uep.permission_key,\n        uep.permission_name,\n        uep.route_path,\n        uep.module_name,\n        uep.effective_level,\n        uep.permission_source,\n        uep.expires_at,\n        d.department_name,\n        d.department_key,\n        d.color as department_color\n    FROM user_effective_permissions uep\n    JOIN user_departments ud ON uep.ruoyi_user_id = ud.ruoyi_user_id AND uep.department_id = ud.department_id\n    JOIN departments d ON ud.department_id = d.id\n    WHERE uep.ruoyi_user_id = '${ruoyiUserId}'\n        AND uep.effective_level > 0\n    ORDER BY uep.module_name ASC, uep.permission_name ASC\n`;\n\nreturn msg;",
+    "func": "const ruoyiUserId = msg.req.params.ruoyiUserId;\n\nif (!ruoyiUserId) {\n    msg.statusCode = 400;\n    msg.payload = { error: '缺少用户ID参数' };\n    return msg;\n}\n\n// 注意：此API已废弃，建议使用基于部门的权限获取方式\n// 这里保留兼容性，但返回空数据并提示使用新API\nmsg.payload = {\n    success: false,\n    data: [],\n    error: 'API已废弃',\n    message: '此API已废弃，请使用 /api/department-permissions-by-name/{departmentName} 根据用户部门信息获取权限',\n    deprecated: true,\n    timestamp: new Date().toISOString()\n};\n\nreturn msg;",
     "outputs": 1,
     "noerr": 0,
     "initialize": "",
@@ -358,7 +358,7 @@
     "y": 290,
     "wires": [
       [
-        "execute_user_permissions_query"
+        "send_response"
       ]
     ]
   },
@@ -417,7 +417,7 @@
     "type": "function",
     "z": "app_permissions_tab",
     "name": "验证权限检查参数",
-    "func": "const { ruoyiUserId, permissionId, requiredLevel } = msg.payload;\n\nif (!ruoyiUserId || !permissionId || requiredLevel === undefined) {\n    msg.statusCode = 400;\n    msg.payload = { \n        error: '缺少必要参数',\n        required: ['ruoyiUserId', 'permissionId', 'requiredLevel']\n    };\n    return msg;\n}\n\nif (typeof requiredLevel !== 'number' || requiredLevel < 0 || requiredLevel > 3) {\n    msg.statusCode = 400;\n    msg.payload = { \n        error: '权限级别必须是0-3之间的数字'\n    };\n    return msg;\n}\n\nmsg.topic = `\n    SELECT\n        MAX(uep.effective_level) AS max_level\n    FROM user_effective_permissions uep\n    WHERE uep.ruoyi_user_id = '${ruoyiUserId}'\n        AND uep.permission_key = '${permissionId}'\n        AND (uep.expires_at IS NULL OR uep.expires_at > NOW())\n`;\n\nreturn msg;",
+    "func": "const { ruoyiUserId, permissionId, requiredLevel, userDepartments } = msg.payload;\n\nif (!ruoyiUserId || !permissionId || requiredLevel === undefined) {\n    msg.statusCode = 400;\n    msg.payload = { \n        error: '缺少必要参数',\n        required: ['ruoyiUserId', 'permissionId', 'requiredLevel']\n    };\n    return msg;\n}\n\nif (typeof requiredLevel !== 'number' || requiredLevel < 0 || requiredLevel > 3) {\n    msg.statusCode = 400;\n    msg.payload = { \n        error: '权限级别必须是0-3之间的数字'\n    };\n    return msg;\n}\n\n// 如果没有提供用户部门信息，返回提示\nif (!userDepartments || (Array.isArray(userDepartments) && userDepartments.length === 0)) {\n    msg.payload = {\n        hasPermission: false,\n        userLevel: 0,\n        requiredLevel: requiredLevel,\n        ruoyiUserId: ruoyiUserId,\n        permissionId: permissionId,\n        error: '需要提供用户部门信息(userDepartments)进行权限检查',\n        timestamp: new Date().toISOString()\n    };\n    return msg;\n}\n\n// 处理部门信息格式\nlet departments = [];\nif (typeof userDepartments === 'string') {\n    departments = [userDepartments];\n} else if (Array.isArray(userDepartments)) {\n    departments = userDepartments.map(dept => {\n        if (typeof dept === 'string') return dept;\n        if (dept && dept.name) return dept.name;\n        if (dept && dept.department_name) return dept.department_name;\n        return String(dept);\n    });\n}\n\n// 构建查询SQL，查找用户在所有部门中对该权限的最高级别\nconst departmentNames = departments.map(name => `'${name.replace(/'/g, \"''\")}'`).join(',');\n\nmsg.topic = `\n    SELECT\n        MAX(COALESCE(dpp.permission_level, 0)) AS max_level\n    FROM departments d\n    JOIN page_permissions pp ON pp.permission_id = '${permissionId.replace(/'/g, \"''\")}'\n    LEFT JOIN department_page_permissions dpp ON d.id = dpp.department_id AND pp.id = dpp.permission_id\n    WHERE d.department_name IN (${departmentNames})\n        AND d.is_active = TRUE\n        AND pp.is_active = TRUE\n`;\n\nreturn msg;",
     "outputs": 1,
     "noerr": 0,
     "initialize": "",
@@ -813,6 +813,144 @@
     ]
   },
   {
+    "id": "get_department_permissions_by_name",
+    "type": "http in",
+    "z": "app_permissions_tab",
+    "name": "根据部门名称获取权限",
+    "url": "/api/department-permissions-by-name/:departmentName",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 140,
+    "y": 580,
+    "wires": [
+      [
+        "query_department_permissions_by_name"
+      ]
+    ]
+  },
+  {
+    "id": "query_department_permissions_by_name",
+    "type": "function",
+    "z": "app_permissions_tab",
+    "name": "查询部门权限(按名称)",
+    "func": "const departmentName = msg.req.params.departmentName;\n\nif (!departmentName) {\n    msg.statusCode = 400;\n    msg.payload = { error: '缺少部门名称参数' };\n    return msg;\n}\n\n// 解码URL编码的部门名称\nconst decodedDepartmentName = decodeURIComponent(departmentName);\n\nmsg.topic = `\n    SELECT \n        pp.permission_id as permission_key,\n        pp.permission_name,\n        pp.route_path,\n        pm.module_name,\n        COALESCE(dpp.permission_level, 0) as permission_level,\n        d.department_name,\n        d.department_key\n    FROM departments d\n    CROSS JOIN page_permissions pp\n    JOIN permission_modules pm ON pp.module_id = pm.id\n    LEFT JOIN department_page_permissions dpp ON d.id = dpp.department_id AND pp.id = dpp.permission_id\n    WHERE d.department_name = '${decodedDepartmentName.replace(/'/g, \"''\")}'\n        AND d.is_active = TRUE\n        AND pp.is_active = TRUE\n        AND pm.is_active = TRUE\n        AND dpp.permission_level > 0\n    ORDER BY pm.sort_order ASC, pp.sort_order ASC\n`;\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 380,
+    "y": 580,
+    "wires": [
+      [
+        "execute_department_permissions_by_name_query"
+      ]
+    ]
+  },
+  {
+    "id": "execute_department_permissions_by_name_query",
+    "type": "mysql",
+    "z": "app_permissions_tab",
+    "mydb": "mysql_config",
+    "name": "执行部门权限查询(按名称)",
+    "x": 640,
+    "y": 580,
+    "wires": [
+      [
+        "format_department_permissions_by_name_response"
+      ]
+    ]
+  },
+  {
+    "id": "format_department_permissions_by_name_response",
+    "type": "function",
+    "z": "app_permissions_tab",
+    "name": "格式化部门权限响应(按名称)",
+    "func": "// 格式化部门权限响应\ntry {\n    if (msg.payload && Array.isArray(msg.payload)) {\n        msg.payload = {\n            success: true,\n            data: msg.payload,\n            message: `成功获取部门权限，共 ${msg.payload.length} 个权限`,\n            timestamp: new Date().toISOString()\n        };\n    } else {\n        msg.payload = {\n            success: false,\n            data: [],\n            error: '未找到该部门的权限数据或部门不存在',\n            timestamp: new Date().toISOString()\n        };\n    }\n} catch (error) {\n    msg.payload = {\n        success: false,\n        data: [],\n        error: '处理部门权限数据时出错: ' + error.message,\n        timestamp: new Date().toISOString()\n    };\n}\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 880,
+    "y": 580,
+    "wires": [
+      [
+        "send_response"
+      ]
+    ]
+  },
+  {
+    "id": "api_user_permissions_by_departments",
+    "type": "http in",
+    "z": "app_permissions_tab",
+    "name": "用户部门权限API",
+    "url": "/api/user-permissions-by-departments",
+    "method": "post",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 120,
+    "y": 720,
+    "wires": [
+      [
+        "validate_user_departments_request"
+      ]
+    ]
+  },
+  {
+    "id": "validate_user_departments_request",
+    "type": "function",
+    "z": "app_permissions_tab",
+    "name": "验证用户部门权限请求",
+    "func": "const { ruoyiUserId, userDepartments } = msg.payload;\n\nif (!ruoyiUserId) {\n    msg.statusCode = 400;\n    msg.payload = { \n        error: '缺少用户ID参数',\n        required: ['ruoyiUserId']\n    };\n    return msg;\n}\n\nif (!userDepartments || (Array.isArray(userDepartments) && userDepartments.length === 0)) {\n    msg.statusCode = 400;\n    msg.payload = { \n        error: '缺少用户部门信息',\n        required: ['userDepartments'],\n        format: 'userDepartments可以是字符串或字符串数组'\n    };\n    return msg;\n}\n\n// 处理部门信息格式\nlet departments = [];\nif (typeof userDepartments === 'string') {\n    departments = [userDepartments];\n} else if (Array.isArray(userDepartments)) {\n    departments = userDepartments.map(dept => {\n        if (typeof dept === 'string') return dept;\n        if (dept && dept.name) return dept.name;\n        if (dept && dept.department_name) return dept.department_name;\n        return String(dept);\n    });\n}\n\nif (departments.length === 0) {\n    msg.statusCode = 400;\n    msg.payload = { \n        error: '无效的部门信息格式'\n    };\n    return msg;\n}\n\n// 构建查询SQL，获取用户所有部门的权限并合并\nconst departmentNames = departments.map(name => `'${name.replace(/'/g, \"''\")}'`).join(',');\n\nmsg.topic = `\n    SELECT \n        d.department_name,\n        d.department_key,\n        d.color as department_color,\n        pm.id as module_id,\n        pm.module_key,\n        pm.module_name,\n        pm.description as module_description,\n        pp.id as permission_id,\n        pp.permission_id as permission_key,\n        pp.permission_name,\n        pp.route_path,\n        pp.description as permission_description,\n        COALESCE(dpp.permission_level, 0) as permission_level\n    FROM departments d\n    CROSS JOIN permission_modules pm\n    CROSS JOIN page_permissions pp\n    LEFT JOIN department_page_permissions dpp ON d.id = dpp.department_id AND pp.id = dpp.permission_id\n    WHERE d.department_name IN (${departmentNames})\n        AND d.is_active = TRUE\n        AND pm.is_active = TRUE\n        AND pp.is_active = TRUE\n        AND pp.module_id = pm.id\n    ORDER BY d.department_name ASC, pm.module_name ASC, pp.permission_name ASC\n`;\n\n// 保存原始请求信息\nmsg.originalRequest = {\n    ruoyiUserId: ruoyiUserId,\n    userDepartments: userDepartments,\n    departments: departments\n};\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 340,
+    "y": 720,
+    "wires": [
+      [
+        "execute_user_departments_permissions_query"
+      ]
+    ]
+  },
+  {
+    "id": "execute_user_departments_permissions_query",
+    "type": "mysql",
+    "z": "app_permissions_tab",
+    "mydb": "mysql_config",
+    "name": "执行用户部门权限查询",
+    "x": 580,
+    "y": 720,
+    "wires": [
+      [
+        "format_user_departments_permissions_response"
+      ]
+    ]
+  },
+  {
+    "id": "format_user_departments_permissions_response",
+    "type": "function",
+    "z": "app_permissions_tab",
+    "name": "格式化用户部门权限响应",
+    "func": "const originalRequest = msg.originalRequest;\n\nif (msg.payload && msg.payload.length > 0) {\n    // 按权限分组，合并多个部门的权限级别（取最高级别）\n    const permissionMap = {};\n    const departmentInfo = {};\n    \n    msg.payload.forEach(row => {\n        // 收集部门信息\n        if (!departmentInfo[row.department_name]) {\n            departmentInfo[row.department_name] = {\n                department_name: row.department_name,\n                department_key: row.department_key,\n                department_color: row.department_color\n            };\n        }\n        \n        // 合并权限，取最高级别\n        const permissionKey = row.permission_key;\n        if (!permissionMap[permissionKey]) {\n            permissionMap[permissionKey] = {\n                module_id: row.module_id,\n                module_key: row.module_key,\n                module_name: row.module_name,\n                module_description: row.module_description,\n                permission_id: row.permission_id,\n                permission_key: row.permission_key,\n                permission_name: row.permission_name,\n                route_path: row.route_path,\n                permission_description: row.permission_description,\n                permission_level: row.permission_level,\n                source_departments: [row.department_name]\n            };\n        } else {\n            // 取最高权限级别\n            if (row.permission_level > permissionMap[permissionKey].permission_level) {\n                permissionMap[permissionKey].permission_level = row.permission_level;\n            }\n            // 记录权限来源部门\n            if (!permissionMap[permissionKey].source_departments.includes(row.department_name)) {\n                permissionMap[permissionKey].source_departments.push(row.department_name);\n            }\n        }\n    });\n    \n    // 按模块分组最终权限\n    const groupedPermissions = {};\n    Object.values(permissionMap).forEach(permission => {\n        // 只包含有权限的项目（权限级别 > 0）\n        if (permission.permission_level > 0) {\n            const moduleKey = permission.module_key;\n            if (!groupedPermissions[moduleKey]) {\n                groupedPermissions[moduleKey] = {\n                    module_id: permission.module_id,\n                    module_key: moduleKey,\n                    module_name: permission.module_name,\n                    module_description: permission.module_description,\n                    permissions: []\n                };\n            }\n            \n            groupedPermissions[moduleKey].permissions.push({\n                permission_id: permission.permission_id,\n                permission_key: permission.permission_key,\n                permission_name: permission.permission_name,\n                route_path: permission.route_path,\n                permission_level: permission.permission_level,\n                description: permission.permission_description,\n                source_departments: permission.source_departments\n            });\n        }\n    });\n    \n    msg.payload = {\n        success: true,\n        data: {\n            ruoyi_user_id: originalRequest.ruoyiUserId,\n            user_departments: originalRequest.departments,\n            department_info: Object.values(departmentInfo),\n            effective_permissions: {\n                modules: Object.values(groupedPermissions),\n                total_permissions: Object.values(permissionMap).filter(p => p.permission_level > 0).length,\n                permission_merge_strategy: 'highest_level'\n            }\n        },\n        timestamp: new Date().toISOString()\n    };\n} else {\n    msg.payload = {\n        success: false,\n        data: null,\n        error: '未找到用户部门权限配置',\n        ruoyi_user_id: originalRequest.ruoyiUserId,\n        user_departments: originalRequest.departments,\n        timestamp: new Date().toISOString()\n    };\n}\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 820,
+    "y": 720,
+    "wires": [
+      [
+        "send_response"
+      ]
+    ]
+  },
+  {
     "id": "get_permission_stats",
     "type": "http in",
     "z": "app_permissions_tab",
@@ -948,7 +1086,13 @@
       "execute_departments_query",
       "execute_user_permissions_query",
       "execute_check_permission_query",
-      "execute_department_permissions_query"
+      "execute_department_permissions_query",
+      "query_department_permissions_by_name",
+      "execute_department_permissions_by_name_query",
+      "format_department_permissions_by_name_response",
+      "validate_user_departments_request",
+      "execute_user_departments_permissions_query",
+      "format_user_departments_permissions_response"
     ],
     "uncaught": false,
     "x": 120,

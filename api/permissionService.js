@@ -254,6 +254,175 @@ class PermissionService {
   }
 
   /**
+   * 根据部门名称获取部门权限
+   * @param {string} departmentName - 部门名称
+   */
+  async getDepartmentPermissionsByName(departmentName) {
+    if (!departmentName) {
+      throw new Error('部门名称不能为空');
+    }
+
+    const cacheKey = `department_permissions_name_${departmentName}`;
+    const cached = this.cache.get(cacheKey);
+    
+    if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
+      return cached.data;
+    }
+
+    try {
+      const response = await apiService.get(`${this.baseURL}/department-permissions-by-name/${encodeURIComponent(departmentName)}`);
+      
+      // 检查响应格式，如果已经包含success属性则直接返回，否则包装数据
+      if (response && typeof response === 'object' && 'success' in response) {
+        this.cache.set(cacheKey, {
+          data: response,
+          timestamp: Date.now()
+        });
+        return response;
+      } else {
+        // 包装为标准格式
+        const formattedResponse = {
+          success: true,
+          data: response || [],
+          message: '获取部门权限成功',
+          timestamp: new Date().toISOString()
+        };
+        
+        this.cache.set(cacheKey, {
+          data: formattedResponse,
+          timestamp: Date.now()
+        });
+        
+        return formattedResponse;
+      }
+    } catch (error) {
+      console.error('根据部门名称获取权限失败:', error);
+      const errorResponse = {
+        success: false,
+        data: [],
+        error: error.message || '根据部门名称获取权限失败',
+        timestamp: new Date().toISOString()
+      };
+      return errorResponse;
+    }
+  }
+
+  /**
+   * 根据用户信息中的部门字段获取权限
+   * @param {string|Array} userDepartments - 用户部门信息（可以是字符串或数组）
+   */
+  async getUserPermissionsByDepartment(userDepartments) {
+    console.log('[PermissionService] 调试 - 开始getUserPermissionsByDepartment，输入参数:', userDepartments);
+    console.log('[PermissionService] 调试 - 输入参数类型:', typeof userDepartments);
+    
+    if (!userDepartments) {
+      console.log('[PermissionService] 调试 - 用户部门信息为空');
+      throw new Error('用户部门信息不能为空');
+    }
+
+    try {
+      // 处理部门信息，支持字符串和数组格式
+      let departments = [];
+      if (typeof userDepartments === 'string') {
+        // 如果是字符串，可能是逗号分隔的部门名称
+        departments = userDepartments.split(',').map(dept => dept.trim()).filter(dept => dept);
+        console.log('[PermissionService] 调试 - 从字符串解析部门:', departments);
+      } else if (Array.isArray(userDepartments)) {
+        departments = userDepartments;
+        console.log('[PermissionService] 调试 - 使用数组格式部门:', departments);
+      } else {
+        departments = [userDepartments];
+        console.log('[PermissionService] 调试 - 转换为数组格式部门:', departments);
+      }
+
+      console.log('[PermissionService] 处理用户部门信息:', departments);
+
+      // 收集所有部门的权限
+      const allPermissions = new Map();
+      const departmentResults = [];
+
+      console.log('[PermissionService] 调试 - 开始遍历部门获取权限，部门数量:', departments.length);
+      
+      for (const department of departments) {
+        try {
+          const deptName = typeof department === 'object' ? department.department_name || department.name : department;
+          console.log('[PermissionService] 调试 - 处理部门:', deptName, '原始数据:', department);
+          
+          const deptPermissionsResult = await this.getDepartmentPermissionsByName(deptName);
+          console.log('[PermissionService] 调试 - 部门权限查询结果:', deptName, deptPermissionsResult);
+          
+          departmentResults.push({
+            department: deptName,
+            result: deptPermissionsResult
+          });
+
+          if (deptPermissionsResult.success && deptPermissionsResult.data) {
+            const deptPermissions = Array.isArray(deptPermissionsResult.data) ? deptPermissionsResult.data : [];
+            console.log('[PermissionService] 调试 - 部门权限数据:', deptName, '权限数量:', deptPermissions.length);
+            
+            // 合并部门权限，取最高权限级别
+            deptPermissions.forEach(permission => {
+              const key = permission.permission_key || permission.permission_id || permission.route_path;
+              const existing = allPermissions.get(key);
+              
+              if (!existing || (permission.permission_level > existing.permission_level)) {
+                console.log('[PermissionService] 调试 - 添加/更新权限:', key, '级别:', permission.permission_level, '来自部门:', deptName);
+                allPermissions.set(key, {
+                  permission_key: key,
+                  permission_name: permission.permission_name,
+                  route_path: permission.route_path,
+                  module_name: permission.module_name,
+                  permission_level: permission.permission_level,
+                  department_name: deptName
+                });
+              } else {
+                console.log('[PermissionService] 调试 - 跳过权限（已有更高级别）:', key, '当前级别:', permission.permission_level, '已有级别:', existing.permission_level);
+              }
+            });
+          } else {
+            console.log('[PermissionService] 调试 - 部门权限查询失败或无数据:', deptName, deptPermissionsResult);
+          }
+        } catch (error) {
+          console.warn(`[PermissionService] 获取部门 ${department} 权限失败:`, error);
+          console.error('[PermissionService] 调试 - 部门权限获取错误详情:', error.stack);
+          departmentResults.push({
+            department: department,
+            error: error.message
+          });
+        }
+      }
+      
+      // 转换为数组并过滤有效权限
+      const permissions = Array.from(allPermissions.values())
+        .filter(p => p.route_path && p.permission_level > 0);
+      
+      console.log(`[PermissionService] 从 ${departments.length} 个部门加载了 ${permissions.length} 个权限`);
+      console.log('[PermissionService] 调试 - 最终权限列表:', permissions.map(p => `${p.permission_name}(${p.route_path}):${p.permission_level}`));
+      console.log('[PermissionService] 调试 - 部门处理结果:', departmentResults);
+      
+      const result = {
+        success: true,
+        data: permissions,
+        departments: departmentResults,
+        message: `成功获取 ${permissions.length} 个权限`,
+        timestamp: new Date().toISOString()
+      };
+      
+      console.log('[PermissionService] 调试 - 最终返回结果:', JSON.stringify(result, null, 2));
+      return result;
+      
+    } catch (error) {
+      console.error('[PermissionService] 根据部门获取用户权限失败:', error);
+      return {
+        success: false,
+        data: [],
+        error: error.message || '根据部门获取用户权限失败',
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
    * 更新部门权限
    * @param {number} departmentId - 部门ID
    * @param {Array} permissions - 权限列表
@@ -587,14 +756,19 @@ export const PagePermissionService = {
 
 export const DepartmentService = {
   getAllDepartments: () => permissionService.getDepartments(),
-  getPermissions: (departmentId) => permissionService.getDepartmentPermissions(departmentId),
+  getDepartmentPermissions: (departmentId) => permissionService.getDepartmentPermissions(departmentId),
+  getDepartmentPermissionsByName: (departmentName) => permissionService.getDepartmentPermissionsByName(departmentName),
+  getPermissions: (departmentId) => permissionService.getDepartmentPermissions(departmentId), // 向后兼容
   updatePermissions: (departmentId, permissions, grantedBy) => permissionService.updateDepartmentPermissions(departmentId, permissions, grantedBy),
   createDepartment: (departmentData) => permissionService.createDepartment(departmentData)
 };
 
 export const UserPermissionService = {
   getUserPermissions: (ruoyiUserId) => permissionService.getUserPermissions(ruoyiUserId),
-  checkPermission: (ruoyiUserId, pageId, requiredLevel) => permissionService.checkPermission(ruoyiUserId, pageId, requiredLevel)
+  getUserPermissionsByDepartment: (userDepartments) => permissionService.getUserPermissionsByDepartment(userDepartments),
+  checkPermission: (ruoyiUserId, pageId, requiredLevel) => permissionService.checkPermission(ruoyiUserId, pageId, requiredLevel),
+  getUserEffectivePermissions: (ruoyiUserId) => permissionService.getUserPermissions(ruoyiUserId),
+  getUserDepartments: (ruoyiUserId) => permissionService.getUserDepartments(ruoyiUserId)
 };
 
 export const PermissionStatsService = {
@@ -606,6 +780,12 @@ export const DepartmentAPI = DepartmentService;
 export const PagePermissionAPI = {
   getModules: () => permissionService.getPermissionModules(),
   getAllPermissions: (moduleId) => permissionService.getPagePermissions(moduleId)
+};
+
+// 新增：基于用户部门信息的权限服务
+export const UserDepartmentPermissionService = {
+  getUserPermissionsByDepartment: (userDepartments) => permissionService.getUserPermissionsByDepartment(userDepartments),
+  getDepartmentPermissionsByName: (departmentName) => permissionService.getDepartmentPermissionsByName(departmentName)
 };
 
 // 导出权限级别常量

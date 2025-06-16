@@ -12,9 +12,10 @@ import {
   DepartmentService,
   UserPermissionService,
   PermissionStatsService,
+  UserDepartmentPermissionService,
   PERMISSION_LEVELS
 } from '../api/permissionService';
-import oauth2Service from '../api/oauth2Service';
+import OAuth2Service from '../api/oauth2Service';
 
 // 权限缓存键
 const CACHE_KEYS = {
@@ -52,12 +53,20 @@ export const useAppPermissions = () => {
       }
 
       // 从OAuth2服务获取当前用户信息
-      const userInfo = await oauth2Service.getCurrentUser();
-      if (userInfo.success && userInfo.data.userId) {
-        const userId = userInfo.data.userId.toString();
-        await AsyncStorage.setItem(CACHE_KEYS.RUOYI_USER_ID, userId);
-        setRuoyiUserId(userId);
-        return userId;
+      const oauth2Enabled = await AsyncStorage.getItem('oauth2_enabled');
+      if (oauth2Enabled === 'true') {
+        const savedConfig = await AsyncStorage.getItem('oauth2_config');
+        if (savedConfig) {
+          const config = JSON.parse(savedConfig);
+          const oauth2Service = new OAuth2Service(config.baseUrl, config.clientId, config.clientSecret);
+          const userInfo = await oauth2Service.getUserInfo();
+          if (userInfo.success && userInfo.data.id) {
+            const userId = userInfo.data.id.toString();
+            await AsyncStorage.setItem(CACHE_KEYS.RUOYI_USER_ID, userId);
+            setRuoyiUserId(userId);
+            return userId;
+          }
+        }
       }
       
       throw new Error('无法获取用户ID');
@@ -65,6 +74,57 @@ export const useAppPermissions = () => {
       console.error('获取ruoyi用户ID失败:', error);
       setError(error.message);
       return null;
+    }
+  }, []);
+
+  // 基于部门加载权限
+  const loadDepartmentPermissions = useCallback(async (userDepartments) => {
+    try {
+      console.log('[useAppPermissions] 基于部门加载权限');
+      
+      // 收集所有部门的权限
+      const allPermissions = new Map();
+      
+      for (const department of userDepartments) {
+        try {
+          const deptPermissionsResult = await DepartmentService.getDepartmentPermissions(department.id);
+          
+          if (deptPermissionsResult.success && deptPermissionsResult.data) {
+            const deptPermissions = deptPermissionsResult.data;
+            
+            // 合并部门权限，取最高权限级别
+            deptPermissions.forEach(permission => {
+              const key = permission.permission_key || permission.permission_id;
+              const existing = allPermissions.get(key);
+              
+              if (!existing || permission.permission_level > existing.permission_level) {
+                allPermissions.set(key, {
+                  permission_key: key,
+                  permission_name: permission.permission_name,
+                  route_path: permission.route_path,
+                  module_name: permission.module_name,
+                  permission_level: permission.permission_level,
+                  department_name: department.department_name
+                });
+              }
+            });
+          }
+        } catch (error) {
+          console.warn(`[useAppPermissions] 获取部门 ${department.department_name} 权限失败:`, error);
+        }
+      }
+      
+      // 转换为数组并过滤有效权限
+      const permissions = Array.from(allPermissions.values())
+        .filter(p => p.route_path && p.permission_level > 0);
+      
+      console.log(`[useAppPermissions] 从 ${userDepartments.length} 个部门加载了 ${permissions.length} 个权限`);
+      
+      return permissions;
+      
+    } catch (error) {
+      console.error('[useAppPermissions] 加载部门权限失败:', error);
+      return [];
     }
   }, []);
 
@@ -158,7 +218,7 @@ export const useAppPermissions = () => {
     }
   }, []);
 
-  // 加载用户权限
+  // 加载用户权限（基于部门权限）
   const loadUserPermissions = useCallback(async (forceRefresh = false) => {
     setLoading(true);
     setError(null);
@@ -179,44 +239,36 @@ export const useAppPermissions = () => {
         }
       }
 
-      // 并行加载权限数据
-      const [permissionsResult, departmentsResult] = await Promise.all([
-        UserPermissionService.getUserEffectivePermissions(currentUserId),
-        UserPermissionService.getUserDepartments(currentUserId)
-      ]);
-
-      if (permissionsResult.success) {
-        const permissionsData = permissionsResult.data || [];
-        setPermissions(permissionsData);
-        
-        // 提取可访问页面
-        const pages = permissionsData
-          .filter(p => p.route_path && p.effective_level > 0)
-          .map(p => ({
-            permission_key: p.permission_key,
-            permission_name: p.permission_name,
-            route_path: p.route_path,
-            module_name: p.module_name,
-            permission_level: p.effective_level
-          }));
-        setAccessiblePages(pages);
-      } else {
-        throw new Error(permissionsResult.error || '获取用户权限失败');
-      }
+      // 获取用户部门信息
+      const departmentsResult = await UserPermissionService.getUserDepartments(currentUserId);
 
       if (departmentsResult.success) {
-        setDepartments(departmentsResult.data || []);
+        const userDepartments = departmentsResult.data || [];
+        
+        // 基于用户部门信息获取权限
+        const permissionsResult = await UserDepartmentPermissionService.getUserPermissionsByDepartment(userDepartments);
+        
+        if (permissionsResult.success && permissionsResult.data) {
+          const departmentPermissions = permissionsResult.data;
+          const departmentResults = permissionsResult.departments || userDepartments;
+          
+          setPermissions(departmentPermissions);
+          setAccessiblePages(departmentPermissions);
+          setDepartments(departmentResults);
+          
+          // 保存到缓存
+          await saveToCache(
+            currentUserId,
+            departmentPermissions,
+            departmentResults,
+            departmentPermissions
+          );
+        } else {
+          throw new Error(permissionsResult.error || '获取部门权限失败');
+        }
       } else {
         throw new Error(departmentsResult.error || '获取用户部门失败');
       }
-
-      // 保存到缓存
-      await saveToCache(
-        currentUserId,
-        permissionsResult.data || [],
-        departmentsResult.data || [],
-        accessiblePages
-      );
 
     } catch (error) {
       console.error('加载用户权限失败:', error);
@@ -224,7 +276,7 @@ export const useAppPermissions = () => {
     } finally {
       setLoading(false);
     }
-  }, [getCurrentRuoyiUserId, loadFromCache, saveToCache, accessiblePages]);
+  }, [getCurrentRuoyiUserId, loadFromCache, saveToCache]);
 
   // 检查页面权限
   const checkPagePermission = useCallback((pageRoute, requiredLevel = PERMISSION_LEVELS.READ) => {
@@ -525,12 +577,24 @@ export const usePermissionGuard = (permissionKey, requiredLevel = PERMISSION_LEV
 
     try {
       // 获取当前ruoyi用户ID
-      const userInfo = await oauth2Service.getCurrentUser();
-      if (!userInfo.success || !userInfo.data.userId) {
+      const oauth2Enabled = await AsyncStorage.getItem('oauth2_enabled');
+      if (oauth2Enabled !== 'true') {
+        throw new Error('OAuth2未启用');
+      }
+
+      const savedConfig = await AsyncStorage.getItem('oauth2_config');
+      if (!savedConfig) {
+        throw new Error('未找到OAuth2配置');
+      }
+
+      const config = JSON.parse(savedConfig);
+      const oauth2Service = new OAuth2Service(config.baseUrl, config.clientId, config.clientSecret);
+      const userInfo = await oauth2Service.getUserInfo();
+      if (!userInfo.success || !userInfo.data.id) {
         throw new Error('无法获取用户信息');
       }
 
-      const userId = userInfo.data.userId.toString();
+      const userId = userInfo.data.id.toString();
       setRuoyiUserId(userId);
 
       const result = await UserPermissionService.checkUserPermission(userId, permissionKey, requiredLevel);

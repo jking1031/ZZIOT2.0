@@ -7,6 +7,7 @@ import { saveAuthToken, getAuthToken, clearAuthToken } from '../api/storage';
 import { EventRegister } from '../utils/EventEmitter';
 import { getApiUrl } from '../api/apiManager';
 import OAuth2Service, { DEFAULT_OAUTH2_CONFIG } from '../api/oauth2Service';
+import PermissionInitService from '../services/PermissionInitService';
 
 export const AuthContext = createContext({
   user: null,
@@ -360,6 +361,16 @@ export const AuthProvider = ({ children }) => {
         }
         
         console.log('[AuthContext] OAuth2登录流程完成');
+        
+        // 初始化用户权限
+        try {
+          await PermissionInitService.initializeUserPermissions(processedUserData);
+          console.log('[AuthContext] OAuth2用户权限初始化成功');
+        } catch (permissionError) {
+          console.warn('[AuthContext] OAuth2权限初始化失败，将使用访客权限:', permissionError);
+          // 权限初始化失败不影响登录，但会记录警告
+        }
+        
         return true;
       }
       
@@ -511,6 +522,15 @@ export const AuthProvider = ({ children }) => {
       
       console.log('登录流程完成，用户信息和令牌已保存');
       
+      // 初始化用户权限
+      try {
+        await PermissionInitService.initializeUserPermissions(completeUserData);
+        console.log('[AuthContext] 传统登录用户权限初始化成功');
+      } catch (permissionError) {
+        console.warn('[AuthContext] 传统登录权限初始化失败，将使用访客权限:', permissionError);
+        // 权限初始化失败不影响登录，但会记录警告
+      }
+      
       // 返回成功
       return true;
     } catch (error) {
@@ -572,6 +592,14 @@ export const AuthProvider = ({ children }) => {
       
       // 清除传统认证令牌
       await clearAuthToken();
+      
+      // 清除权限缓存
+      try {
+        await PermissionInitService.clearCache();
+        console.log('[AuthContext] 权限缓存已清除');
+      } catch (error) {
+        console.warn('[AuthContext] 清除权限缓存失败:', error);
+      }
       
       // 重置用户状态
       setUser(null);
