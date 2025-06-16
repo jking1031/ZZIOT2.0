@@ -24,6 +24,9 @@ import axios from 'axios';
 import { Picker } from '@react-native-picker/picker';
 import apiService, { userApi, authApi } from '../api/apiService';
 import { loadApiConfig } from '../api/apiManager';
+import { PageGuard, FeatureGuard } from '../components/PermissionControlComponents';
+import { PAGE_PERMISSIONS } from '../config/pagePermissions';
+import { PERMISSION_LEVELS } from '../hooks/usePermissionControl';
 
 const UserManagementScreen = () => {
   const { colors, isDarkMode } = useTheme();
@@ -1037,8 +1040,12 @@ const UserManagementScreen = () => {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {Platform.OS === 'android' && <AndroidHeader />}
+    <PageGuard 
+      routePath={PAGE_PERMISSIONS.USER_MANAGEMENT.route}
+      requiredLevel={PAGE_PERMISSIONS.USER_MANAGEMENT.level}
+    >
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        {Platform.OS === 'android' && <AndroidHeader />}
       
       {loading && !refreshing ? (
         <View style={styles.loadingContainer}>
@@ -1469,7 +1476,8 @@ const UserManagementScreen = () => {
           </View>
         </View>
       </Modal>
-    </View>
+      </View>
+    </PageGuard>
   );
 };
 

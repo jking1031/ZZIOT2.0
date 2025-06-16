@@ -15,6 +15,7 @@ import { useTheme } from '../context/ThemeContext';
 import { createCommonStyles, DesignTokens } from '../styles/StyleGuide';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
+import { usePermissionControl } from '../hooks/usePermissionControl';
 
 const Tab = createBottomTabNavigator();
 
@@ -23,6 +24,7 @@ const MainTab = () => {
   const navigation = useNavigation();
   const { colors, isDarkMode } = useTheme();
   const { user } = useAuth(); // Removed isAdmin, isDeptAdmin
+  const { isAdmin, isSuperAdmin } = usePermissionControl();
   const [stats, setStats] = useState({
     totalProcessing_in: 0,
     totalProcessing_out: 0,
@@ -1013,7 +1015,7 @@ const MainTab = () => {
         </View>
         
         {/* 管理员功能区域 - 仅管理员可见 */}
-        {(user?.role_name === '超级管理员' || user?.role_name === '管理员') && (
+        {(isAdmin() || isSuperAdmin()) && (
           <>
             <View style={styles.divider} />
             

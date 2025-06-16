@@ -49,6 +49,8 @@ import DavScreen from './screens/DavScreen';
 import DepartmentPermissionScreen from './screens/DepartmentPermissionScreen';
 // 导入部门权限使用示例
 import DepartmentPermissionUsageExample from './examples/DepartmentPermissionUsageExample';
+// 导入权限初始化组件
+import PermissionInitializer from './components/PermissionInitializer';
 // 添加错误边界组件
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -165,13 +167,15 @@ export default function App() {
     <ErrorBoundary>
       <ThemeProvider>
         <AuthProvider>
-          {/* 添加全局StatusBar组件 */}
-          <StatusBar 
-            barStyle="light-content"
-            backgroundColor="rgba(33, 150, 243, 0.8)"
-            translucent={Platform.OS === 'android'} // 安卓设置为透明状态栏
-          />
-          <AppContent showSplash={showSplash} onSplashFinish={handleSplashFinish} />
+          <PermissionInitializer>
+            {/* 添加全局StatusBar组件 */}
+            <StatusBar 
+              barStyle="light-content"
+              backgroundColor="rgba(33, 150, 243, 0.8)"
+              translucent={Platform.OS === 'android'} // 安卓设置为透明状态栏
+            />
+            <AppContent showSplash={showSplash} onSplashFinish={handleSplashFinish} />
+          </PermissionInitializer>
         </AuthProvider>
       </ThemeProvider>
     </ErrorBoundary>

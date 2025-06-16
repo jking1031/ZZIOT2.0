@@ -745,7 +745,7 @@ class PermissionService {
 // 创建权限服务实例
 const permissionService = new PermissionService();
 
-// 为了向后兼容，创建各种服务的别名
+// 导出各种服务
 export const PermissionModuleService = {
   getAllModules: () => permissionService.getPermissionModules()
 };
@@ -760,13 +760,15 @@ export const DepartmentService = {
   getDepartmentPermissionsByName: (departmentName) => permissionService.getDepartmentPermissionsByName(departmentName),
   getPermissions: (departmentId) => permissionService.getDepartmentPermissions(departmentId), // 向后兼容
   updatePermissions: (departmentId, permissions, grantedBy) => permissionService.updateDepartmentPermissions(departmentId, permissions, grantedBy),
-  createDepartment: (departmentData) => permissionService.createDepartment(departmentData)
+  createDepartment: (departmentData) => permissionService.createDepartment(departmentData),
+  updateDepartment: (departmentId, departmentData) => permissionService.updateDepartment(departmentId, departmentData)
 };
 
 export const UserPermissionService = {
   getUserPermissions: (ruoyiUserId) => permissionService.getUserPermissions(ruoyiUserId),
   getUserPermissionsByDepartment: (userDepartments) => permissionService.getUserPermissionsByDepartment(userDepartments),
   checkPermission: (ruoyiUserId, pageId, requiredLevel) => permissionService.checkPermission(ruoyiUserId, pageId, requiredLevel),
+  checkUserPermission: (ruoyiUserId, permissionKey, requiredLevel) => permissionService.checkPermission(ruoyiUserId, permissionKey, requiredLevel),
   getUserEffectivePermissions: (ruoyiUserId) => permissionService.getUserPermissions(ruoyiUserId),
   getUserDepartments: (ruoyiUserId) => permissionService.getUserDepartments(ruoyiUserId)
 };

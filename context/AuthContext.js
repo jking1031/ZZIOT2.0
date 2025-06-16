@@ -595,7 +595,7 @@ export const AuthProvider = ({ children }) => {
       
       // 清除权限缓存
       try {
-        await PermissionInitService.clearCache();
+        await PermissionInitService.clearPermissionsCache();
         console.log('[AuthContext] 权限缓存已清除');
       } catch (error) {
         console.warn('[AuthContext] 清除权限缓存失败:', error);

@@ -3,6 +3,9 @@ import { StyleSheet, View, Text, TouchableOpacity, ScrollView } from 'react-nati
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../context/ThemeContext';
+import { PageGuard } from '../components/PermissionControlComponents';
+import { PAGE_PERMISSIONS } from '../config/pagePermissions';
+import { PERMISSION_LEVELS } from '../services/PermissionInitService';
 
 const DataEntryCenter = () => {
   const navigation = useNavigation();
@@ -30,25 +33,30 @@ const DataEntryCenter = () => {
   ];
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={styles.cardsContainer}>
-        {entryCards.map((card, index) => (
-          <TouchableOpacity
-            key={index}
-            style={[styles.card, { backgroundColor: colors.card }]}
-            onPress={() => navigation.navigate(card.route)}
-          >
-            <View style={styles.cardContent}>
-              <Ionicons name={card.icon} size={40} color={colors.primary} />
-              <Text style={[styles.cardTitle, { color: colors.text }]}>{card.title}</Text>
-              <Text style={[styles.cardDescription, { color: colors.secondaryText }]}>
-                {card.description}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </ScrollView>
+    <PageGuard 
+      routePath="/data-entry-center" 
+      requiredLevel={PERMISSION_LEVELS.WRITE}
+    >
+      <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.cardsContainer}>
+          {entryCards.map((card, index) => (
+            <TouchableOpacity
+              key={index}
+              style={[styles.card, { backgroundColor: colors.card }]}
+              onPress={() => navigation.navigate(card.route)}
+            >
+              <View style={styles.cardContent}>
+                <Ionicons name={card.icon} size={40} color={colors.primary} />
+                <Text style={[styles.cardTitle, { color: colors.text }]}>{card.title}</Text>
+                <Text style={[styles.cardDescription, { color: colors.secondaryText }]}>
+                  {card.description}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
+    </PageGuard>
   );
 };
 

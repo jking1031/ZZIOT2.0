@@ -5,7 +5,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { UserPermissionService, DepartmentService, UserDepartmentPermissionService } from '../api/permissionService';
+import { UserDepartmentPermissionService } from '../api/permissionService';
 import OAuth2Service from '../api/oauth2Service';
 import { EventRegister } from '../utils/EventEmitter';
 
@@ -94,6 +94,13 @@ class PermissionInitService {
 
       this.currentUser = { ...userInfo, userId };
       console.log('[PermissionInit] 当前用户ID:', userId);
+
+      // 检查是否为管理员或超级管理员，如果是则直接设置全部权限
+      if (userInfo.role_name === '管理员' || userInfo.role_name === '超级管理员') {
+        console.log(`[PermissionInit] 检测到${userInfo.role_name}用户，自动获取所有权限`);
+        await this.setAdminPermissions(userInfo.role_name);
+        return true;
+      }
 
       // 检查缓存
       if (!shouldForceRefresh) {
@@ -293,10 +300,19 @@ class PermissionInitService {
    * 检查页面权限
    */
   checkPagePermission(routePath, requiredLevel = PERMISSION_LEVELS.READ) {
+    console.log(`[PermissionCheck] 检查页面权限: ${routePath}, 需要级别: ${requiredLevel}`);
+    
     if (!this.initialized) {
       console.warn('[PermissionInit] 权限系统未初始化');
       return false;
     }
+
+    console.log(`[PermissionCheck] 可访问页面数量: ${this.accessiblePages.length}`);
+    console.log(`[PermissionCheck] 可访问页面列表:`, this.accessiblePages.map(p => ({
+      route: p.route_path,
+      level: p.permission_level,
+      name: p.permission_name
+    })));
 
     const page = this.accessiblePages.find(p => {
       // 精确匹配
@@ -308,8 +324,22 @@ class PermissionInitService {
       return regex.test(routePath);
     });
     
-    if (!page) return false;
-    return page.permission_level >= requiredLevel;
+    if (!page) {
+      console.warn(`[PermissionCheck] 未找到匹配的页面权限: ${routePath}`);
+      return false;
+    }
+    
+    const hasPermission = page.permission_level >= requiredLevel;
+    console.log(`[PermissionCheck] 页面权限检查结果:`, {
+      route: routePath,
+      foundPage: page.route_path,
+      pageName: page.permission_name,
+      pageLevel: page.permission_level,
+      requiredLevel: requiredLevel,
+      hasPermission: hasPermission
+    });
+    
+    return hasPermission;
   }
 
   /**
@@ -370,6 +400,95 @@ class PermissionInitService {
    */
   emitPermissionUpdate() {
     EventRegister.emit('PERMISSION_UPDATED', this.getUserPermissionInfo());
+  }
+
+  /**
+   * 设置管理员权限（管理员和超级管理员自动获取所有权限）
+   */
+  async setAdminPermissions(roleName) {
+    try {
+      console.log(`[PermissionInit] 为${roleName}设置全部权限`);
+      
+      // 创建管理员部门信息
+      this.userDepartments = [{
+        id: 999,
+        department_key: 'admin',
+        department_name: roleName === '超级管理员' ? '超级管理员' : '管理员',
+        description: `${roleName}拥有所有权限`,
+        color: roleName === '超级管理员' ? '#e74c3c' : '#f39c12',
+        role: 'admin',
+        is_primary: true
+      }];
+
+      // 设置所有页面权限（从页面权限配置中获取）
+      this.accessiblePages = [
+        // 基础页面
+        { permission_key: 'home_view', permission_name: '首页', route_path: '/home', module_name: '基础功能', permission_level: PERMISSION_LEVELS.ADMIN },
+        { permission_key: 'profile_view', permission_name: '个人资料', route_path: '/profile', module_name: '用户管理', permission_level: PERMISSION_LEVELS.ADMIN },
+        
+        // 数据管理
+        { permission_key: 'data_center', permission_name: '数据中心', route_path: '/data-center', module_name: '数据管理', permission_level: PERMISSION_LEVELS.ADMIN },
+        { permission_key: 'data_query', permission_name: '数据查询', route_path: '/data-query-center', module_name: '数据管理', permission_level: PERMISSION_LEVELS.ADMIN },
+        { permission_key: 'data_entry', permission_name: '数据录入', route_path: '/data-entry-center', module_name: '数据管理', permission_level: PERMISSION_LEVELS.ADMIN },
+        { permission_key: 'history_data', permission_name: '历史数据', route_path: '/history-data-query', module_name: '数据管理', permission_level: PERMISSION_LEVELS.ADMIN },
+        { permission_key: 'lab_data', permission_name: '实验室数据', route_path: '/lab-data', module_name: '数据管理', permission_level: PERMISSION_LEVELS.ADMIN },
+        { permission_key: 'lab_data_entry', permission_name: '实验室数据录入', route_path: '/lab-data-entry', module_name: '数据管理', permission_level: PERMISSION_LEVELS.ADMIN },
+        { permission_key: 'sludge_data_entry', permission_name: '污泥数据录入', route_path: '/sludge-data-entry', module_name: '数据管理', permission_level: PERMISSION_LEVELS.ADMIN },
+        { permission_key: 'ao_data_entry', permission_name: 'AO数据录入', route_path: '/ao-data-entry', module_name: '数据管理', permission_level: PERMISSION_LEVELS.ADMIN },
+        { permission_key: 'ao_data_query', permission_name: 'AO数据查询', route_path: '/ao-data-query', module_name: '数据管理', permission_level: PERMISSION_LEVELS.ADMIN },
+        
+        // 报表管理
+        { permission_key: 'reports', permission_name: '报表管理', route_path: '/reports', module_name: '报表管理', permission_level: PERMISSION_LEVELS.ADMIN },
+        { permission_key: 'dynamic_reports', permission_name: '动态报表', route_path: '/dynamic-reports', module_name: '报表管理', permission_level: PERMISSION_LEVELS.ADMIN },
+        { permission_key: 'report_query', permission_name: '报表查询', route_path: '/report-query', module_name: '报表管理', permission_level: PERMISSION_LEVELS.ADMIN },
+        { permission_key: 'report_form', permission_name: '报表填写', route_path: '/report-form', module_name: '报表管理', permission_level: PERMISSION_LEVELS.ADMIN },
+        { permission_key: 'report_form_5000', permission_name: '5000吨处理厂日报', route_path: '/report-form-5000', module_name: '报表管理', permission_level: PERMISSION_LEVELS.ADMIN },
+        { permission_key: 'report_form_sludge', permission_name: '污泥车间日报', route_path: '/report-form-sludge', module_name: '报表管理', permission_level: PERMISSION_LEVELS.ADMIN },
+        { permission_key: 'report_form_pump_station', permission_name: '泵站日报', route_path: '/report-form-pump-station', module_name: '报表管理', permission_level: PERMISSION_LEVELS.ADMIN },
+        
+        // 系统管理
+        { permission_key: 'user_management', permission_name: '用户管理', route_path: '/user-management', module_name: '系统管理', permission_level: PERMISSION_LEVELS.ADMIN },
+        { permission_key: 'api_management', permission_name: 'API管理', route_path: '/api-management', module_name: '系统管理', permission_level: PERMISSION_LEVELS.ADMIN },
+        { permission_key: 'oauth2_config', permission_name: 'OAuth2配置', route_path: '/oauth2-config', module_name: '系统管理', permission_level: PERMISSION_LEVELS.ADMIN },
+        { permission_key: 'site_list', permission_name: '站点管理', route_path: '/site-list', module_name: '系统管理', permission_level: PERMISSION_LEVELS.ADMIN },
+        { permission_key: 'site_detail', permission_name: '站点详情', route_path: '/site-detail', module_name: '系统管理', permission_level: PERMISSION_LEVELS.ADMIN },
+        { permission_key: 'department_permission', permission_name: '部门权限管理', route_path: '/department-permission', module_name: '系统管理', permission_level: PERMISSION_LEVELS.ADMIN },
+        
+        // 工具计算
+        { permission_key: 'dosing_calculator', permission_name: '投药计算器', route_path: '/dosing-calculator', module_name: '工具计算', permission_level: PERMISSION_LEVELS.ADMIN },
+        { permission_key: 'pac_calculator', permission_name: 'PAC计算器', route_path: '/pac-calculator', module_name: '工具计算', permission_level: PERMISSION_LEVELS.ADMIN },
+        { permission_key: 'pam_calculator', permission_name: 'PAM计算器', route_path: '/pam-calculator', module_name: '工具计算', permission_level: PERMISSION_LEVELS.ADMIN },
+        { permission_key: 'excess_sludge_calculator', permission_name: '剩余污泥计算器', route_path: '/excess-sludge-calculator', module_name: '工具计算', permission_level: PERMISSION_LEVELS.ADMIN },
+        { permission_key: 'carbon_calc', permission_name: '碳源计算', route_path: '/carbon-calc', module_name: '工具计算', permission_level: PERMISSION_LEVELS.ADMIN },
+        
+        // 文件管理
+        { permission_key: 'file_upload', permission_name: '文件上传', route_path: '/file-upload', module_name: '文件管理', permission_level: PERMISSION_LEVELS.ADMIN },
+        { permission_key: 'file_upload_test', permission_name: '文件上传测试', route_path: '/file-upload-test', module_name: '文件管理', permission_level: PERMISSION_LEVELS.ADMIN },
+        { permission_key: 'dav_screen', permission_name: 'DAV文件管理', route_path: '/dav', module_name: '文件管理', permission_level: PERMISSION_LEVELS.ADMIN },
+        
+        // 消息管理
+        { permission_key: 'messages', permission_name: '消息管理', route_path: '/messages', module_name: '消息管理', permission_level: PERMISSION_LEVELS.ADMIN },
+        { permission_key: 'message_query', permission_name: '消息查询', route_path: '/message-query', module_name: '消息管理', permission_level: PERMISSION_LEVELS.ADMIN },
+        
+        // 其他功能
+        { permission_key: 'box_screen', permission_name: '盒子管理', route_path: '/box', module_name: '其他功能', permission_level: PERMISSION_LEVELS.ADMIN },
+        { permission_key: 'style_example', permission_name: '样式示例', route_path: '/style-example', module_name: '其他功能', permission_level: PERMISSION_LEVELS.ADMIN }
+      ];
+
+      this.initialized = true;
+      
+      // 保存到缓存
+      await this.savePermissionsToCache(this.currentUser.userId);
+      
+      // 发送权限更新事件
+      this.emitPermissionUpdate();
+      
+      console.log(`[PermissionInit] ${roleName}权限设置完成，共${this.accessiblePages.length}个页面权限`);
+      
+    } catch (error) {
+      console.error('[PermissionInit] 设置管理员权限失败:', error);
+      throw error;
+    }
   }
 
   /**

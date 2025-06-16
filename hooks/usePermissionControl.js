@@ -66,24 +66,43 @@ export const usePermissionControl = () => {
 
   // 检查页面权限
   const checkPagePermission = useCallback((routePath, requiredLevel = PERMISSION_LEVELS.READ) => {
+    // 管理员和超级管理员自动获取所有页面权限
+    if (user?.role_name === '管理员' || user?.role_name === '超级管理员') {
+      console.log(`[PermissionControl] 管理员用户 ${user.role_name} 自动获取页面权限: ${routePath}`);
+      return true;
+    }
     return permissionInitService.checkPagePermission(routePath, requiredLevel);
-  }, []);
+  }, [user]);
 
   // 检查功能权限
   const checkFeaturePermission = useCallback((permissionKey, requiredLevel = PERMISSION_LEVELS.READ) => {
+    // 管理员和超级管理员自动获取所有功能权限
+    if (user?.role_name === '管理员' || user?.role_name === '超级管理员') {
+      console.log(`[PermissionControl] 管理员用户 ${user.role_name} 自动获取功能权限: ${permissionKey}`);
+      return true;
+    }
     return permissionInitService.checkFeaturePermission(permissionKey, requiredLevel);
-  }, []);
+  }, [user]);
 
   // 检查部门权限
   const checkDepartmentAccess = useCallback((departmentKey) => {
+    // 管理员和超级管理员自动获取所有部门权限
+    if (user?.role_name === '管理员' || user?.role_name === '超级管理员') {
+      console.log(`[PermissionControl] 管理员用户 ${user.role_name} 自动获取部门权限: ${departmentKey}`);
+      return true;
+    }
     return permissionInitService.checkDepartmentAccess(departmentKey);
-  }, []);
+  }, [user]);
 
   // 获取权限级别
   const getPermissionLevel = useCallback((permissionKey) => {
+    // 管理员和超级管理员自动获取最高权限级别
+    if (user?.role_name === '管理员' || user?.role_name === '超级管理员') {
+      return PERMISSION_LEVELS.ADMIN;
+    }
     const permission = permissionInfo.permissions.find(p => p.permission_key === permissionKey);
     return permission ? permission.effective_level : PERMISSION_LEVELS.NONE;
-  }, [permissionInfo.permissions]);
+  }, [permissionInfo.permissions, user]);
 
   // 获取可访问页面列表
   const getAccessiblePages = useCallback((minLevel = PERMISSION_LEVELS.READ) => {
@@ -116,10 +135,47 @@ export const usePermissionControl = () => {
     await permissionInitService.refreshPermissions();
   }, []);
 
+  // 定时刷新权限 - 每1分钟刷新一次（测试用）
+  useEffect(() => {
+    let intervalId;
+    
+    // 只有在用户已登录且权限已初始化时才启动定时刷新
+    if (user && permissionInfo.initialized && !permissionInfo.isGuest) {
+      console.log('[PermissionControl] 启动定时权限刷新，间隔：1分钟');
+      
+      intervalId = setInterval(async () => {
+        console.log('[PermissionControl] 执行定时权限刷新');
+        try {
+          await permissionInitService.refreshPermissions();
+          console.log('[PermissionControl] 定时权限刷新完成');
+        } catch (error) {
+          console.error('[PermissionControl] 定时权限刷新失败:', error);
+        }
+      }, 600000); // 1分钟 = 60000毫秒
+    }
+
+    return () => {
+      if (intervalId) {
+        console.log('[PermissionControl] 清除定时权限刷新');
+        clearInterval(intervalId);
+      }
+    };
+  }, [user, permissionInfo.initialized, permissionInfo.isGuest]);
+
   // 检查是否为管理员
   const isAdmin = useCallback(() => {
+    // 检查用户角色名称
+    if (user?.role_name === '管理员' || user?.role_name === '超级管理员') {
+      return true;
+    }
+    // 检查部门角色
     return permissionInfo.departments.some(dept => dept.role === 'admin');
-  }, [permissionInfo.departments]);
+  }, [permissionInfo.departments, user]);
+
+  // 检查是否为超级管理员
+  const isSuperAdmin = useCallback(() => {
+    return user?.role_name === '超级管理员' || user?.username === 'admin';
+  }, [user]);
 
   // 检查是否为部门领导
   const isDepartmentLeader = useCallback((departmentKey = null) => {
@@ -149,6 +205,7 @@ export const usePermissionControl = () => {
     getAccessiblePages,
     getUserDepartments,
     isAdmin,
+    isSuperAdmin,
     isDepartmentLeader,
 
     // 操作方法

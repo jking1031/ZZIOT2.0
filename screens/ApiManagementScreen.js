@@ -44,6 +44,9 @@ import {
   testEndpoint
 } from '../api/apiManager';
 import apiService from '../api/apiService';
+import { PageGuard, FeatureGuard } from '../components/PermissionControlComponents';
+import { PAGE_PERMISSIONS } from '../config/pagePermissions';
+import { PERMISSION_LEVELS } from '../hooks/usePermissionControl';
 
 const ApiManagementScreen = ({ navigation }) => {
   const [config, setConfig] = useState(null);
@@ -1220,7 +1223,11 @@ const ApiManagementScreen = ({ navigation }) => {
   }
 
   return (
-    <View style={styles.container}>
+    <PageGuard 
+      routePath={PAGE_PERMISSIONS.API_MANAGEMENT.route}
+      requiredLevel={PAGE_PERMISSIONS.API_MANAGEMENT.level}
+    >
+      <View style={styles.container}>
       {/* 标签页切换 */}
       <View style={styles.tabContainer}>
         <TouchableOpacity
@@ -1553,7 +1560,8 @@ const ApiManagementScreen = ({ navigation }) => {
           </ScrollView>
         </View>
       </Modal>
-    </View>
+      </View>
+    </PageGuard>
   );
 };
 
