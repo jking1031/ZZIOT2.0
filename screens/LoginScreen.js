@@ -14,7 +14,6 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../context/AuthContext';
-import { authApi } from '../api/apiService';
 import { useTheme } from '../context/ThemeContext';
 import oauth2Service from '../api/oauth2Service';
 import OAuth2Config from '../config/oauth2Config';
@@ -39,18 +38,9 @@ const LoginScreen = ({ navigation, route }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [loginStatus, setLoginStatus] = useState('');
   
-  // OAuth2状态
-  const [useOAuth2, setUseOAuth2] = useState(false);
-  
   useEffect(() => {
     loadSavedCredentials();
-    checkOAuth2Status();
   }, []);
-  
-  // 检查OAuth2状态
-  const checkOAuth2Status = () => {
-    setUseOAuth2(isOAuth2Enabled);
-  };
   
   // 加载保存的登录凭证
   const loadSavedCredentials = async () => {
@@ -169,93 +159,29 @@ const LoginScreen = ({ navigation, route }) => {
     }
   };
   
-  // 传统登录
-  const handleTraditionalLogin = async () => {
-    try {
-      console.log('[LoginScreen] 开始传统登录');
-      setLoginStatus('正在连接服务器...');
-      
-      const loginResponse = await authApi.login({
-        email: formData.email,
-        password: formData.password
-      });
-      
-      let userInfo, token, refreshToken;
-      
-      if (loginResponse && loginResponse.success && loginResponse.data) {
-        userInfo = loginResponse.data.user;
-        token = loginResponse.data.token;
-        refreshToken = loginResponse.data.refreshToken;
-      } else if (loginResponse && loginResponse.user) {
-        userInfo = loginResponse.user;
-        token = loginResponse.token;
-        refreshToken = loginResponse.refreshToken;
-      } else {
-        throw new Error(loginResponse?.message || '登录响应数据无效');
-      }
-      
-      if (!userInfo) {
-        throw new Error('用户信息缺失');
-      }
-      
-      console.log('[LoginScreen] 登录成功，正在验证用户权限...');
-      setLoginStatus('正在验证用户权限...');
-      
-      const completeUserData = {
-        ...userInfo,
-        token: token,
-        refreshToken: refreshToken
-      };
-      
-      await authLogin(completeUserData);
-      await saveCredentials();
-      
-      console.log('[LoginScreen] 传统登录成功，即将跳转到主页面');
-      setLoginStatus('登录成功！');
-      
-      // 立即跳转到主页
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Home' }],
-      });
-      
-    } catch (error) {
-      console.error('[LoginScreen] 传统登录失败:', error);
-      setLoginStatus('');
-      let errorMessage = '登录失败';
-      
-      if (error.response) {
-        errorMessage = error.response.data?.message || '服务器返回错误，请稍后重试';
-      } else if (error.request) {
-        errorMessage = '网络连接失败，请检查网络设置';
-      } else {
-        errorMessage = error.message || '登录过程中发生错误，请重试';
-      }
-      
-      Alert.alert('登录失败', errorMessage);
-    }
-  };
+
   
-  // 处理登录
+  // 处理登录 - 仅使用OAuth2
   const handleLogin = async () => {
     if (loading) return;
     
     // 验证输入
     if (!formData.email.trim() || !formData.password.trim()) {
-      Alert.alert('提示', '请输入邮箱和密码');
+      Alert.alert('提示', '请输入用户名和密码');
+      return;
+    }
+    
+    if (!isOAuth2Enabled) {
+      Alert.alert('错误', 'OAuth2认证服务未启用，请联系管理员');
       return;
     }
     
     setLoading(true);
     
     try {
-      if (useOAuth2 && isOAuth2Enabled) {
-        await handleOAuth2Login();
-      } else {
-        await handleTraditionalLogin();
-      }
+      await handleOAuth2Login();
     } catch (error) {
-      console.error('[LoginScreen] 登录处理失败:', error);
+      console.error('[LoginScreen] OAuth2登录处理失败:', error);
     } finally {
       setLoading(false);
       if (loginStatus && !loginStatus.includes('成功')) {
@@ -296,23 +222,25 @@ const LoginScreen = ({ navigation, route }) => {
       marginBottom: 40,
     },
     authModeContainer: {
-      flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
       marginBottom: 30,
-      padding: 15,
+      padding: 20,
       backgroundColor: colors.surface,
       borderRadius: 10,
+      borderLeftWidth: 4,
+      borderLeftColor: colors.primary,
     },
     authModeText: {
-      fontSize: 16,
+      fontSize: 18,
       color: colors.text,
-      marginRight: 10,
+      fontWeight: '600',
+      marginBottom: 5,
     },
-    authModeLabel: {
+    authModeDescription: {
       fontSize: 14,
       color: colors.textSecondary,
-      marginLeft: 10,
+      textAlign: 'center',
     },
     inputContainer: {
       marginBottom: 20,
@@ -415,37 +343,25 @@ const LoginScreen = ({ navigation, route }) => {
         <Text style={styles.title}>欢迎登录</Text>
         <Text style={styles.subtitle}>请输入您的登录凭证</Text>
         
-        {/* OAuth2模式切换 */}
-        {isOAuth2Enabled && (
-          <View style={styles.authModeContainer}>
-            <Text style={styles.authModeText}>OAuth2认证</Text>
-            <Switch
-              value={useOAuth2}
-              onValueChange={setUseOAuth2}
-              trackColor={{ false: colors.disabled, true: colors.primary }}
-              thumbColor={useOAuth2 ? '#FFFFFF' : '#f4f3f4'}
-            />
-            <Text style={styles.authModeLabel}>
-              {useOAuth2 ? 'OAuth2模式' : '传统模式'}
-            </Text>
-          </View>
-        )}
+        {/* OAuth2认证提示 */}
+        <View style={styles.authModeContainer}>
+          <Text style={styles.authModeText}>🔐 OAuth2 安全认证</Text>
+          <Text style={styles.authModeDescription}>使用统一身份认证系统登录</Text>
+        </View>
         
         {/* 租户名称输入 */}
-        {useOAuth2 && (
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>租户名称</Text>
-            <TextInput
-              style={styles.input}
-              value={formData.tenantName}
-              onChangeText={(value) => updateFormData('tenantName', value)}
-              placeholder="请输入租户名称（默认为正泽物联）"
-              placeholderTextColor={colors.textSecondary}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
-        )}
+        <View style={styles.inputContainer}>
+          <Text style={styles.label}>租户名称</Text>
+          <TextInput
+            style={styles.input}
+            value={formData.tenantName}
+            onChangeText={(value) => updateFormData('tenantName', value)}
+            placeholder="请输入租户名称（默认为正泽物联）"
+            placeholderTextColor={colors.textSecondary}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+        </View>
 
         {/* 用户名输入 */}
         <View style={styles.inputContainer}>
@@ -511,7 +427,7 @@ const LoginScreen = ({ navigation, route }) => {
             <View style={styles.loadingContainer}>
               <ActivityIndicator color="#FFFFFF" size="small" />
               <Text style={styles.loadingText}>
-                {loginStatus || (useOAuth2 ? '正在验证OAuth2身份...' : '正在登录...')}
+                {loginStatus || '正在验证OAuth2身份...'}
               </Text>
             </View>
           ) : (

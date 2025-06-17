@@ -174,12 +174,7 @@ export const PAGE_PERMISSIONS = {
   },
   
   // 系统管理页面
-  USER_MANAGEMENT: {
-    route: '/user-management',
-    permission: 'page.admin.users',
-    level: PERMISSION_LEVELS.ADMIN,
-    description: '用户管理'
-  },
+
   API_MANAGEMENT: {
     route: '/api-management',
     permission: 'page.admin.api',

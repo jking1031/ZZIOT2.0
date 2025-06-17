@@ -28,12 +28,16 @@ import MessageQueryScreen from './screens/MessageQueryScreen';
 import ReportForm5000Screen from './screens/ReportForm5000Screen';
 import ReportFormSludgeScreen from './screens/ReportFormSludgeScreen';
 import FileUploadTestScreen from './screens/FileUploadTestScreen';
-import UserManagementScreen from './screens/UserManagementScreen';
+
 import ApiManagementScreen from './screens/ApiManagementScreen';
 import OAuth2ConfigScreen from './screens/OAuth2ConfigScreen';
 import LoginScreen from './screens/LoginScreen';
 import RegisterScreen from './screens/RegisterScreen';
-// 工单相关页面已删除
+// 工单系统页面
+import WorkOrderListScreen from './screens/WorkOrderListScreen';
+import WorkOrderDetailScreen from './screens/WorkOrderDetailScreen';
+import WorkOrderEditScreen from './screens/WorkOrderEditScreen';
+import WorkOrderCreateScreen from './screens/WorkOrderCreateScreen';
 import LabDataScreen from './screens/LabDataScreen';
 import SludgeDataEntryScreen from './screens/SludgeDataEntryScreen';
 import ReportFormPumpStationScreen from './screens/ReportFormPumpStationScreen';
@@ -458,7 +462,39 @@ function AppContent({ showSplash, onSplashFinish }) {
             }}
           />
           
-          {/* 工单系统相关屏幕已删除 */}
+          {/* 工单系统相关屏幕 */}
+          <Stack.Screen
+            name="工单列表"
+            component={WorkOrderListScreen}
+            options={{
+              title: '工单列表',
+              headerShown: true
+            }}
+          />
+          <Stack.Screen
+            name="工单详情"
+            component={WorkOrderDetailScreen}
+            options={{
+              title: '工单详情',
+              headerShown: true
+            }}
+          />
+          <Stack.Screen
+            name="工单编辑"
+            component={WorkOrderEditScreen}
+            options={{
+              title: '工单编辑',
+              headerShown: true
+            }}
+          />
+          <Stack.Screen
+            name="工单创建"
+            component={WorkOrderCreateScreen}
+            options={{
+              title: '创建工单',
+              headerShown: false
+            }}
+          />
 
           <Stack.Screen
             name="文件上传"
@@ -468,14 +504,7 @@ function AppContent({ showSplash, onSplashFinish }) {
               headerShown: true
             }}
           />
-          <Stack.Screen
-            name="UserManagementScreen"
-            component={UserManagementScreen}
-            options={{
-              title: '用户管理',
-              headerShown: true
-            }}
-          />
+
           <Stack.Screen
             name="ApiManagementScreen"
             component={ApiManagementScreen}

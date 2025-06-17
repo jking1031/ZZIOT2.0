@@ -31,7 +31,7 @@ const GUEST_PERMISSIONS = {
       permission_key: 'profile_view',
       permission_name: '个人资料查看',
       route_path: '/profile',
-      module_name: '用户管理',
+      module_name: '基础功能',
       permission_level: PERMISSION_LEVELS.READ
     }
   ],
@@ -424,7 +424,7 @@ class PermissionInitService {
       this.accessiblePages = [
         // 基础页面
         { permission_key: 'home_view', permission_name: '首页', route_path: '/home', module_name: '基础功能', permission_level: PERMISSION_LEVELS.ADMIN },
-        { permission_key: 'profile_view', permission_name: '个人资料', route_path: '/profile', module_name: '用户管理', permission_level: PERMISSION_LEVELS.ADMIN },
+        { permission_key: 'profile_view', permission_name: '个人资料', route_path: '/profile', module_name: '基础功能', permission_level: PERMISSION_LEVELS.ADMIN },
         
         // 数据管理
         { permission_key: 'data_center', permission_name: '数据中心', route_path: '/data-center', module_name: '数据管理', permission_level: PERMISSION_LEVELS.ADMIN },
@@ -447,7 +447,7 @@ class PermissionInitService {
         { permission_key: 'report_form_pump_station', permission_name: '泵站日报', route_path: '/report-form-pump-station', module_name: '报表管理', permission_level: PERMISSION_LEVELS.ADMIN },
         
         // 系统管理
-        { permission_key: 'user_management', permission_name: '用户管理', route_path: '/user-management', module_name: '系统管理', permission_level: PERMISSION_LEVELS.ADMIN },
+
         { permission_key: 'api_management', permission_name: 'API管理', route_path: '/api-management', module_name: '系统管理', permission_level: PERMISSION_LEVELS.ADMIN },
         { permission_key: 'oauth2_config', permission_name: 'OAuth2配置', route_path: '/oauth2-config', module_name: '系统管理', permission_level: PERMISSION_LEVELS.ADMIN },
         { permission_key: 'site_list', permission_name: '站点管理', route_path: '/site-list', module_name: '系统管理', permission_level: PERMISSION_LEVELS.ADMIN },

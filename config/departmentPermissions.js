@@ -20,7 +20,7 @@ export const PAGE_PERMISSIONS = {
   DYNAMIC_REPORTS: { id: 'dynamic_reports', name: '动态报表', module: 'report', description: '动态报表生成页面' },
   
   // 系统管理模块
-  USER_MANAGEMENT: { id: 'user_management', name: '用户管理', module: 'system', description: '用户账户管理页面' },
+
   API_MANAGEMENT: { id: 'api_management', name: 'API管理', module: 'system', description: 'API接口管理页面' },
   OAUTH2_CONFIG: { id: 'oauth2_config', name: 'OAuth2配置', module: 'system', description: 'OAuth2认证配置页面' },
   SITE_MANAGEMENT: { id: 'site_management', name: '站点管理', module: 'system', description: '站点信息管理页面' },

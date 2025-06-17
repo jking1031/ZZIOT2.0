@@ -65,7 +65,9 @@
     "@react-native-community/cli": "^18.0.0",
     "@react-native/metro-config": "^0.79.2",
     "concurrently": "^8.2.2",
-    "react-native-svg-transformer": "^1.5.1"
+    "react-native-svg-transformer": "^1.5.1",
+    "typescript": "^5.3.3",
+    "@types/react": "~18.3.12"
   },
   "private": true,
   "expo": {

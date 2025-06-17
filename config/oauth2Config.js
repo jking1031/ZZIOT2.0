@@ -5,7 +5,7 @@
 
 const OAuth2Config = {
   // 若依后端服务地址
-  baseUrl: 'http://localhost:48080',
+  baseUrl: 'https://office.jzz77.cn:9003',
   
   // OAuth2客户端配置（需要在若依后端配置对应的客户端）
   client: {

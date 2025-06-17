@@ -499,7 +499,8 @@ const MainTab = () => {
     { name: '动态报表', icon: 'document-text', color: '#E91E63', route: '动态报表' },
     { name: '告警信息', icon: 'warning', color: '#FF4444', route: '告警信息' },
     { name: '个人中心', icon: 'person', color: '#2196F3', route: '个人中心' },
-    // 工单系统已删除
+    { name: '工单系统', icon: 'clipboard', color: '#E91E63', route: '工单列表' },
+    { name: '创建工单', icon: 'add-circle', color: '#4CAF50', route: '工单创建' },
     { name: '数据填报', icon: 'document-text-outline', color: '#009688', route: '数据填报中心' },
   ];
 
@@ -997,7 +998,18 @@ const MainTab = () => {
               </TouchableOpacity>
             </View>
             
-            {/* 工单系统已删除 */}
+            <View style={[styles.statsCardContainer, { width: '31%' }]}>
+              <TouchableOpacity 
+                style={[styles.statsCard, styles.functionCard]} 
+                onPress={() => navigation.navigate('工单列表')}
+              >
+                <View style={[styles.iconContainer, { backgroundColor: 'rgba(233, 30, 99, 0.15)' }]}>
+                  <Ionicons name="clipboard" size={26} color="#E91E63" />
+                </View>
+                <Text style={styles.statsValue} numberOfLines={1}>工单系统</Text>
+                <Text style={styles.statsLabel} numberOfLines={2}>工单管理</Text>
+              </TouchableOpacity>
+            </View>
             
             <View style={[styles.statsCardContainer, { width: '31%' }]}>
               <TouchableOpacity 
@@ -1030,13 +1042,7 @@ const MainTab = () => {
               </View>
               
               <View style={styles.adminMenuContainer}>
-                <TouchableOpacity 
-                  style={styles.adminMenuItem}
-                  onPress={() => navigation.navigate('UserManagementScreen')}
-                >
-                  <Ionicons name="people" size={20} color="#2196F3" />
-                  <Text style={styles.adminMenuItemText}>用户管理</Text>
-                </TouchableOpacity>
+
                 
                 <TouchableOpacity 
                   style={styles.adminMenuItem}
@@ -1063,21 +1069,7 @@ const MainTab = () => {
                 </TouchableOpacity>
                 
                 {/* 这里添加更多管理员功能按钮 */}
-                <TouchableOpacity 
-                  style={styles.adminMenuItem}
-                  onPress={() => Alert.alert('提示', '此功能正在开发中')}
-                >
-                  <Ionicons name="settings" size={20} color="#2196F3" />
-                  <Text style={styles.adminMenuItemText}>系统设置</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={styles.adminMenuItem}
-                  onPress={() => Alert.alert('提示', '此功能正在开发中')}
-                >
-                  <Ionicons name="analytics" size={20} color="#2196F3" />
-                  <Text style={styles.adminMenuItemText}>数据统计</Text>
-                </TouchableOpacity>
+
               </View>
             </View>
           </>

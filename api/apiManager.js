@@ -13,14 +13,6 @@ const DEFAULT_API_BASE_URLS = {
     description: '统一业务API服务器（已迁移所有ZZIOT服务）',
     priority: 1
   },
-  // ZZIOT 后端 - 已废弃，所有服务已迁移到Node-RED
-  ZZIOT: {
-    name: 'ZZIOT服务器（已废弃）',
-    url: 'https://zziot.jzz77.cn:9003', // 已弃用，所有服务已迁移到Node-RED
-    enabled: false,
-    description: '已废弃：所有服务已迁移到Node-RED',
-    priority: 999
-  }
 };
 
 // 运行时API配置（可动态修改）

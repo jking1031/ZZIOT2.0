@@ -98,4 +98,4 @@ export const getUserInfo = () => {
  */
 export const clearUserInfo = () => {
   return removeData(CACHE_KEYS.USER_INFO);
-}; 
+};
