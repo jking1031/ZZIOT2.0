@@ -329,6 +329,20 @@ const LoginScreen = ({ navigation, route }) => {
       fontWeight: 'bold',
       marginLeft: 10,
     },
+    configButton: {
+      backgroundColor: 'transparent',
+      borderWidth: 1,
+      borderColor: colors.primary,
+      borderRadius: 8,
+      padding: 15,
+      alignItems: 'center',
+      marginTop: 20,
+    },
+    configButtonText: {
+      color: colors.primary,
+      fontSize: 16,
+      fontWeight: '500',
+    },
   });
   
   return (
@@ -365,12 +379,12 @@ const LoginScreen = ({ navigation, route }) => {
 
         {/* 用户名输入 */}
         <View style={styles.inputContainer}>
-          <Text style={styles.label}>用户名/邮箱</Text>
+          <Text style={styles.label}>用户名</Text>
           <TextInput
             style={styles.input}
             value={formData.email}
             onChangeText={(value) => updateFormData('email', value)}
-            placeholder="请输入用户名或邮箱"
+            placeholder="请输入用户名"
             placeholderTextColor={colors.textSecondary}
             autoCapitalize="none"
             autoCorrect={false}
@@ -445,6 +459,14 @@ const LoginScreen = ({ navigation, route }) => {
             <Text style={styles.registerButtonText}>立即注册</Text>
           </TouchableOpacity>
         </View>
+        
+        {/* OAuth配置按钮 */}
+        <TouchableOpacity 
+          style={styles.configButton}
+          onPress={() => navigation.navigate('OAuth2ConfigScreen')}
+        >
+          <Text style={styles.configButtonText}>⚙️ 系统配置</Text>
+        </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
   );
