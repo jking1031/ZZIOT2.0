@@ -2,6 +2,7 @@
 // 支持多后端配置和动态管理，便于对接不同的后端服务（如Node-RED等）
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { DEFAULT_OAUTH2_CONFIG } from '../oauth2Service';
 
 // 默认基础URL配置
 const DEFAULT_API_BASE_URLS = {
@@ -46,6 +47,18 @@ export const saveApiConfig = async () => {
   }
 };
 
+// 动态获取OAuth2配置中的baseUrl
+const getOAuth2BaseUrl = async () => {
+  try {
+    const savedConfig = await AsyncStorage.getItem('oauth2_config');
+    const config = savedConfig ? JSON.parse(savedConfig) : DEFAULT_OAUTH2_CONFIG;
+    return config.baseUrl;
+  } catch (error) {
+    console.error('[API管理] 获取OAuth2 baseUrl失败:', error);
+    return DEFAULT_OAUTH2_CONFIG.baseUrl;
+  }
+};
+
 // 获取所有可用的后端配置
 export const getAvailableBackends = () => {
   return Object.entries(API_BASE_URLS)
@@ -69,10 +82,10 @@ export const getEnabledBackendUrls = () => {
 export const API_ENDPOINTS = {
   // 认证相关 - 使用NODERED后端
   AUTH: {
-    baseUrl: 'NODERED',
+    baseUrl: 'OAUTH2_DYNAMIC', // 动态从OAuth2配置获取
     endpoints: {
       LOGIN: '/api/auth/login/',
-      REGISTER: '/api/auth/register/',
+      REGISTER: '/system/auth/register',
       REFRESH_TOKEN: '/api/auth/refresh-token/',
       LOGOUT: '/api/auth/logout/',
       CHECK_ADMIN: '/api/auth/check-admin/',
@@ -236,7 +249,7 @@ export const API_ENDPOINTS = {
 };
 
 // 获取完整的API URL
-export const getApiUrl = (category, endpointKey, ...params) => {
+export const getApiUrl = async (category, endpointKey, ...params) => {
   const categoryConfig = API_ENDPOINTS[category];
   
   if (!categoryConfig) {
@@ -248,8 +261,13 @@ export const getApiUrl = (category, endpointKey, ...params) => {
   
   if (categoryConfig.baseUrl) {
     // 简单结构：category直接包含baseUrl和endpoints
-    const backendConfig = API_BASE_URLS[categoryConfig.baseUrl];
-    baseUrl = backendConfig ? backendConfig.url : null;
+    if (categoryConfig.baseUrl === 'OAUTH2_DYNAMIC') {
+      // 动态从OAuth2配置获取baseUrl
+      baseUrl = await getOAuth2BaseUrl();
+    } else {
+      const backendConfig = API_BASE_URLS[categoryConfig.baseUrl];
+      baseUrl = backendConfig ? backendConfig.url : null;
+    }
     const endpointConfig = categoryConfig.endpoints[endpointKey];
     
     if (typeof endpointConfig === 'function') {

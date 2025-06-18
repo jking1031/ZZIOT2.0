@@ -3,7 +3,6 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-import { getApiUrl } from './apiManager';
 import { REQUEST_TIMEOUT } from './config';
 import OAuth2Config from '../config/oauth2Config';
 

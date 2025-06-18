@@ -18,21 +18,21 @@ import { authApi } from '../api/apiService';
 
 const RegisterScreen = ({ navigation }) => {
   const { colors } = useTheme();
-  const { oauth2Service, isOAuth2Enabled } = useAuth();
+  const { oauth2Service, isOAuth2Enabled, register } = useAuth();
   
-  // 表单状态
+  // 表单状态 - 按照文档规范简化
   const [formData, setFormData] = useState({
     username: '',
-    email: '',
+    nickname: '',
     password: '',
-    confirmPassword: '',
-    phone: '',
-    department: '',
-    company: ''
+    confirmPassword: ''
   });
   
+  // 表单验证错误状态
+  const [errors, setErrors] = useState({});
+  
   // UI状态
-  const [loading, setLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   
@@ -48,234 +48,97 @@ const RegisterScreen = ({ navigation }) => {
     setUseOAuth2(isOAuth2Enabled);
   };
   
-  // 表单验证
+  // 表单验证 - 按照文档规范
   const validateForm = () => {
-    const { username, email, password, confirmPassword, phone } = formData;
+    const newErrors = {};
+    const { username, nickname, password, confirmPassword } = formData;
     
-    // 必填字段检查
-    if (!username.trim()) {
-      Alert.alert('验证失败', '请输入用户名');
-      return false;
+    // 用户名验证（4-30个字符，只能包含字母、数字、下划线）
+    if (!username || username.length < 4 || username.length > 30) {
+      newErrors.username = '用户名必须为4-30个字符';
+    } else if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+      newErrors.username = '用户名只能包含字母、数字、下划线';
     }
     
-    if (!email.trim()) {
-      Alert.alert('验证失败', '请输入邮箱地址');
-      return false;
+    // 昵称验证（1-30个字符）
+    if (!nickname || nickname.length > 30) {
+      newErrors.nickname = '昵称不能为空且不超过30个字符';
     }
     
-    if (!password.trim()) {
-      Alert.alert('验证失败', '请输入密码');
-      return false;
+    // 密码验证（4-16个字符）
+    if (!password || password.length < 4 || password.length > 16) {
+      newErrors.password = '密码必须为4-16个字符';
     }
     
-    if (!confirmPassword.trim()) {
-      Alert.alert('验证失败', '请确认密码');
-      return false;
+    // 确认密码验证
+    if (!confirmPassword) {
+      newErrors.confirmPassword = '请确认密码';
+    } else if (password !== confirmPassword) {
+      newErrors.confirmPassword = '两次输入的密码不一致';
     }
     
-    // 用户名验证
-    if (username.length < 3) {
-      Alert.alert('验证失败', '用户名至少需要3个字符');
-      return false;
-    }
-    
-    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
-      Alert.alert('验证失败', '用户名只能包含字母、数字和下划线');
-      return false;
-    }
-    
-    // 邮箱验证
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      Alert.alert('验证失败', '请输入有效的邮箱地址');
-      return false;
-    }
-    
-    // 密码验证
-    if (password.length < 6) {
-      Alert.alert('验证失败', '密码至少需要6个字符');
-      return false;
-    }
-    
-    if (password !== confirmPassword) {
-      Alert.alert('验证失败', '两次输入的密码不一致');
-      return false;
-    }
-    
-    // 手机号验证（如果填写）
-    if (phone && !/^1[3-9]\d{9}$/.test(phone)) {
-      Alert.alert('验证失败', '请输入有效的手机号码');
-      return false;
-    }
-    
-    return true;
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
   
-  // OAuth2注册
-  const handleOAuth2Register = async () => {
-    try {
-      console.log('[RegisterScreen] 开始OAuth2注册');
-      
-      if (!oauth2Service) {
-        throw new Error('OAuth2服务未初始化');
-      }
-      
-      // 准备注册数据
-      const registerData = {
-        username: formData.username.trim(),
-        email: formData.email.trim().toLowerCase(),
-        password: formData.password,
-        phone: formData.phone.trim() || null,
-        department: formData.department.trim() || null,
-        company: formData.company.trim() || null,
-        // Ruoyi后端可能需要的额外字段
-        status: '1', // 默认启用状态
-        userType: '00', // 普通用户
-        sex: '2' // 未知性别
-      };
-      
-      // 第一步：使用传统API注册用户
-      console.log('[RegisterScreen] 使用传统API创建用户账号');
-      const response = await authApi.register(registerData);
-      
-      if (!response || (!response.success && response.code !== 200)) {
-        throw new Error(response?.message || '注册失败，请稍后重试');
-      }
-      
-      console.log('[RegisterScreen] 用户账号创建成功，开始OAuth2认证');
-      
-      // 第二步：使用OAuth2服务登录新创建的账号
-      const loginResult = await oauth2Service.passwordLogin(
-        formData.username.trim(),
-        formData.password,
-        null, // 使用默认客户端ID
-        null, // 使用默认客户端密钥
-        'user.read user.write',
-        '1' // 默认租户ID
-      );
-      
-      if (!loginResult.success) {
-        throw new Error(loginResult.error || 'OAuth2认证失败');
-      }
-      
-      console.log('[RegisterScreen] OAuth2认证成功:', loginResult.data);
-      
-      Alert.alert(
-        '注册成功',
-        'OAuth2账号已创建并认证成功，请使用新账号登录系统。',
-        [
-          {
-            text: '确定',
-            onPress: () => {
-              navigation.navigate('Login', {
-                prefillEmail: formData.email
-              });
-            }
+  // 处理注册成功
+  const handleRegisterSuccess = (response) => {
+    Alert.alert(
+      '注册成功',
+      response.message || '您的账号已创建成功，请使用新账号登录系统。',
+      [
+        {
+          text: '确定',
+          onPress: () => {
+            // 跳转到登录页面并预填充用户名
+            navigation.navigate('Login', {
+              prefillUsername: formData.username
+            });
           }
-        ]
-      );
-      
-    } catch (error) {
-      console.error('[RegisterScreen] OAuth2注册失败:', error);
-      throw error; // 重新抛出错误供主处理函数处理
-    }
+        }
+      ]
+    );
   };
   
-  // 传统注册
-  const handleTraditionalRegister = async () => {
+  // 主注册处理函数
+  const handleRegister = async () => {
     try {
-      console.log('[RegisterScreen] 开始传统注册');
+      setIsLoading(true);
       
       // 准备注册数据
       const registerData = {
         username: formData.username.trim(),
-        email: formData.email.trim().toLowerCase(),
+        nickname: formData.nickname.trim(),
         password: formData.password,
-        phone: formData.phone.trim() || null,
-        department: formData.department.trim() || null,
-        company: formData.company.trim() || null,
-        // Ruoyi后端可能需要的额外字段
-        status: '1', // 默认启用状态
-        userType: '00', // 普通用户
-        sex: '2' // 未知性别
+        confirmPassword: formData.confirmPassword
       };
       
-      console.log('[RegisterScreen] 注册数据:', {
+      console.log('[RegisterScreen] 开始注册:', {
         ...registerData,
-        password: '***' // 隐藏密码
+        password: '***',
+        confirmPassword: '***'
       });
       
-      // 调用注册API
-      const response = await authApi.register(registerData);
+      // 调用AuthContext的register方法
+      const result = await register(registerData);
       
-      console.log('[RegisterScreen] 注册响应:', response);
-      
-      // 处理注册成功
-      if (response && (response.success || response.code === 200)) {
-        Alert.alert(
-          '注册成功',
-          '您的账号已创建成功，请使用新账号登录系统。',
-          [
-            {
-              text: '确定',
-              onPress: () => {
-                // 跳转到登录页面并预填充邮箱
-                navigation.navigate('Login', {
-                  prefillEmail: formData.email
-                });
-              }
-            }
-          ]
-        );
+      if (result.success) {
+        handleRegisterSuccess(result);
       } else {
-        throw new Error(response?.message || '注册失败，请稍后重试');
+        throw new Error(result.message || '注册失败，请稍后重试');
       }
       
     } catch (error) {
-      console.error('[RegisterScreen] 传统注册失败:', error);
-      throw error; // 重新抛出错误供主处理函数处理
-    }
-  };
-  
-  // 处理注册
-  const handleRegister = async () => {
-    if (loading) return;
-    
-    if (!validateForm()) {
-      return;
-    }
-    
-    setLoading(true);
-    
-    try {
-      if (useOAuth2 && isOAuth2Enabled) {
-        await handleOAuth2Register();
-      } else {
-        await handleTraditionalRegister();
-      }
-    } catch (error) {
-      console.error('[RegisterScreen] 注册处理失败:', error);
+      console.error('[RegisterScreen] 注册失败:', error);
       
-      let errorMessage = '注册失败';
-      
-      if (error.response) {
-        const responseData = error.response.data;
-        if (responseData?.message) {
-          errorMessage = responseData.message;
-        } else if (responseData?.msg) {
-          errorMessage = responseData.msg;
-        } else {
-          errorMessage = '服务器返回错误，请稍后重试';
-        }
-      } else if (error.request) {
-        errorMessage = '网络连接失败，请检查网络设置';
-      } else {
-        errorMessage = error.message || '注册过程中发生错误，请重试';
-      }
-      
-      Alert.alert('注册失败', errorMessage);
+      // 显示错误信息
+      Alert.alert(
+        '注册失败',
+        error.message || '注册过程中发生错误，请稍后重试',
+        [{ text: '确定' }]
+      );
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
   
@@ -420,6 +283,16 @@ const RegisterScreen = ({ navigation }) => {
       color: colors.textSecondary,
       marginTop: 5,
     },
+    inputError: {
+      borderColor: '#ff4444',
+      borderWidth: 1,
+    },
+    errorText: {
+      color: '#ff4444',
+      fontSize: 12,
+      marginTop: 4,
+      marginLeft: 4,
+    },
   });
   
   return (
@@ -435,69 +308,54 @@ const RegisterScreen = ({ navigation }) => {
         <Text style={styles.title}>创建账号</Text>
         <Text style={styles.subtitle}>请填写以下信息完成注册</Text>
         
-        {/* OAuth2模式切换 */}
-        {isOAuth2Enabled && (
-          <View style={styles.authModeContainer}>
-            <Text style={styles.authModeText}>OAuth2认证</Text>
-            <Switch
-              value={useOAuth2}
-              onValueChange={setUseOAuth2}
-              trackColor={{ false: colors.disabled, true: colors.primary }}
-              thumbColor={useOAuth2 ? '#FFFFFF' : '#f4f3f4'}
-            />
-            <Text style={styles.authModeLabel}>
-              {useOAuth2 ? 'OAuth2模式' : '传统模式'}
-            </Text>
-          </View>
-        )}
-        
         {/* 用户名 */}
         <View style={styles.inputContainer}>
-          <Text style={[styles.label, styles.requiredLabel]}>用户名 *</Text>
+          <Text style={styles.label}>
+            用户名 <Text style={styles.requiredLabel}>*</Text>
+          </Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, errors.username && styles.inputError]}
             value={formData.username}
-            onChangeText={(value) => updateFormData('username', value)}
-            placeholder="请输入用户名（3-20个字符）"
-            placeholderTextColor={colors.textSecondary}
+            onChangeText={(text) => updateFormData('username', text)}
+            placeholder="请输入用户名"
             autoCapitalize="none"
             autoCorrect={false}
-            maxLength={20}
           />
-          <Text style={styles.helpText}>只能包含字母、数字和下划线</Text>
+          {errors.username && <Text style={styles.errorText}>{errors.username}</Text>}
         </View>
         
-        {/* 邮箱 */}
+        {/* 昵称 */}
         <View style={styles.inputContainer}>
-          <Text style={[styles.label, styles.requiredLabel]}>邮箱地址 *</Text>
+          <Text style={styles.label}>
+            昵称 <Text style={styles.requiredLabel}>*</Text>
+          </Text>
           <TextInput
-            style={styles.input}
-            value={formData.email}
-            onChangeText={(value) => updateFormData('email', value)}
-            placeholder="请输入邮箱地址"
-            placeholderTextColor={colors.textSecondary}
+            style={[styles.input, errors.nickname && styles.inputError]}
+            value={formData.nickname}
+            onChangeText={(text) => updateFormData('nickname', text)}
+            placeholder="请输入昵称"
             autoCapitalize="none"
             autoCorrect={false}
-            keyboardType="email-address"
           />
-          <Text style={styles.helpText}>用于登录和接收通知</Text>
+          {errors.nickname && <Text style={styles.errorText}>{errors.nickname}</Text>}
         </View>
         
         {/* 密码 */}
         <View style={styles.inputContainer}>
-          <Text style={[styles.label, styles.requiredLabel]}>密码 *</Text>
+          <Text style={styles.label}>
+            密码 <Text style={styles.requiredLabel}>*</Text>
+          </Text>
           <View style={styles.passwordContainer}>
             <TextInput
-              style={[styles.input, styles.passwordInput]}
+              style={[styles.passwordInput, errors.password && styles.inputError]}
               value={formData.password}
-              onChangeText={(value) => updateFormData('password', value)}
-              placeholder="请输入密码（至少6个字符）"
-              placeholderTextColor={colors.textSecondary}
+              onChangeText={(text) => updateFormData('password', text)}
+              placeholder="请输入密码"
               secureTextEntry={!showPassword}
               autoCapitalize="none"
               autoCorrect={false}
             />
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.showPasswordButton}
               onPress={() => setShowPassword(!showPassword)}
             >
@@ -506,23 +364,25 @@ const RegisterScreen = ({ navigation }) => {
               </Text>
             </TouchableOpacity>
           </View>
+          {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
         </View>
         
         {/* 确认密码 */}
         <View style={styles.inputContainer}>
-          <Text style={[styles.label, styles.requiredLabel]}>确认密码 *</Text>
+          <Text style={styles.label}>
+            确认密码 <Text style={styles.requiredLabel}>*</Text>
+          </Text>
           <View style={styles.passwordContainer}>
             <TextInput
-              style={[styles.input, styles.passwordInput]}
+              style={[styles.passwordInput, errors.confirmPassword && styles.inputError]}
               value={formData.confirmPassword}
-              onChangeText={(value) => updateFormData('confirmPassword', value)}
+              onChangeText={(text) => updateFormData('confirmPassword', text)}
               placeholder="请再次输入密码"
-              placeholderTextColor={colors.textSecondary}
               secureTextEntry={!showConfirmPassword}
               autoCapitalize="none"
               autoCorrect={false}
             />
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.showPasswordButton}
               onPress={() => setShowConfirmPassword(!showConfirmPassword)}
             >
@@ -531,58 +391,25 @@ const RegisterScreen = ({ navigation }) => {
               </Text>
             </TouchableOpacity>
           </View>
+          {errors.confirmPassword && <Text style={styles.errorText}>{errors.confirmPassword}</Text>}
         </View>
         
-        {/* 手机号 */}
-        <View style={styles.inputContainer}>
-          <Text style={styles.label}>手机号</Text>
-          <TextInput
-            style={styles.input}
-            value={formData.phone}
-            onChangeText={(value) => updateFormData('phone', value)}
-            placeholder="请输入手机号（可选）"
-            placeholderTextColor={colors.textSecondary}
-            keyboardType="phone-pad"
-            maxLength={11}
-          />
-        </View>
-        
-        {/* 部门 */}
-        <View style={styles.inputContainer}>
-          <Text style={styles.label}>部门</Text>
-          <TextInput
-            style={styles.input}
-            value={formData.department}
-            onChangeText={(value) => updateFormData('department', value)}
-            placeholder="请输入所属部门（可选）"
-            placeholderTextColor={colors.textSecondary}
-            autoCapitalize="words"
-          />
-        </View>
-        
-        {/* 公司 */}
-        <View style={styles.inputContainer}>
-          <Text style={styles.label}>公司</Text>
-          <TextInput
-            style={styles.input}
-            value={formData.company}
-            onChangeText={(value) => updateFormData('company', value)}
-            placeholder="请输入公司名称（可选）"
-            placeholderTextColor={colors.textSecondary}
-            autoCapitalize="words"
-          />
-        </View>
+
         
         {/* 注册按钮 */}
         <TouchableOpacity
           style={[
             styles.registerButton,
-            loading && styles.registerButtonDisabled
+            (isLoading || !formData.username || !formData.nickname || !formData.password || !formData.confirmPassword) && styles.registerButtonDisabled
           ]}
-          onPress={handleRegister}
-          disabled={loading}
+          onPress={() => {
+            if (validateForm()) {
+              handleRegister();
+            }
+          }}
+          disabled={isLoading || !formData.username || !formData.nickname || !formData.password || !formData.confirmPassword}
         >
-          {loading ? (
+          {isLoading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator color="#FFFFFF" size="small" />
               <Text style={styles.loadingText}>注册中...</Text>

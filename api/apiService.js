@@ -76,7 +76,7 @@ class ApiService {
       const { method = 'GET', data, params, headers, ...otherOptions } = options;
       
       // 获取完整URL和对应的后端
-      const fullUrl = getApiUrl(category, endpointKey, ...(options.urlParams || []));
+      const fullUrl = await getApiUrl(category, endpointKey, ...(options.urlParams || []));
       
       // 从URL中提取后端类型
       let backendKey = null;

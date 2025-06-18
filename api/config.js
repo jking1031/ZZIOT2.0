@@ -1,11 +1,8 @@
 // 兼容性配置 - 保持向后兼容
 // 推荐使用新的 apiManager.js 进行API管理
 
-// 导入新的API管理系统
-import { API_BASE_URLS, getApiUrl } from './apiManager';
-
 // API基础URL (兼容性保留)
-export const BASE_URL = API_BASE_URLS.NODERED?.url || 'https://nodered.jzz77.cn:9003';
+export const BASE_URL = 'https://nodered.jzz77.cn:9003';
 
 // API请求超时时间 (毫秒)
 export const REQUEST_TIMEOUT = 30000;
