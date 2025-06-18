@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-import { authApi } from '../api/apiService';
+import { authApi, apiService, setTenantId } from '../api/apiService'; // Added apiService for direct GET_TENANT_ID_BY_NAME call
 import { CACHE_KEYS } from '../api/config';
 import { saveAuthToken, getAuthToken, clearAuthToken } from '../api/storage';
 import { EventRegister } from '../utils/EventEmitter';
@@ -276,6 +276,23 @@ export const AuthProvider = ({ children }) => {
         throw new Error('无效的用户数据');
       }
 
+      // 处理租户ID设置
+      if (userData.tenantName) {
+        try {
+          const tenantId = await getTenantIdByName(userData.tenantName);
+          console.log(`[AuthContext] 登录时获取到租户ID: ${tenantId}`);
+          // 设置租户ID到全局状态
+          setTenantId(tenantId.toString());
+        } catch (tenantError) {
+          console.warn('[AuthContext] 获取租户ID失败，使用默认租户:', tenantError.message);
+          // 如果获取租户ID失败，继续使用默认租户
+          setTenantId('1');
+        }
+      } else {
+        // 如果没有提供租户名称，使用默认租户
+        setTenantId('1');
+      }
+
       // 记录完整的用户数据用于调试
       // console.log('===== AuthContext: 登录处理 =====');
       console.log('用户ID:', userData.id);
@@ -544,6 +561,26 @@ export const AuthProvider = ({ children }) => {
     }
   };
   
+  const getTenantIdByName = async (tenantName) => {
+    try {
+      console.log(`[AuthContext] Fetching tenant ID for name: ${tenantName}`);
+      // Use apiService directly if authApi doesn't have a dedicated method for this GET request
+      // Assuming GET_TENANT_ID_BY_NAME is configured in apiManager.js under AUTH category
+      const response = await apiService.get('AUTH', 'GET_TENANT_ID_BY_NAME', { params: { name: tenantName } });
+      console.log('[AuthContext] Get Tenant ID API Response:', response);
+      if (response && response.code === 0 && response.data !== undefined) {
+        return response.data; // Assuming response.data directly contains the tenant ID
+      } else {
+        const errorMessage = response?.msg || 'Failed to retrieve tenant ID';
+        console.error(`[AuthContext] Error fetching tenant ID: ${errorMessage}`);
+        throw new Error(errorMessage);
+      }
+    } catch (error) {
+      console.error('[AuthContext] Exception while fetching tenant ID:', error);
+      throw error; // Re-throw to be caught by the caller
+    }
+  };
+
   const register = async (userData) => {
     try {
       setLoading(true);
@@ -558,17 +595,48 @@ export const AuthProvider = ({ children }) => {
         username: userData.username,
         nickname: userData.nickname,
         password: userData.password,
-        tenantName: userData.tenantName, // 添加租户名称
+        // tenantName: userData.tenantName, // tenantName is used to fetch tenantId, might not be needed in final payload if tenantId is present
         // confirmPassword: userData.confirmPassword, // 通常后端不需要确认密码
         // 根据实际API需求调整其他字段，例如 email, deptId, postIds, mobile, sex, avatar 等
       };
+
+      // Get tenantId from tenantName
+      let tenantIdToRegister = null;
+      if (userData.tenantName) {
+        try {
+          tenantIdToRegister = await getTenantIdByName(userData.tenantName);
+          console.log(`[AuthContext] Retrieved tenantId: ${tenantIdToRegister} for tenantName: ${userData.tenantName}`);
+          // 设置租户ID到全局状态
+          setTenantId(tenantIdToRegister.toString());
+        } catch (error) {
+          console.error('[AuthContext] Failed to get tenant ID during registration:', error.message);
+          // Decide error handling: either fail registration or proceed without tenantId (which might cause backend error)
+          return { success: false, message: `获取租户ID失败: ${error.message}` };
+        }
+      } else {
+        console.warn('[AuthContext] Tenant name not provided for registration.');
+        // 如果没有提供租户名称，使用默认租户
+        setTenantId('1');
+      }
+
+      // Add tenantId to registration data if successfully retrieved
+      if (tenantIdToRegister) {
+        registrationData.tenantId = tenantIdToRegister;
+      }
+      // If tenantName itself is also required by the register API, add it back.
+      // For now, assuming tenantId is the primary identifier needed.
+      if (userData.tenantName) { // Keep tenantName if backend might need it
+          registrationData.tenantName = userData.tenantName;
+      }
+
+      console.log('[AuthContext] Final registration data:', registrationData);
 
       // 调用API进行注册
       const response = await authApi.register(registrationData);
 
       console.log('[AuthContext] 注册API响应:', response);
 
-      if (response && response.code === 200 && response.data) {
+      if (response && response.code === 0 && response.data) {
         // 注册成功，可以根据API返回的数据进行处理
         // 例如，可以提示用户注册成功，并引导用户登录
         return { success: true, message: response.msg || '注册成功' };

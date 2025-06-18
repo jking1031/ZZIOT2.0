@@ -6,6 +6,20 @@ import { getApiUrl, getBaseUrl, API_BASE_URLS } from './apiManager';
 import { getAuthToken, saveAuthToken, clearAuthToken } from './storage';
 import { REQUEST_TIMEOUT, API_RESPONSE_CODES } from './config';
 
+// 全局租户ID存储
+let currentTenantId = '1'; // 默认租户ID
+
+// 设置当前租户ID
+export const setTenantId = (tenantId) => {
+  currentTenantId = tenantId;
+  console.log(`[API服务] 租户ID已设置为: ${tenantId}`);
+};
+
+// 获取当前租户ID
+export const getTenantId = () => {
+  return currentTenantId;
+};
+
 // 创建axios实例映射
 const axiosInstances = {};
 
@@ -26,8 +40,8 @@ Object.keys(API_BASE_URLS).forEach(key => {
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
-      // 添加租户ID到请求头，默认为1
-      config.headers['tenant-id'] = '1';
+      // 添加租户ID到请求头
+      config.headers['tenant-id'] = currentTenantId;
       
       console.log(`[${key} API请求] ${config.method.toUpperCase()} ${config.url}`);
       return config;

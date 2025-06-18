@@ -158,6 +158,75 @@ class WorkOrderService {
   };
 
   /**
+   * 上传文件
+   * @param {Object} fileData - 文件数据 {uri, name, type}
+   * @param {string} directory - 上传目录，默认为 'workorder'
+   * @returns {Promise} 返回文件URL
+   */
+  uploadFile = async (fileData, directory = 'workorder') => {
+    try {
+      const axiosInstance = this.createAxiosInstance();
+      
+      // 设置认证头
+      const token = await getAuthToken();
+      if (token) {
+        axiosInstance.defaults.headers.Authorization = `Bearer ${token}`;
+      }
+      axiosInstance.defaults.headers['tenant-id'] = '1';
+      
+      // 创建FormData
+      const formData = new FormData();
+      formData.append('file', {
+        uri: fileData.uri,
+        type: fileData.type || 'application/octet-stream',
+        name: fileData.name
+      });
+      formData.append('directory', directory);
+      
+      console.log('=== 文件上传调试信息 ===');
+      console.log('文件名:', fileData.name);
+      console.log('文件类型:', fileData.type);
+      console.log('上传目录:', directory);
+      console.log('=== 调试信息结束 ===');
+      
+      const response = await axiosInstance.post('/app-api/infra/file/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        },
+        timeout: 30000 // 30秒超时
+      });
+      
+      console.log('文件上传响应:', response.data);
+      
+      if (response.data && response.data.code === 0) {
+        return response.data.data; // 返回文件URL
+      } else {
+        throw new Error(response.data?.msg || '文件上传失败');
+      }
+    } catch (error) {
+      console.error('文件上传失败:', error);
+      throw error;
+    }
+  };
+
+  /**
+   * 批量上传文件
+   * @param {Array} files - 文件数组
+   * @param {string} directory - 上传目录
+   * @returns {Promise<Array>} 返回文件URL数组
+   */
+  uploadFiles = async (files, directory = 'workorder') => {
+    const uploadPromises = files.map(file => this.uploadFile(file, directory));
+    try {
+      const results = await Promise.all(uploadPromises);
+      return results;
+    } catch (error) {
+      console.error('批量文件上传失败:', error);
+      throw error;
+    }
+  };
+
+  /**
    * 创建工单
    * @param {Object} workOrderData - 工单数据
    * @param {string} workOrderData.title - 工单标题
@@ -656,6 +725,38 @@ class WorkOrderService {
       console.error('错误堆栈:', error.stack);
       console.error('=== 可分配用户错误详情结束 ===');
       throw error;
+    }
+  };
+
+  /**
+   * 获取工单分类列表
+   * @returns {Promise} API响应数据
+   */
+  getWorkOrderCategories = async () => {
+    try {
+      const axiosInstance = await this.setupInterceptors(this.createAxiosInstance());
+      const apiPath = `${this.apiPrefix}/workorder/category/list`;
+      
+      console.log('[WorkOrderService] 获取工单分类列表');
+      console.log('请求URL:', `${this.baseURL}${apiPath}`);
+      
+      const response = await axiosInstance.get(apiPath);
+      
+      console.log('[WorkOrderService] 工单分类列表响应:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('[WorkOrderService] 获取工单分类列表失败:', error);
+      // 如果API不存在，返回默认分类
+      return {
+        code: 0,
+        data: [
+          { id: 1, name: '设备故障', value: 'equipment_failure' },
+          { id: 2, name: '维护保养', value: 'maintenance' },
+          { id: 3, name: '技术支持', value: 'technical_support' },
+          { id: 4, name: '其他', value: 'other' }
+        ],
+        msg: '默认分类'
+      };
     }
   };
 

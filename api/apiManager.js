@@ -200,6 +200,17 @@ export const API_ENDPOINTS = {
     }
   },
 
+  // 站点管理 - 使用NODERED后端
+  SITES: {
+    baseUrl: 'NODERED',
+    endpoints: {
+      LIST: '/api/site/sites',
+      BY_ID: (id) => `/api/sites/site/${id}`,
+      COMMAND: (id) => `/api/site/${id}/command`,
+      LOGS: '/api/logs'
+    }
+  },
+
   // 消息系统 - 使用NODERED后端
   MESSAGES: {
     baseUrl: 'NODERED',
