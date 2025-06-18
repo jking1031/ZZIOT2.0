@@ -546,88 +546,41 @@ export const AuthProvider = ({ children }) => {
   
   const register = async (userData) => {
     try {
-      console.log('[AuthContext] 开始用户注册流程');
-      console.log('[AuthContext] 接收到的用户数据:', {
+      setLoading(true);
+      console.log('[AuthContext] 开始注册:', {
         ...userData,
         password: '***',
         confirmPassword: '***'
       });
-      
-      // 准备注册数据，按照文档规范
-      const registerData = {
-        username: userData.username?.trim(),
-        nickname: userData.nickname || userData.username?.trim(), // 如果没有昵称，使用用户名
+
+      // 准备注册数据，确保只传递必要的字段
+      const registrationData = {
+        username: userData.username,
+        nickname: userData.nickname,
         password: userData.password,
-        captchaVerification: userData.captchaVerification || undefined // 验证码（如果启用）
+        tenantName: userData.tenantName, // 添加租户名称
+        // confirmPassword: userData.confirmPassword, // 通常后端不需要确认密码
+        // 根据实际API需求调整其他字段，例如 email, deptId, postIds, mobile, sex, avatar 等
       };
-      
-      console.log('[AuthContext] 准备的注册数据:', {
-        ...registerData,
-        password: '***'
-      });
-      
-      // 验证必填字段
-      if (!registerData.username || registerData.username.length < 4 || registerData.username.length > 30) {
-        throw new Error('用户名必须为4-30个字符');
-      }
-      
-      if (!/^[a-zA-Z0-9_]+$/.test(registerData.username)) {
-        throw new Error('用户名只能包含字母、数字、下划线');
-      }
-      
-      if (!registerData.nickname || registerData.nickname.length > 30) {
-        throw new Error('昵称不能为空且不超过30个字符');
-      }
-      
-      if (!registerData.password || registerData.password.length < 4 || registerData.password.length > 16) {
-        throw new Error('密码必须为4-16个字符');
-      }
-      
-      console.log('[AuthContext] 调用注册API');
-      console.log('[AuthContext] authApi对象:', authApi);
-      console.log('[AuthContext] authApi.register方法:', typeof authApi.register);
-      
-      // 调用注册API
-      const response = await authApi.register(registerData);
-      console.log('[AuthContext] API调用完成，原始响应:', response);
-      
+
+      // 调用API进行注册
+      const response = await authApi.register(registrationData);
+
       console.log('[AuthContext] 注册API响应:', response);
-      
-      // 检查响应格式
-      if (response && response.code === 0) {
-        // 成功响应格式：{ code: 0, data: {...}, msg: "操作成功" }
-        console.log('[AuthContext] 注册成功');
-        return { 
-          success: true, 
-          message: response.msg || '注册成功',
-          data: response.data
-        };
+
+      if (response && response.code === 200 && response.data) {
+        // 注册成功，可以根据API返回的数据进行处理
+        // 例如，可以提示用户注册成功，并引导用户登录
+        return { success: true, message: response.msg || '注册成功' };
       } else {
-        // 错误响应格式：{ code: 400, data: null, msg: "错误信息" }
-        throw new Error(response?.msg || '注册失败');
+        // 注册失败
+        throw new Error(response.msg || '注册失败，请检查输入信息');
       }
-      
     } catch (error) {
       console.error('[AuthContext] 注册失败:', error);
-      console.error('[AuthContext] 错误类型:', typeof error);
-      console.error('[AuthContext] 错误消息:', error.message);
-      console.error('[AuthContext] 错误堆栈:', error.stack);
-      
-      // 处理不同类型的错误
-      if (error.response) {
-        // 服务器返回错误响应
-        console.error('[AuthContext] 服务器错误响应:', error.response.data);
-        const errorData = error.response.data;
-        throw new Error(errorData?.msg || errorData?.message || '注册失败');
-      } else if (error.request) {
-        // 网络错误
-        console.error('[AuthContext] 网络请求错误:', error.request);
-        throw new Error('网络连接失败，请检查网络设置');
-      } else {
-        // 其他错误
-        console.error('[AuthContext] 其他错误:', error);
-        throw error;
-      }
+      return { success: false, message: error.message || '注册服务异常，请稍后重试' };
+    } finally {
+      setLoading(false);
     }
   };
   

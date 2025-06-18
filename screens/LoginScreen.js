@@ -354,14 +354,9 @@ const LoginScreen = ({ navigation, route }) => {
         contentContainerStyle={styles.scrollContainer}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.title}>欢迎登录</Text>
+        <Text style={styles.title}>欢迎使用正泽物联</Text>
         <Text style={styles.subtitle}>请输入您的登录凭证</Text>
         
-        {/* OAuth2认证提示 */}
-        <View style={styles.authModeContainer}>
-          <Text style={styles.authModeText}>🔐 OAuth2 安全认证</Text>
-          <Text style={styles.authModeDescription}>使用统一身份认证系统登录</Text>
-        </View>
         
         {/* 租户名称输入 */}
         <View style={styles.inputContainer}>

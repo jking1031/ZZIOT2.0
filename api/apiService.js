@@ -26,6 +26,8 @@ Object.keys(API_BASE_URLS).forEach(key => {
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
+      // 添加租户ID到请求头，默认为1
+      config.headers['tenant-id'] = '1';
       
       console.log(`[${key} API请求] ${config.method.toUpperCase()} ${config.url}`);
       return config;

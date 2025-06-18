@@ -25,7 +25,8 @@ const RegisterScreen = ({ navigation }) => {
     username: '',
     nickname: '',
     password: '',
-    confirmPassword: ''
+    confirmPassword: '',
+    tenantName: '正泽物联' // 默认租户名称，与登录页一致
   });
   
   // 表单验证错误状态
@@ -110,7 +111,8 @@ const RegisterScreen = ({ navigation }) => {
         username: formData.username.trim(),
         nickname: formData.nickname.trim(),
         password: formData.password,
-        confirmPassword: formData.confirmPassword
+        confirmPassword: formData.confirmPassword,
+        tenantName: formData.tenantName.trim() // 添加租户名称
       };
       
       console.log('[RegisterScreen] 开始注册:', {
@@ -307,6 +309,22 @@ const RegisterScreen = ({ navigation }) => {
       >
         <Text style={styles.title}>创建账号</Text>
         <Text style={styles.subtitle}>请填写以下信息完成注册</Text>
+
+        {/* 租户名称 */}
+        <View style={styles.inputContainer}>
+          <Text style={styles.label}>
+            租户名称 <Text style={styles.requiredLabel}>*</Text>
+          </Text>
+          <TextInput
+            style={[styles.input, errors.tenantName && styles.inputError]}
+            value={formData.tenantName}
+            onChangeText={(text) => updateFormData('tenantName', text)}
+            placeholder="请输入租户名称"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {errors.tenantName && <Text style={styles.errorText}>{errors.tenantName}</Text>}
+        </View>
         
         {/* 用户名 */}
         <View style={styles.inputContainer}>

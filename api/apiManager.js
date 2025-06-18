@@ -14,6 +14,13 @@ const DEFAULT_API_BASE_URLS = {
     description: '统一业务API服务器（已迁移所有ZZIOT服务）',
     priority: 1
   },
+  AUTH_BACKEND: {
+    name: '认证服务器',
+    url: 'https://office.jzz77.cn:9003',
+    enabled: true,
+    description: '用户认证、注册等服务的后端',
+    priority: 0 // 优先使用此后端进行认证
+  },
 };
 
 // 运行时API配置（可动态修改）
@@ -80,49 +87,20 @@ export const getEnabledBackendUrls = () => {
 
 // API端点分类管理
 export const API_ENDPOINTS = {
-  // 认证相关 - 使用NODERED后端
+  // 认证相关 - 使用认证后端
   AUTH: {
-    baseUrl: 'OAUTH2_DYNAMIC', // 动态从OAuth2配置获取
+    baseUrl: 'AUTH_BACKEND', // 使用认证后端
     endpoints: {
-      LOGIN: '/api/auth/login/',
-      REGISTER: '/system/auth/register',
-      REFRESH_TOKEN: '/api/auth/refresh-token/',
-      LOGOUT: '/api/auth/logout/',
+      LOGIN: '/admin-api/system/auth/login',
+      REGISTER: '/admin-api/system/auth/register',
+      REFRESH_TOKEN: '/admin-api/system/auth/refresh-token',
+      LOGOUT: '/admin-api/system/auth/logout',
       CHECK_ADMIN: '/api/auth/check-admin/',
-      GET_PERMISSION_INFO: '/admin-api/system/auth/get-permission-info' // 若依后端权限信息接口
+      GET_PERMISSION_INFO: '/admin-api/system/auth/get-permission-info', // 若依后端权限信息接口
+      GET_TENANT_ID_BY_NAME: '/admin-api/system/tenant/get-id-by-name' // 根据租户名获取租户ID
     }
   },
 
-  // 用户管理 - 使用NODERED后端
-  USERS: {
-    baseUrl: 'NODERED',
-    endpoints: {
-      LIST: '/api/users',
-      BY_ID: (id) => `/api/users/${id}`,
-      UPDATE: (id) => `/api/users/${id}`,
-      ROLE: (id) => `/api/users/${id}/role`,
-      DELETE: (id) => `/api/users/${id}`,
-      ROLES: '/api/users/roles',
-      COMPANIES: '/api/companies',
-      ASSIGN_ROLE: '/api/users/assign-role',
-      REMOVE_ROLE: '/api/users/remove-role',
-      TOGGLE_ADMIN: '/api/users/toggle-admin',
-      TOGGLE_STATUS: '/api/users/toggle-status'
-    }
-  },
-
-  // 工单系统API配置已删除
-
-  // 站点管理 - 使用NODERED后端
-  SITES: {
-    baseUrl: 'NODERED',
-    endpoints: {
-      LIST: '/api/site/sites',
-      BY_ID: (id) => `/api/sites/site/${id}`,
-      COMMAND: (id) => `/api/site/${id}/command`,
-      LOGS: '/api/logs'
-    }
-  },
 
   // 报告系统 - 使用NODERED后端
   REPORTS: {
