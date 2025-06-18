@@ -86,7 +86,7 @@ api.interceptors.response.use(
       
       // 处理401未授权错误 - 可能是token过期
       if (error.response.status === 401) {
-        console.log('[令牌过期] 尝试刷新令牌');
+        // console.log('[令牌过期] 尝试刷新令牌');
         
         try {
           // 尝试刷新令牌 - 如果有刷新令牌功能
@@ -94,7 +94,7 @@ api.interceptors.response.use(
           
           if (refreshSuccessful) {
             // 令牌刷新成功，重试原始请求
-            console.log('[令牌刷新成功] 重试原始请求');
+            // console.log('[令牌刷新成功] 重试原始请求');
             
             // 获取新的令牌
             const newToken = await getAuthToken();
@@ -107,7 +107,7 @@ api.interceptors.response.use(
             return axios(originalRequest);
           } else {
             // 令牌刷新失败，通知登录过期
-            console.log('[令牌刷新失败] 通知登录过期');
+            // console.log('[令牌刷新失败] 通知登录过期');
             EventRegister.emit('SESSION_EXPIRED');
           }
         } catch (refreshError) {
@@ -139,7 +139,7 @@ async function refreshToken() {
     // 获取存储的用户信息
     const userData = await AsyncStorage.getItem('user');
     if (!userData) {
-      console.log('[令牌刷新] 没有找到用户数据');
+      // console.log('[令牌刷新] 没有找到用户数据');
       return false;
     }
     
@@ -158,17 +158,17 @@ async function refreshToken() {
       
       if (response.data && response.data.token) {
         await saveAuthToken(response.data.token);
-        console.log('[令牌刷新] 成功获取新令牌');
+        // console.log('[令牌刷新] 成功获取新令牌');
         return true;
       }
     } catch (apiError) {
-      console.log('[令牌刷新API] 失败:', apiError.message);
+      // console.log('[令牌刷新API] 失败:', apiError.message);
       
       // 方法2：如果API请求失败，创建本地令牌（作为备选）
       const token = createLocalToken(user);
       if (token) {
         await saveAuthToken(token);
-        console.log('[令牌刷新] 已创建本地令牌');
+        // console.log('[令牌刷新] 已创建本地令牌');
         return true;
       }
     }

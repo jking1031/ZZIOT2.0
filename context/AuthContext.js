@@ -52,7 +52,7 @@ export const AuthProvider = ({ children }) => {
         const savedConfig = await AsyncStorage.getItem('oauth2_config');
         const config = savedConfig ? JSON.parse(savedConfig) : DEFAULT_OAUTH2_CONFIG;
         
-        console.log('[AuthContext] 初始化OAuth2服务:', config.baseUrl);
+        // console.log('[AuthContext] 初始化OAuth2服务:', config.baseUrl);
         const service = new OAuth2Service(config.baseUrl, config.clientId, config.clientSecret);
         setOAuth2Service(service);
       }
@@ -68,7 +68,7 @@ export const AuthProvider = ({ children }) => {
       const tokenCheckInterval = setInterval(async () => {
         const isValid = await checkTokenValidity();
         if (!isValid) {
-          console.log('令牌已过期或无效，尝试刷新令牌');
+          // console.log('令牌已过期或无效，尝试刷新令牌');
           // 在这里可以选择自动刷新令牌或触发重新登录
           EventRegister.emit('TOKEN_REFRESH_NEEDED');
         }
@@ -238,11 +238,11 @@ export const AuthProvider = ({ children }) => {
         
         if (response.data && response.data.token) {
           await saveAuthToken(response.data.token);
-          console.log('成功刷新令牌');
+          // console.log('成功刷新令牌');
           return true;
         }
       } catch (apiError) {
-        console.log('通过API刷新令牌失败，尝试本地创建令牌');
+        // console.log('通过API刷新令牌失败，尝试本地创建令牌');
       }
       
       // 方法2：API不可用，创建本地令牌
@@ -277,19 +277,19 @@ export const AuthProvider = ({ children }) => {
       }
 
       // 记录完整的用户数据用于调试
-      console.log('===== AuthContext: 登录处理 =====');
+      // console.log('===== AuthContext: 登录处理 =====');
       console.log('用户ID:', userData.id);
       console.log('用户名:', userData.username);
       console.log('用户Email:', userData.email);
-      console.log('OAuth2启用状态:', isOAuth2Enabled);
-      console.log('跳过OAuth2登录:', skipOAuth2);
+      // console.log('OAuth2启用状态:', isOAuth2Enabled);
+    // console.log('跳过OAuth2登录:', skipOAuth2);
       
       // OAuth2模式登录处理
       if (isOAuth2Enabled && skipOAuth2) {
-        console.log('[AuthContext] OAuth2模式：直接处理OAuth获取的用户信息');
+        // console.log('[AuthContext] OAuth2模式：直接处理OAuth获取的用户信息');
         
         // 输出原始的OAuth2用户信息JSON数据
-        console.log('[AuthContext] OAuth2原始用户数据:', JSON.stringify(userData, null, 2));
+        // console.log('[AuthContext] OAuth2原始用户数据:', JSON.stringify(userData, null, 2));
         
         // 直接处理OAuth获取的用户信息，不再调用API
         // 优先从 userInfo 中提取详细信息
@@ -341,11 +341,11 @@ export const AuthProvider = ({ children }) => {
         processedUserData.role_name = roleInfo.name; 
         processedUserData.displayName = processedUserData.nickname || processedUserData.username || '未知用户';
         
-        console.log('[AuthContext] OAuth2用户信息处理完成:', {
-          username: processedUserData.username,
-          role: processedUserData.role_name
-          // isAdmin and isDeptAdmin are no longer logged here as they are not direct state variables
-        });
+        // console.log('[AuthContext] OAuth2用户信息处理完成:', {
+        //   username: processedUserData.username,
+        //   role: processedUserData.role_name
+        //   // isAdmin and isDeptAdmin are no longer logged here as they are not direct state variables
+        // });
         
         // 保存用户信息
         await AsyncStorage.setItem('user', JSON.stringify(processedUserData));
@@ -357,15 +357,15 @@ export const AuthProvider = ({ children }) => {
         // 保存token
         if (userData.token) {
           await saveAuthToken(userData.token);
-          console.log('[AuthContext] OAuth2 token已保存');
+          // console.log('[AuthContext] OAuth2 token已保存');
         }
         
-        console.log('[AuthContext] OAuth2登录流程完成');
+        // console.log('[AuthContext] OAuth2登录流程完成');
         
         // 初始化用户权限
         try {
           await PermissionInitService.initializeUserPermissions(processedUserData);
-          console.log('[AuthContext] OAuth2用户权限初始化成功');
+          // console.log('[AuthContext] OAuth2用户权限初始化成功');
         } catch (permissionError) {
           console.warn('[AuthContext] OAuth2权限初始化失败，将使用访客权限:', permissionError);
           // 权限初始化失败不影响登录，但会记录警告
@@ -375,7 +375,7 @@ export const AuthProvider = ({ children }) => {
       }
       
       // 传统登录模式：需要调用API获取权限信息
-      console.log('[AuthContext] 传统登录模式：获取用户权限信息');
+      // console.log('[AuthContext] 传统登录模式：获取用户权限信息');
       
       // 首先保存基本用户信息
       const initialUserData = {
@@ -445,7 +445,7 @@ export const AuthProvider = ({ children }) => {
       }
       
       // 角色处理逻辑 (基于新的权限系统)
-      console.log('登录成功，处理用户角色信息');
+      // console.log('登录成功，处理用户角色信息');
       
       let completeUserData = {
         ...userData
@@ -497,7 +497,7 @@ export const AuthProvider = ({ children }) => {
         }
       }
       
-      console.log('[AuthContext] 登录成功，用户数据:', completeUserData);
+      // console.log('[AuthContext] 登录成功，用户数据:', completeUserData);
       
       // 更新状态
       setUser(completeUserData);
@@ -514,18 +514,18 @@ export const AuthProvider = ({ children }) => {
       }
       
       // 确保状态更新完成
-      console.log('[AuthContext] 登录流程完成，当前用户状态:', {
-        username: completeUserData.username,
-        role: completeUserData.role_name
-        // isAdmin and isDeptAdmin are no longer logged here
-      });
+      // console.log('[AuthContext] 登录流程完成，当前用户状态:', {
+        //   username: completeUserData.username,
+        //   role: completeUserData.role_name
+        //   // isAdmin and isDeptAdmin are no longer logged here
+        // });
       
-      console.log('登录流程完成，用户信息和令牌已保存');
+      // console.log('登录流程完成，用户信息和令牌已保存');
       
       // 初始化用户权限
       try {
         await PermissionInitService.initializeUserPermissions(completeUserData);
-        console.log('[AuthContext] 传统登录用户权限初始化成功');
+        // console.log('[AuthContext] 传统登录用户权限初始化成功');
       } catch (permissionError) {
         console.warn('[AuthContext] 传统登录权限初始化失败，将使用访客权限:', permissionError);
         // 权限初始化失败不影响登录，但会记录警告
@@ -563,9 +563,9 @@ export const AuthProvider = ({ children }) => {
       // 如果启用了OAuth2，先执行OAuth2登出
       if (isOAuth2Enabled && oauth2Service) {
         try {
-          console.log('[AuthContext] 执行OAuth2登出');
-          await oauth2Service.logout();
-          console.log('[AuthContext] OAuth2登出成功');
+          // console.log('[AuthContext] 执行OAuth2登出');
+      await oAuth2Service.logout();
+      // console.log('[AuthContext] OAuth2登出成功');
         } catch (oauth2Error) {
           console.error('[AuthContext] OAuth2登出失败:', oauth2Error.message);
           // OAuth2登出失败不应阻止整个登出流程
@@ -653,10 +653,10 @@ export const AuthProvider = ({ children }) => {
       // 首先检查令牌有效性
       const isTokenValid = await checkTokenValidity();
       if (!isTokenValid) {
-        console.log('令牌无效或已过期，尝试刷新');
+        // console.log('令牌无效或已过期，尝试刷新');
         const refreshSuccessful = await refreshToken();
         if (!refreshSuccessful) {
-          console.log('无法刷新令牌，需要重新登录');
+          // console.log('无法刷新令牌，需要重新登录');
           await clearAuthToken();
           await AsyncStorage.removeItem('user');
           setUser(null);
@@ -717,7 +717,7 @@ export const AuthProvider = ({ children }) => {
           setUser(null);
         }
       } else {
-        console.log('未找到已保存的用户会话，需要登录');
+        // console.log('未找到已保存的用户会话，需要登录');
         await clearAuthToken();
         setUser(null);
       }
@@ -1097,7 +1097,7 @@ export const AuthProvider = ({ children }) => {
   // OAuth2配置管理方法
   const enableOAuth2 = async (config) => {
     try {
-      console.log('[AuthContext] 启用OAuth2认证');
+      // console.log('[AuthContext] 启用OAuth2认证');
       await AsyncStorage.setItem('oauth2_enabled', 'true');
       await AsyncStorage.setItem('oauth2_config', JSON.stringify(config));
       
@@ -1106,7 +1106,7 @@ export const AuthProvider = ({ children }) => {
       setOAuth2Service(service);
       setIsOAuth2Enabled(true);
       
-      console.log('[AuthContext] OAuth2认证已启用');
+      // console.log('[AuthContext] OAuth2认证已启用');
       return true;
     } catch (error) {
       console.error('[AuthContext] 启用OAuth2失败:', error);
@@ -1116,7 +1116,7 @@ export const AuthProvider = ({ children }) => {
   
   const disableOAuth2 = async () => {
     try {
-      console.log('[AuthContext] 禁用OAuth2认证');
+      // console.log('[AuthContext] 禁用OAuth2认证');
       await AsyncStorage.setItem('oauth2_enabled', 'false');
       
       // 清除OAuth2相关的令牌
@@ -1127,7 +1127,7 @@ export const AuthProvider = ({ children }) => {
       setOAuth2Service(null);
       setIsOAuth2Enabled(false);
       
-      console.log('[AuthContext] OAuth2认证已禁用');
+      // console.log('[AuthContext] OAuth2认证已禁用');
       return true;
     } catch (error) {
       console.error('[AuthContext] 禁用OAuth2失败:', error);
@@ -1147,7 +1147,7 @@ export const AuthProvider = ({ children }) => {
   
   const updateOAuth2Config = async (config) => {
     try {
-      console.log('[AuthContext] 更新OAuth2配置');
+      // console.log('[AuthContext] 更新OAuth2配置');
       await AsyncStorage.setItem('oauth2_config', JSON.stringify(config));
       
       // 如果OAuth2已启用，重新初始化服务
@@ -1156,7 +1156,7 @@ export const AuthProvider = ({ children }) => {
         setOAuth2Service(service);
       }
       
-      console.log('[AuthContext] OAuth2配置已更新');
+      // console.log('[AuthContext] OAuth2配置已更新');
       return true;
     } catch (error) {
       console.error('[AuthContext] 更新OAuth2配置失败:', error);

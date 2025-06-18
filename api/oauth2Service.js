@@ -71,7 +71,7 @@ class OAuth2Service {
           }
         }
         
-        console.log(`[OAuth2] 请求: ${config.method.toUpperCase()} ${config.url}`);
+        // console.log(`[OAuth2] 请求: ${config.method.toUpperCase()} ${config.url}`);
         return config;
       },
       (error) => {
@@ -83,7 +83,7 @@ class OAuth2Service {
     // 响应拦截器 - 处理令牌过期
     this.axiosInstance.interceptors.response.use(
       (response) => {
-        console.log(`[OAuth2] 响应: ${response.status} ${response.config.url}`);
+        // console.log(`[OAuth2] 响应: ${response.status} ${response.config.url}`);
         return response;
       },
       async (error) => {
@@ -92,7 +92,7 @@ class OAuth2Service {
         if (error.response?.status === 401 && !originalRequest._retry) {
           originalRequest._retry = true;
           
-          console.log('[OAuth2] 检测到401错误，尝试刷新令牌');
+          // console.log('[OAuth2] 检测到401错误，尝试刷新令牌');
           
           try {
             await this.refreshToken();
@@ -124,7 +124,7 @@ class OAuth2Service {
    */
   async login(username, password, scope = 'user.read user.write') {
     try {
-      console.log(`[OAuth2] 开始登录: ${username}`);
+      // console.log(`[OAuth2] 开始登录: ${username}`);
       
       // 使用配置中的端点，保持与passwordLogin一致
       const response = await this.axiosInstance.post(this.config.endpoints.token, 
@@ -146,7 +146,7 @@ class OAuth2Service {
       const result = response.data;
       
       if (result.code === 0 && result.data && result.data.access_token) {
-        console.log('[OAuth2] 登录成功，保存令牌');
+        // console.log('[OAuth2] 登录成功，保存令牌');
         await this.saveTokens(result.data);
         return result.data;
       } else {
@@ -171,7 +171,7 @@ class OAuth2Service {
         throw new Error('没有可用的刷新令牌');
       }
       
-      console.log('[OAuth2] 开始刷新令牌');
+      // console.log('[OAuth2] 开始刷新令牌');
       
       const response = await this.axiosInstance.post(this.config.endpoints.token,
         new URLSearchParams({
@@ -190,7 +190,7 @@ class OAuth2Service {
       const result = response.data;
       
       if (result.code === 0 && result.data && result.data.access_token) {
-        console.log('[OAuth2] 令牌刷新成功');
+        // console.log('[OAuth2] 令牌刷新成功');
         await this.saveTokens(result.data);
         return result.data;
       } else {
@@ -265,7 +265,7 @@ class OAuth2Service {
       }
       
       await Promise.all(promises);
-      console.log('[OAuth2] 令牌已保存到本地存储');
+      // console.log('[OAuth2] 令牌已保存到本地存储');
     } catch (error) {
       console.error('[OAuth2] 保存令牌失败:', error);
       throw new Error('保存令牌失败');
@@ -287,7 +287,7 @@ class OAuth2Service {
       }
       
       // 令牌过期或不存在，尝试刷新
-      console.log('[OAuth2] 令牌过期，尝试刷新');
+      // console.log('[OAuth2] 令牌过期，尝试刷新');
       
       try {
         const newTokenData = await this.refreshToken();
@@ -359,9 +359,9 @@ class OAuth2Service {
    */
   async logout() {
     try {
-      console.log('[OAuth2] 开始登出');
+      // console.log('[OAuth2] 开始登出');
       await this.clearTokens();
-      console.log('[OAuth2] 登出完成');
+      // console.log('[OAuth2] 登出完成');
     } catch (error) {
       console.error('[OAuth2] 登出失败:', error);
       throw error;
@@ -380,7 +380,7 @@ class OAuth2Service {
         'oauth2_token_type',
         'oauth2_scope'
       ]);
-      console.log('[OAuth2] 所有令牌已清除');
+      // console.log('[OAuth2] 所有令牌已清除');
     } catch (error) {
       console.error('[OAuth2] 清除令牌失败:', error);
       throw error;
@@ -399,7 +399,7 @@ class OAuth2Service {
   async passwordLogin(username, password, clientId = null, clientSecret = null, scope = null, tenantId = null) {
     try {
       if (this.config.development.enableDebugLog) {
-        console.log(`[OAuth2] 密码模式登录: ${username}`);
+        // console.log(`[OAuth2] 密码模式登录: ${username}`);
       }
       
       // 使用传入的客户端凭证或默认凭证
@@ -429,7 +429,7 @@ class OAuth2Service {
       
       if (result.code === 0 && result.data) {
         if (this.config.development.enableDebugLog) {
-          console.log('[OAuth2] 密码模式登录成功');
+          // console.log('[OAuth2] 密码模式登录成功');
         }
         await this.saveTokens(result.data);
         return { success: true, data: result.data };

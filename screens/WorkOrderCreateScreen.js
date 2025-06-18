@@ -15,7 +15,8 @@ import {
   TextInput,
   StatusBar,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  SafeAreaView
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -239,13 +240,13 @@ const WorkOrderCreateScreen = () => {
             style={[
               styles.assigneeOption,
               { borderColor: colors.border },
-              formData.assigneeId === user.id && { backgroundColor: colors.primary, borderColor: colors.primary }
+              formData.assigneeId === user?.id && { backgroundColor: colors.primary, borderColor: colors.primary }
             ]}
             onPress={() => updateFormData('assigneeId', user.id)}
           >
             <Text style={[
               styles.assigneeOptionText,
-              { color: formData.assigneeId === user.id ? colors.surface : colors.text }
+              { color: formData.assigneeId === user?.id ? colors.surface : colors.text }
             ]}>
               {user.name || user.username}
             </Text>
@@ -271,98 +272,81 @@ const WorkOrderCreateScreen = () => {
   }
   
   return (
-    <KeyboardAvoidingView 
-      style={[styles.container, { backgroundColor: colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <StatusBar
-        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-        backgroundColor={colors.background}
-      />
-      
-      {/* 头部 */}
-      <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={colors.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>创建工单</Text>
-        <TouchableOpacity 
-          onPress={handleSubmit}
-          disabled={submitting}
-          style={[styles.submitButton, { backgroundColor: colors.primary }]}
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+      >
+        <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
+        <ScrollView 
+          style={styles.container}
+          contentContainerStyle={styles.contentContainer}
+          keyboardShouldPersistTaps="handled"
         >
-          {submitting ? (
-            <ActivityIndicator size="small" color={colors.surface} />
-          ) : (
-            <Text style={[styles.submitButtonText, { color: colors.surface }]}>创建</Text>
+          {loading && (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={{ color: colors.text, marginTop: 10 }}>加载中...</Text>
+            </View>
           )}
-        </TouchableOpacity>
-      </View>
-      
-      {/* 表单内容 */}
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.form}>
-          {/* 标题输入 */}
-          <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: colors.text }]}>标题 *</Text>
-            <TextInput
-              style={[
-                styles.textInput,
-                { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }
-              ]}
-              placeholder="请输入工单标题"
-              placeholderTextColor={colors.textSecondary}
-              value={formData.title}
-              onChangeText={(text) => updateFormData('title', text)}
-              maxLength={100}
-            />
-          </View>
-          
-          {/* 描述输入 */}
-          <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: colors.text }]}>描述 *</Text>
-            <TextInput
-              style={[
-                styles.textArea,
-                { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }
-              ]}
-              placeholder="请详细描述问题或需求"
-              placeholderTextColor={colors.textSecondary}
-              value={formData.description}
-              onChangeText={(text) => updateFormData('description', text)}
-              multiline
-              numberOfLines={5}
-              textAlignVertical="top"
-              maxLength={1000}
-            />
-          </View>
-          
-          {/* 优先级选择 */}
-          {renderPrioritySelector()}
-          
-          {/* 分类选择 */}
-          {renderCategorySelector()}
-          
-          {/* 处理人选择 */}
-          {renderAssigneeSelector()}
-          
-          {/* 截止日期 */}
-          <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: colors.text }]}>截止日期</Text>
-            <TextInput
-              style={[
-                styles.textInput,
-                { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }
-              ]}
-              placeholder="YYYY-MM-DD HH:mm（可选）"
-              placeholderTextColor={colors.textSecondary}
-              value={formData.dueDate}
-              onChangeText={(text) => updateFormData('dueDate', text)}
-            />
-          </View>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+
+          {!loading && (
+            <>
+              {/* 工单标题 */}
+              <View style={styles.inputGroup}>
+                <Text style={[styles.label, { color: colors.text }]}>标题 *</Text>
+                <TextInput
+                  style={[commonStyles.input, styles.textInput, { color: colors.text, borderColor: colors.border }]}
+                  placeholder="请输入工单标题"
+                  placeholderTextColor={colors.placeholder}
+                  value={formData.title}
+                  onChangeText={(text) => updateFormData('title', text)}
+                />
+              </View>
+
+              {/* 工单描述 */}
+              <View style={styles.inputGroup}>
+                <Text style={[styles.label, { color: colors.text }]}>描述 *</Text>
+                <TextInput
+                  style={[commonStyles.input, styles.textInput, styles.textArea, { color: colors.text, borderColor: colors.border }]}
+                  placeholder="请输入工单详细描述"
+                  placeholderTextColor={colors.placeholder}
+                  value={formData.description}
+                  onChangeText={(text) => updateFormData('description', text)}
+                  multiline
+                  numberOfLines={4}
+                />
+              </View>
+
+              {/* 优先级选择 */}
+              {renderPrioritySelector()}
+
+              {/* 分类选择 */}
+              {renderCategorySelector()}
+
+              {/* 截止日期 */}
+              {/* {renderDueDateSelector()} */}
+
+              {/* 指派给 */}
+              {renderAssigneeSelector()}
+
+              {/* 提交按钮 */}
+              <TouchableOpacity 
+                style={[commonStyles.button, styles.submitButton, { backgroundColor: colors.primary } ]}
+                onPress={handleSubmit}
+                disabled={submitting}
+              >
+                {submitting ? (
+                  <ActivityIndicator color={colors.surface} />
+                ) : (
+                  <Text style={[commonStyles.buttonText, { color: colors.surface }]}>提交工单</Text>
+                )}
+              </TouchableOpacity>
+            </>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 

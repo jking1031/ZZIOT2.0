@@ -36,22 +36,22 @@ class WorkOrderService {
   setupInterceptors = async (axiosInstance) => {
     const token = await getAuthToken();
     
-    console.log('=== 认证Token调试信息 ===');
-    console.log('获取到的Token:', token ? `${token.substring(0, 20)}...` : 'null');
-    console.log('Token是否存在:', !!token);
+    // console.log('=== 认证Token调试信息 ===');
+    // console.log('获取到的Token:', token ? `${token.substring(0, 20)}...` : 'null');
+    // console.log('Token是否存在:', !!token);
     
     if (token) {
       axiosInstance.defaults.headers.Authorization = `Bearer ${token}`;
-      console.log('已设置Authorization头');
+      // console.log('已设置Authorization头');
     } else {
-      console.log('警告：未找到认证Token');
+      // console.log('警告：未找到认证Token');
     }
     
     // 设置租户ID
     axiosInstance.defaults.headers['tenant-id'] = '1';
-    console.log('已设置tenant-id头: 1');
+    // console.log('已设置tenant-id头: 1');
     
-    console.log('=== 认证Token调试结束 ===');
+    // console.log('=== 认证Token调试结束 ===');
     
     return axiosInstance;
   };
@@ -211,7 +211,7 @@ class WorkOrderService {
   };
 
   /**
-   * 处理工单
+   * 处理工单（开始处理）
    * @param {string} id - 工单ID
    * @param {Object} processData - 处理数据
    */
@@ -225,6 +225,26 @@ class WorkOrderService {
       return response.data;
     } catch (error) {
       console.error('处理工单失败:', error);
+      throw error;
+    }
+  };
+
+  /**
+   * 开始处理工单（将状态从已指派改为处理中）
+   * @param {string} id - 工单ID
+   * @param {string} comment - 处理备注
+   */
+  startProcessWorkOrder = async (id, comment = '') => {
+    try {
+      const axiosInstance = await this.setupInterceptors(this.createAxiosInstance());
+      // 根据API文档，统一使用 /process 端点处理工单，确保请求体与文档一致
+      const response = await axiosInstance.post(`${this.apiPrefix}/workorder/work-order/process`, {
+        id,
+        comment // API文档中 process 接口接受 comment 参数
+      });
+      return response.data;
+    } catch (error) {
+      console.error('开始处理工单失败 (调用 /process):', error);
       throw error;
     }
   };
@@ -319,9 +339,9 @@ class WorkOrderService {
         password: 'jking1031'
       });
       
-      console.log('=== 管理员登录调试信息 ===');
-      console.log('登录响应:', response.data);
-      console.log('=== 管理员登录调试结束 ===');
+      // console.log('=== 管理员登录调试信息 ===');
+      // console.log('登录响应:', response.data);
+      // console.log('=== 管理员登录调试结束 ===');
       
       if (response.data && response.data.code === 0 && response.data.data && response.data.data.accessToken) {
         return response.data.data.accessToken;
@@ -352,7 +372,7 @@ class WorkOrderService {
       
       // 检查业务错误码403（权限不足）
       if (response.data && response.data.code === 403) {
-        console.log('=== 当前用户权限不足，使用管理员Token重试 ===');
+        // console.log('=== 当前用户权限不足，使用管理员Token重试 ===');
         
         const adminToken = await this.getAdminToken();
         axiosInstance = this.createAxiosInstance();
@@ -364,10 +384,10 @@ class WorkOrderService {
         
         const retryResponse = await axiosInstance.get(`${this.apiPrefix}/system/user/get?id=${userId}`);
         
-        console.log('=== 管理员Token获取用户详情调试信息 ===');
-        console.log('用户ID:', userId);
-        console.log('响应数据:', retryResponse.data);
-        console.log('=== 管理员Token用户详情调试结束 ===');
+        // console.log('=== 管理员Token获取用户详情调试信息 ===');
+        // console.log('用户ID:', userId);
+        // console.log('响应数据:', retryResponse.data);
+        // console.log('=== 管理员Token用户详情调试结束 ===');
         
         return retryResponse.data;
       }

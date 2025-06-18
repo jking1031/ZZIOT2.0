@@ -16,8 +16,12 @@ import {
   TextInput,
   ActivityIndicator,
   RefreshControl,
-  Linking
+  Linking,
+  Image,
+  Platform // Added Platform
 } from 'react-native';
+import * as MediaLibrary from 'expo-media-library'; // Added MediaLibrary
+import * as Sharing from 'expo-sharing'; // Added Sharing
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useTheme } from '../context/ThemeContext';
@@ -25,6 +29,7 @@ import { useAuth } from '../context/AuthContext';
 import { createCommonStyles, DesignTokens } from '../styles/StyleGuide';
 import WorkOrderService from '../services/WorkOrderService';
 import { usePermissionControl } from '../hooks/usePermissionControl';
+import WorkOrderPermissionService from '../services/WorkOrderPermissionService';
 
 const WorkOrderDetailScreen = () => {
   const navigation = useNavigation();
@@ -42,12 +47,24 @@ const WorkOrderDetailScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [statusModalVisible, setStatusModalVisible] = useState(false);
   const [assignModalVisible, setAssignModalVisible] = useState(false);
+  const [completeModalVisible, setCompleteModalVisible] = useState(false); // 新增：完成工单弹窗
   const [selectedStatus, setSelectedStatus] = useState('');
   const [selectedAssignee, setSelectedAssignee] = useState('');
   const [assignableUsers, setAssignableUsers] = useState([]);
   const [statuses, setStatuses] = useState([]);
+  const [selectedImageUri, setSelectedImageUri] = useState(null);
+  const [imageModalVisible, setImageModalVisible] = useState(false);
   const [workOrderLogs, setWorkOrderLogs] = useState([]);
   const [logsLoading, setLogsLoading] = useState(false);
+  const [solution, setSolution] = useState(''); // 新增：解决方案
+  const [completionNotes, setCompletionNotes] = useState(''); // 新增：完成说明
+  const [solutionError, setSolutionError] = useState(''); // 新增：解决方案错误提示
+  const [completionNotesError, setCompletionNotesError] = useState(''); // 新增：完成说明错误提示
+  
+  // 权限相关状态
+  const [creator, setCreator] = useState(null);
+  const [assignee, setAssignee] = useState(null);
+  const [visibleActions, setVisibleActions] = useState({});
   
   // 工单状态颜色映射
   const getStatusColor = (status) => {
@@ -76,13 +93,13 @@ const WorkOrderDetailScreen = () => {
   const loadWorkOrderDetail = useCallback(async (isRefresh = false) => {
     console.log('=== 工单详情页面 - 加载工单详情调试开始 ===');
     console.log('工单ID:', id);
-    console.log('是否刷新:', isRefresh);
+    // console.log('是否刷新:', isRefresh);
     console.log('开始时间:', new Date().toISOString());
     
     try {
       if (isRefresh) {
         setRefreshing(true);
-        console.log('设置刷新状态为true');
+        // console.log('设置刷新状态为true');
       } else {
         setLoading(true);
         console.log('设置加载状态为true');
@@ -91,7 +108,7 @@ const WorkOrderDetailScreen = () => {
       console.log('=== 准备调用工单详情API ===');
       console.log('API名称: getWorkOrderDetail');
       console.log('工单ID:', id);
-      console.log('是否刷新:', isRefresh);
+      // console.log('是否刷新:', isRefresh);
       console.log('调用时间:', new Date().toISOString());
       
       const detailRes = await WorkOrderService.getWorkOrderDetail(id);
@@ -113,8 +130,43 @@ const WorkOrderDetailScreen = () => {
       }
       
       if (detailRes.code === 0) {
-        setWorkOrder(detailRes.data);
+        const workOrderData = detailRes.data;
+        setWorkOrder(workOrderData);
         console.log('成功设置工单数据到状态');
+        
+        // 设置创建人信息 (直接使用工单详情中返回的创建者信息)
+        if (workOrderData.creatorId) {
+          setCreator({
+            id: workOrderData.creatorId,
+            nickname: workOrderData.creatorName || '未知创建者',
+            // 如果需要部门名称或头像，且API已返回，则可以添加，否则保持精简
+            // deptName: workOrderData.creatorDeptName,
+            // avatar: workOrderData.creatorAvatar
+          });
+        } else {
+          setCreator(null);
+        }
+        
+        // 设置被指派人信息 (直接使用工单详情中返回的被指派人信息)
+        if (workOrderData.assignToId) {
+          setAssignee({
+            id: workOrderData.assignToId,
+            nickname: workOrderData.assignToName || '未知被指派人',
+            // 如果需要部门名称或头像，且API已返回，则可以添加，否则保持精简
+            // deptName: workOrderData.assignToDeptName,
+            // avatar: workOrderData.assignToAvatar
+          });
+        } else {
+          setAssignee(null);
+        }
+        
+        // 设置可用状态列表（基于当前状态和权限）
+        const nextStatuses = WorkOrderPermissionService.getNextPossibleStatuses(
+          workOrderData.status, 
+          user, 
+          workOrderData
+        );
+        setStatuses(nextStatuses);
       } else {
         console.warn('工单详情API返回非0状态码:', detailRes.code);
         console.warn('API错误信息:', detailRes.msg);
@@ -144,7 +196,7 @@ const WorkOrderDetailScreen = () => {
     } finally {
       setLoading(false);
       setRefreshing(false);
-      console.log('重置加载和刷新状态为false');
+      // console.log('重置加载和刷新状态为false');
       console.log('=== 工单详情页面 - 加载工单详情调试结束 ===');
       console.log('结束时间:', new Date().toISOString());
     }
@@ -329,7 +381,21 @@ const WorkOrderDetailScreen = () => {
     loadWorkOrderDetail();
     loadOptions();
     loadWorkOrderLogs();
-  }, [loadWorkOrderDetail, loadOptions, loadWorkOrderLogs]);
+  }, [id]); // 只依赖工单ID，避免重复执行
+
+  // 计算可见的操作按钮
+  useEffect(() => {
+    if (user && workOrder) {
+      const actions = WorkOrderPermissionService.getVisibleActions(
+        user, 
+        workOrder, 
+        creator, 
+        assignee
+      );
+      setVisibleActions(actions);
+      // 权限计算结果已在WorkOrderPermissionService中输出
+    }
+  }, [user, workOrder, creator, assignee]);
 
   // 更新工单状态
   const handleUpdateStatus = useCallback(async () => {
@@ -383,16 +449,16 @@ const WorkOrderDetailScreen = () => {
 
   // 处理工单
   const handleProcessWorkOrder = useCallback(() => {
-    Alert.prompt(
-      '处理工单',
-      '请输入处理备注：',
+    Alert.alert(
+      '开始处理工单',
+      '确定开始处理此工单吗？',
       [
         { text: '取消', style: 'cancel' },
         {
-          text: '确定',
-          onPress: async (comment) => {
+          text: '确认',
+          onPress: async () => {
             try {
-              const response = await WorkOrderService.processWorkOrder(id, { comment });
+              const response = await WorkOrderService.startProcessWorkOrder(id, '开始处理工单');
               if (response.code === 0) {
                 Alert.alert('成功', '工单处理成功');
                 loadWorkOrderDetail(true);
@@ -406,40 +472,58 @@ const WorkOrderDetailScreen = () => {
             }
           }
         }
-      ],
-      'plain-text'
+      ]
     );
   }, [id, loadWorkOrderDetail, loadWorkOrderLogs]);
 
   // 完成工单
   const handleFinishWorkOrder = useCallback(() => {
-    Alert.prompt(
-      '完成工单',
-      '请输入完成备注：',
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '确定',
-          onPress: async (comment) => {
-            try {
-              const response = await WorkOrderService.finishWorkOrder(id, comment);
-              if (response.code === 0) {
-                Alert.alert('成功', '工单已完成');
-                loadWorkOrderDetail(true);
-                loadWorkOrderLogs();
-              } else {
-                Alert.alert('错误', response.msg || '完成工单失败，请重试');
-              }
-            } catch (error) {
-              console.error('完成工单失败:', error);
-              Alert.alert('错误', '完成工单失败，请重试');
-            }
-          }
-        }
-      ],
-      'plain-text'
-    );
+    setSolution(''); // 打开弹窗前清空旧数据
+    setCompletionNotes('');
+    setSolutionError('');
+    setCompletionNotesError('');
+    setCompleteModalVisible(true); // 修改：打开自定义弹窗
   }, [id, loadWorkOrderDetail, loadWorkOrderLogs]);
+
+  // 提交完成工单
+  const submitCompleteWorkOrder = useCallback(async () => {
+    let isValid = true;
+    if (!solution.trim()) {
+      setSolutionError('请输入解决方案');
+      isValid = false;
+    } else {
+      setSolutionError('');
+    }
+
+    if (!completionNotes.trim()) {
+      setCompletionNotesError('请输入完成说明');
+      isValid = false;
+    } else {
+      setCompletionNotesError('');
+    }
+
+    if (!isValid) {
+      return;
+    }
+
+    try {
+      // 在实际调用API时，可以将 solution 和 completionNotes 合并到 comment 参数，或根据API要求调整
+      // 这里暂时将它们合并，并用换行符分隔，如果API支持单独字段则更好
+      const comment = `解决方案：${solution}\n完成说明：${completionNotes}`;
+      const response = await WorkOrderService.finishWorkOrder(id, comment); // API可能需要调整以接收 solution 和 completionNotes
+      if (response.code === 0) {
+        Alert.alert('成功', '工单已完成');
+        setCompleteModalVisible(false);
+        loadWorkOrderDetail(true);
+        loadWorkOrderLogs();
+      } else {
+        Alert.alert('错误', response.msg || '完成工单失败，请重试');
+      }
+    } catch (error) {
+      console.error('完成工单失败:', error);
+      Alert.alert('错误', '完成工单失败，请重试');
+    }
+  }, [id, solution, completionNotes, loadWorkOrderDetail, loadWorkOrderLogs]);
 
   // 关闭工单
   const handleCloseWorkOrder = useCallback(() => {
@@ -538,61 +622,38 @@ const WorkOrderDetailScreen = () => {
     });
   }, []);
 
-  // 检查是否可以编辑
+  // 使用新的权限服务进行权限检查
   const canEdit = useCallback(() => {
-    return isAdmin() || isSuperAdmin() || workOrder?.creatorId === user?.id;
-  }, [isAdmin, isSuperAdmin, workOrder, user]);
+    return visibleActions.canEdit || false;
+  }, [visibleActions]);
 
-  // 检查是否可以操作状态
   const canManageStatus = useCallback(() => {
-    return isAdmin() || isSuperAdmin() || workOrder?.assigneeId === user?.id;
-  }, [isAdmin, isSuperAdmin, workOrder, user]);
+    return visibleActions.canProcess || visibleActions.canFinish || false;
+  }, [visibleActions]);
 
-  // 检查是否可以指派工单
   const canAssignWorkOrder = useCallback(() => {
-    if (!workOrder) return false;
-    // 管理员可以指派
-    if (isAdmin() || isSuperAdmin()) return true;
-    // 部门管理员可以指派同部门创建的工单
-    // TODO: 需要实现部门管理员权限检查
-    return false;
-  }, [isAdmin, isSuperAdmin, workOrder]);
+    return visibleActions.canAssign || false;
+  }, [visibleActions]);
 
-  // 检查是否可以处理工单
   const canProcessWorkOrder = useCallback(() => {
-    if (!workOrder || !user) return false;
-    // 只有被指派的用户可以处理
-    return workOrder.assigneeId === user.id && workOrder.status === 'assigned';
-  }, [workOrder, user]);
+    return visibleActions.canProcess || false;
+  }, [visibleActions]);
 
-  // 检查是否可以完成工单
   const canFinishWorkOrder = useCallback(() => {
-    if (!workOrder || !user) return false;
-    // 只有被指派的用户在处理状态下可以完成
-    return workOrder.assigneeId === user.id && workOrder.status === 'processing';
-  }, [workOrder, user]);
+    return visibleActions.canFinish || false;
+  }, [visibleActions]);
 
-  // 检查是否可以关闭工单
   const canCloseWorkOrder = useCallback(() => {
-    if (!workOrder) return false;
-    // 管理员可以关闭已完成的工单
-    if ((isAdmin() || isSuperAdmin()) && workOrder.status === 'finished') return true;
-    // 部门管理员可以关闭同部门的已完成工单
-    // TODO: 需要实现部门管理员权限检查
-    return false;
-  }, [isAdmin, isSuperAdmin, workOrder]);
+    return visibleActions.canClose || false;
+  }, [visibleActions]);
 
-  // 检查是否可以退回工单
   const canReturnWorkOrder = useCallback(() => {
-    if (!workOrder) return false;
-    // 管理员可以退回工单
-    if (isAdmin() || isSuperAdmin()) return true;
-    // 部门管理员可以退回同部门的工单
-    // TODO: 需要实现部门管理员权限检查
-    // 被指派的用户可以退回工单
-    if (workOrder.assigneeId === user?.id) return true;
-    return false;
-  }, [isAdmin, isSuperAdmin, workOrder, user]);
+    return visibleActions.canReturn || false;
+  }, [visibleActions]);
+
+  const canDeleteWorkOrder = useCallback(() => {
+    return visibleActions.canDelete || false;
+  }, [visibleActions]);
 
   if (loading) {
     return (
@@ -701,19 +762,42 @@ const WorkOrderDetailScreen = () => {
             <Text style={[styles.sectionTitle, { color: colors.text.primary }]}>附件</Text>
             {workOrder.attachments.map((attachmentUrl, index) => {
               const fileName = attachmentUrl.split('/').pop() || `附件${index + 1}`;
-              return (
-                <TouchableOpacity
-                  key={index}
-                  style={[styles.attachmentItem, { borderColor: colors.border }]}
-                  onPress={() => handleOpenAttachment(attachmentUrl)}
-                >
-                  <Ionicons name="document-outline" size={20} color={colors.primary} />
-                  <Text style={[styles.attachmentName, { color: colors.text.primary }]}>
-                    {fileName}
-                  </Text>
-                  <Ionicons name="open-outline" size={16} color={colors.text.secondary} />
-                </TouchableOpacity>
-              );
+              const isImage = /\.(jpeg|jpg|gif|png)$/i.test(fileName);
+
+              if (isImage) {
+                return (
+                  <View key={index} style={[styles.attachmentItem, { borderColor: colors.border, flexDirection: 'column', alignItems: 'flex-start' }]}>
+                    <TouchableOpacity onPress={() => handleOpenAttachment(attachmentUrl)} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: DesignTokens.spacing.sm }}>
+                      <Ionicons name="image-outline" size={20} color={colors.primary} />
+                      <Text style={[styles.attachmentName, { color: colors.text.primary, marginLeft: DesignTokens.spacing.sm }]}>
+                        {fileName}
+                      </Text>
+                      <Ionicons name="open-outline" size={16} color={colors.text.secondary} style={{ marginLeft: 'auto' }} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => { setSelectedImageUri(attachmentUrl); setImageModalVisible(true); }} style={styles.thumbnailTouchable}>
+                      <Image
+                        source={{ uri: attachmentUrl }}
+                        style={styles.thumbnailImage}
+                        resizeMode="cover"
+                      />
+                    </TouchableOpacity>
+                  </View>
+                );
+              } else {
+                return (
+                  <TouchableOpacity
+                    key={index}
+                    style={[styles.attachmentItem, { borderColor: colors.border }]}
+                    onPress={() => handleOpenAttachment(attachmentUrl)}
+                  >
+                    <Ionicons name="document-outline" size={20} color={colors.primary} />
+                    <Text style={[styles.attachmentName, { color: colors.text.primary }]}>
+                      {fileName}
+                    </Text>
+                    <Ionicons name="open-outline" size={16} color={colors.text.secondary} />
+                  </TouchableOpacity>
+                );
+              }
             })}
           </View>
         )}
@@ -731,6 +815,77 @@ const WorkOrderDetailScreen = () => {
               />
             </TouchableOpacity>
           </View>
+
+          {/* Image Modal */}
+          <Modal
+            animationType="slide"
+            transparent={true}
+            visible={imageModalVisible}
+            onRequestClose={() => {
+              setImageModalVisible(!imageModalVisible);
+              setSelectedImageUri(null);
+            }}
+          >
+            <View style={styles.centeredView}>
+              <View style={[styles.modalView, { backgroundColor: colors.surface }]}>
+                {selectedImageUri && (
+                  <Image source={{ uri: selectedImageUri }} style={styles.fullImage} resizeMode="contain" />
+                )}
+                <View style={styles.modalActionsContainer}>
+                  <TouchableOpacity
+                    style={[styles.modalButton, { backgroundColor: colors.primary } ]}
+                    onPress={async () => {
+                      if (!selectedImageUri) return;
+                      try {
+                        const { status } = await MediaLibrary.requestPermissionsAsync();
+                        if (status !== 'granted') {
+                          Alert.alert('权限不足', '需要相册权限才能保存图片。');
+                          return;
+                        }
+                        const asset = await MediaLibrary.createAssetAsync(selectedImageUri);
+                        await MediaLibrary.createAlbumAsync('MyAppImages', asset, false);
+                        Alert.alert('成功', '图片已保存到相册！');
+                      } catch (error) {
+                        console.error('Error saving image:', error);
+                        Alert.alert('错误', '保存图片失败。');
+                      }
+                    }}
+                  >
+                    <Ionicons name="download-outline" size={20} color={colors.surface} />
+                    <Text style={[styles.modalButtonText, { color: colors.surface }]}>保存</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalButton, { backgroundColor: colors.secondary, marginLeft: DesignTokens.spacing.md } ]}
+                    onPress={async () => {
+                      if (!selectedImageUri) return;
+                      if (!(await Sharing.isAvailableAsync())) {
+                        Alert.alert('错误', '此设备不支持分享功能。');
+                        return;
+                      }
+                      try {
+                        await Sharing.shareAsync(selectedImageUri);
+                      } catch (error) {
+                        console.error('Error sharing image:', error);
+                        Alert.alert('错误', '分享图片失败。');
+                      }
+                    }}
+                  >
+                    <Ionicons name="share-social-outline" size={20} color={colors.surface} />
+                    <Text style={[styles.modalButtonText, { color: colors.surface }]}>分享</Text>
+                  </TouchableOpacity>
+                </View>
+                <TouchableOpacity
+                  style={[styles.buttonClose, { backgroundColor: colors.border } ]}
+                  onPress={() => {
+                    setImageModalVisible(!imageModalVisible);
+                    setSelectedImageUri(null);
+                  }}
+                >
+                  <Ionicons name="close" size={24} color={colors.text.primary} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
           
           {logsLoading ? (
             <View style={styles.logsLoadingContainer}>
@@ -819,7 +974,7 @@ const WorkOrderDetailScreen = () => {
           </TouchableOpacity>
         )}
         
-        {canEdit() && (
+        {canDeleteWorkOrder() && (
           <TouchableOpacity
             style={[styles.actionButton, { backgroundColor: colors.error }]}
             onPress={handleDeleteWorkOrder}
@@ -946,6 +1101,154 @@ const WorkOrderDetailScreen = () => {
                 <Text style={[styles.emptyUsersText, { color: colors.text.secondary }]}>暂无可指派用户</Text>
               </View>
             )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* 完成工单 Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={completeModalVisible}
+        onRequestClose={() => {
+          setCompleteModalVisible(!completeModalVisible);
+        }}
+      >
+        <View style={styles.centeredView}>
+          <View style={[styles.modalView, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.modalTitle, { color: colors.text.primary }]}>完成工单</Text>
+            
+            <View style={styles.modalFieldContainer}>
+              <Text style={[styles.modalLabel, { color: colors.text.secondary }]}>工单标题</Text>
+              <TextInput
+                style={[styles.modalReadonlyInput, { color: colors.text.primary, backgroundColor: colors.background }]} 
+                value={workOrder?.title}
+                editable={false}
+              />
+            </View>
+
+            <View style={styles.modalFieldContainer}>
+              <Text style={[styles.modalLabel, { color: colors.text.secondary }]}>当前状态</Text>
+              <TextInput
+                style={[styles.modalReadonlyInput, { color: colors.text.primary, backgroundColor: colors.background }]}
+                value={workOrder?.statusName}
+                editable={false}
+              />
+            </View>
+
+            <View style={styles.modalFieldContainer}>
+              <Text style={[styles.modalLabel, { color: colors.text.secondary }]}>问题描述</Text>
+              <TextInput
+                style={[styles.modalReadonlyInput, styles.modalTextarea, { color: colors.text.primary, backgroundColor: colors.background }]} 
+                value={workOrder?.description}
+                editable={false}
+                multiline
+              />
+            </View>
+
+            <View style={styles.modalFieldContainer}>
+              <Text style={[styles.modalLabel, styles.requiredLabel, { color: colors.text.secondary }]}>*解决方案</Text>
+              <TextInput
+                style={[
+                  styles.modalInput,
+                  styles.modalTextarea,
+                  { color: colors.text.primary, borderColor: solutionError ? colors.error : colors.border },
+                ]}
+                placeholder="请详细描述解决方案和处理过程"
+                placeholderTextColor={colors.text.hint}
+                value={solution}
+                onChangeText={setSolution}
+                multiline
+              />
+              {solutionError ? <Text style={styles.errorTextModal}>{solutionError}</Text> : null}
+            </View>
+
+            <View style={styles.modalFieldContainer}>
+              <Text style={[styles.modalLabel, styles.requiredLabel, { color: colors.text.secondary }]}>*完成说明</Text>
+              <TextInput
+                style={[
+                  styles.modalInput,
+                  styles.modalTextarea,
+                  { color: colors.text.primary, borderColor: completionNotesError ? colors.error : colors.border },
+                ]}
+                placeholder="请输入完成说明"
+                placeholderTextColor={colors.text.hint}
+                value={completionNotes}
+                onChangeText={setCompletionNotes}
+                multiline
+              />
+              {completionNotesError ? <Text style={styles.errorTextModal}>{completionNotesError}</Text> : null}
+            </View>
+
+            <View style={styles.modalFieldContainer}>
+              <Text style={[styles.modalLabel, { color: colors.text.secondary }]}>处理结果附件</Text>
+              <TouchableOpacity style={[styles.attachmentBox, { borderColor: colors.border }]}>
+                <Ionicons name="add" size={40} color={colors.text.secondary} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalActionsContainer}>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: colors.background }]} 
+                onPress={() => setCompleteModalVisible(false)}
+              >
+                <Text style={[styles.modalButtonText, { color: colors.text.primary }]}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonPrimary, { backgroundColor: colors.primary }]} 
+                onPress={submitCompleteWorkOrder}
+              >
+                <Text style={[styles.modalButtonText, { color: colors.surface }]}>确定</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 图片放大 Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={imageModalVisible}
+        onRequestClose={() => {
+          setImageModalVisible(!imageModalVisible);
+        }}
+      >
+        <View style={styles.centeredView}>
+          <View style={[styles.modalView, { backgroundColor: colors.surface }]}>
+            {selectedImageUri && (
+              <Image
+                source={{ uri: selectedImageUri }}
+                style={styles.fullImage}
+                resizeMode="contain"
+              />
+            )}
+            <View style={styles.modalActionsContainer}>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: colors.primary }]}
+                onPress={() => {
+                  // 保存图片逻辑
+                  Alert.alert('提示', '保存功能待实现');
+                }}
+              >
+                <Text style={[styles.modalButtonText, { color: colors.surface }]}>保存</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: colors.primary }]}
+                onPress={() => {
+                  // 分享图片逻辑
+                  Alert.alert('提示', '分享功能待实现');
+                }}
+              >
+                <Text style={[styles.modalButtonText, { color: colors.surface }]}>分享</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.buttonClose, { backgroundColor: colors.error }]}
+                onPress={() => setImageModalVisible(!imageModalVisible)}
+              >
+                <Text style={[styles.modalButtonText, { color: colors.surface }]}>关闭</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -1190,6 +1493,126 @@ const styles = StyleSheet.create({
   emptyUsersText: {
     fontSize: DesignTokens.typography.sizes.md,
     textAlign: 'center',
+  },
+  logContent: {
+     fontSize: 14, 
+     lineHeight: 1.4 * 14, // 假设fontSize为14，lineHeight为normal (1.4)
+   },
+  attachmentImage: {
+    width: '100%',
+    height: 200, // 您可以根据需要调整高度
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  thumbnailTouchable: {
+    marginTop: DesignTokens.spacing.sm,
+  },
+  thumbnailImage: {
+    width: 100, // 缩略图宽度
+    height: 100, // 缩略图高度
+    borderRadius: DesignTokens.borderRadius.sm, // 使用StyleGuide中的值
+  },
+  centeredView: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  modalView: {
+    margin: 20,
+    borderRadius: 20,
+    padding: 25,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+    width: '90%', // 调整宽度以适应屏幕
+    maxHeight: '90%', // 限制最大高度
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  modalFieldContainer: {
+    marginBottom: 15,
+    width: '100%',
+  },
+  modalLabel: {
+    fontSize: 14,
+    marginBottom: 5,
+  },
+  requiredLabel: {
+    // 可以添加星号颜色等
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderRadius: 5,
+    padding: 10,
+    fontSize: 16,
+  },
+  modalReadonlyInput: {
+    borderRadius: 5,
+    padding: 10,
+    fontSize: 16,
+  },
+  modalTextarea: {
+    minHeight: 80, // 调整多行输入框的最小高度
+    textAlignVertical: 'top', // 确保文本从顶部开始
+  },
+  attachmentBox: {
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderRadius: 5,
+    height: 100,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 5,
+  },
+  errorTextModal: {
+    color: 'red', // 错误提示颜色，可以从colors中获取
+    fontSize: 12,
+    marginTop: 5,
+  },
+  modalActionsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    width: '100%',
+    marginTop: DesignTokens.spacing.md,
+  },
+  modalButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: DesignTokens.spacing.sm,
+    paddingHorizontal: DesignTokens.spacing.lg,
+    borderRadius: DesignTokens.borderRadius.md,
+    elevation: 2,
+  },
+  modalButtonPrimary: {
+    // 主要按钮的额外样式
+  },
+  fullImage: {
+    width: '100%',
+    height: '80%', // 调整为百分比以适应不同屏幕
+    marginBottom: DesignTokens.spacing.md,
+  },
+  modalButtonText: {
+    marginLeft: DesignTokens.spacing.sm,
+    fontSize: DesignTokens.typography.sizes.sm, // 使用StyleGuide中的值
+    fontWeight: DesignTokens.typography.weights.medium, // 使用StyleGuide中的值
+  },
+  buttonClose: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    padding: DesignTokens.spacing.xs,
+    borderRadius: DesignTokens.borderRadius.full,
   },
 });
 

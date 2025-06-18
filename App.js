@@ -492,7 +492,7 @@ function AppContent({ showSplash, onSplashFinish }) {
             component={WorkOrderCreateScreen}
             options={{
               title: '创建工单',
-              headerShown: false
+              headerShown: true // 确保导航栏不显示
             }}
           />
 

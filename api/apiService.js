@@ -48,7 +48,7 @@ Object.keys(API_BASE_URLS).forEach(key => {
         
         // 处理401未授权错误
         if (error.response.status === 401) {
-          console.log(`[${key}] 令牌过期，尝试刷新`);
+          // console.log(`[${key}] 令牌过期，尝试刷新`);
           // 这里可以添加令牌刷新逻辑
         }
       } else {

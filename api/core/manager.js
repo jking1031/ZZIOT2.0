@@ -98,6 +98,7 @@ export const API_ENDPOINTS = {
     }
   },
 
+  // 工单系统API配置已删除
 
   // 站点管理 - 使用NODERED后端
   SITES: {

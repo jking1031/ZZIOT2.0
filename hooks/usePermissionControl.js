@@ -141,13 +141,13 @@ export const usePermissionControl = () => {
     
     // 只有在用户已登录且权限已初始化时才启动定时刷新
     if (user && permissionInfo.initialized && !permissionInfo.isGuest) {
-      console.log('[PermissionControl] 启动定时权限刷新，间隔：1分钟');
+      // console.log('[PermissionControl] 启动定时权限刷新，间隔：1分钟');
       
       intervalId = setInterval(async () => {
-        console.log('[PermissionControl] 执行定时权限刷新');
+        // console.log('[PermissionControl] 执行定时权限刷新');
         try {
           await permissionInitService.refreshPermissions();
-          console.log('[PermissionControl] 定时权限刷新完成');
+          // console.log('[PermissionControl] 定时权限刷新完成');
         } catch (error) {
           console.error('[PermissionControl] 定时权限刷新失败:', error);
         }
@@ -156,7 +156,7 @@ export const usePermissionControl = () => {
 
     return () => {
       if (intervalId) {
-        console.log('[PermissionControl] 清除定时权限刷新');
+        // console.log('[PermissionControl] 清除定时权限刷新');
         clearInterval(intervalId);
       }
     };

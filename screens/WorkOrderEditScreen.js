@@ -520,7 +520,7 @@ const WorkOrderEditScreen = () => {
                 key={user.id}
                 style={[
                   styles.optionItem,
-                  { backgroundColor: formData.assigneeId === user.id ? colors.primary : colors.surface }
+                  { backgroundColor: formData.assigneeId === user?.id ? colors.primary : colors.surface }
                 ]}
                 onPress={() => {
                   updateFormData('assigneeId', user.id);
@@ -529,11 +529,11 @@ const WorkOrderEditScreen = () => {
               >
                 <Text style={[
                   styles.optionText,
-                  { color: formData.assigneeId === user.id ? colors.surface : colors.text.primary }
+                  { color: formData.assigneeId === user?.id ? colors.surface : colors.text.primary }
                 ]}>
                   {user.name}
                 </Text>
-                {formData.assigneeId === user.id && (
+                {formData.assigneeId === user?.id && (
                   <Ionicons name="checkmark" size={20} color={colors.surface} />
                 )}
               </TouchableOpacity>
