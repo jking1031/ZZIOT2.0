@@ -129,9 +129,13 @@ export const AuthProvider = ({ children }) => {
           return btoa(str);
         } catch (e) {
           // 处理包含非ASCII字符的情况
-          // 将字符串转换为UTF-8编码的字节
-          const bytes = new TextEncoder().encode(str);
-          const binString = Array.from(bytes).map(byte => String.fromCharCode(byte)).join('');
+          // 使用兼容的字符串转ArrayBuffer方法
+          const buf = new ArrayBuffer(str.length);
+          const bufView = new Uint8Array(buf);
+          for (let i = 0; i < str.length; i++) {
+            bufView[i] = str.charCodeAt(i);
+          }
+          const binString = Array.from(bufView).map(byte => String.fromCharCode(byte)).join('');
           return btoa(binString);
         }
       };

@@ -1,0 +1,65 @@
+[
+  {
+    "id": "wx_stats_flow",
+    "type": "tab",
+    "label": "微信小程序统计API",
+    "disabled": false,
+    "info": "专门处理微信小程序的统计数据请求"
+  },
+  {
+    "id": "http_in_wx_overview",
+    "type": "http in",
+    "z": "wx_stats_flow",
+    "name": "微信概览数据API",
+    "url": "/api/wx/stats/overview",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 180,
+    "y": 100,
+    "wires": [["wx_overview_processor"]]
+  },
+  {
+    "id": "wx_overview_processor",
+    "type": "function",
+    "z": "wx_stats_flow",
+    "name": "微信概览数据处理",
+    "func": "// 生成请求ID\nmsg.requestId = 'wx_req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);\nmsg.startTime = Date.now();\n\ntry {\n    // 模拟获取统计数据\n    const data = {\n        stats: {\n            totalProcessing_in: 130698.00,\n            totalProcessing_out: 125687.00,\n            carbonUsage: 25424.00,\n            phosphorusRemoval: 13266.60,\n            disinfectant: 1044.00,\n            sludgeProduction: 43.10,\n            electricity: 0.00,\n            pacUsage: 0.00,\n            pamUsage: 0.00\n        },\n        deviceStats: {\n            total: 156,\n            online: 142,\n            offline: 14,\n            alarm: 3\n        },\n        permissions: {\n            canViewReports: true,\n            canManageDevices: false\n        },\n        config: {\n            refreshInterval: 30000,\n            enableNotifications: true\n        }\n    };\n    \n    // 格式化响应\n    const processingTime = Date.now() - msg.startTime;\n    \n    msg.payload = {\n        code: 200,\n        message: 'success',\n        data: data,\n        timestamp: Date.now(),\n        requestId: msg.requestId,\n        version: '1.0',\n        processingTime: processingTime\n    };\n    \n    // 设置响应头\n    msg.headers = {\n        'Content-Type': 'application/json',\n        'X-Request-ID': msg.requestId,\n        'X-Processing-Time': processingTime + 'ms',\n        'Cache-Control': 'no-cache',\n        'Access-Control-Allow-Origin': '*',\n        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',\n        'Access-Control-Allow-Headers': 'Content-Type, Authorization'\n    };\n    \n    msg.statusCode = 200;\n    \n    console.log(`[${msg.requestId}] 微信概览数据请求成功 (${processingTime}ms)`);\n    \n} catch (error) {\n    const processingTime = Date.now() - msg.startTime;\n    \n    msg.payload = {\n        code: 500,\n        message: '服务器内部错误',\n        data: null,\n        error: {\n            type: 'INTERNAL_ERROR',\n            message: error.message\n        },\n        timestamp: Date.now(),\n        requestId: msg.requestId,\n        version: '1.0',\n        processingTime: processingTime\n    };\n    \n    msg.headers = {\n        'Content-Type': 'application/json',\n        'X-Request-ID': msg.requestId,\n        'Access-Control-Allow-Origin': '*'\n    };\n    \n    msg.statusCode = 500;\n    \n    console.error(`[${msg.requestId}] 微信概览数据请求失败: ${error.message} (${processingTime}ms)`);\n}\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 420,
+    "y": 100,
+    "wires": [["http_response_wx"]]
+  },
+  {
+    "id": "http_response_wx",
+    "type": "http response",
+    "z": "wx_stats_flow",
+    "name": "微信HTTP响应",
+    "statusCode": "",
+    "headers": {},
+    "x": 640,
+    "y": 100,
+    "wires": []
+  },
+  {
+    "id": "debug_wx",
+    "type": "debug",
+    "z": "wx_stats_flow",
+    "name": "微信API调试",
+    "active": true,
+    "tosidebar": true,
+    "console": true,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 640,
+    "y": 160,
+    "wires": []
+  }
+]
