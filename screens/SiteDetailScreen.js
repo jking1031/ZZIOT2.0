@@ -6,7 +6,6 @@ import { Ionicons } from '@expo/vector-icons'; // 导入Ionicons图标
 import axios from 'axios';
 import * as Device from 'expo-device'; // 导入设备信息模块
 import AsyncStorage from '@react-native-async-storage/async-storage'; // 导入AsyncStorage
-import { siteApi, logApi } from '../api/apiService';
 
 // 添加安全的toFixed函数
 const safeToFixed = (value, digits = 2) => {
@@ -35,7 +34,7 @@ const globalConnected = { current: false };
 function SiteDetailScreen({ route, navigation }) {
   const { colors, isDarkMode } = useTheme();
   const { siteId, siteName, departments = [] } = route.params;
-  const { user, getUserRoles } = useAuth();
+  const { user, userRoles = [], getUserRoles } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const [inData, setInData] = useState([]);
   const [outData, setOutData] = useState([]);
@@ -49,6 +48,7 @@ function SiteDetailScreen({ route, navigation }) {
   const [updateTimer, setUpdateTimer] = useState(null);
   const [appState, setAppState] = useState(AppState.currentState);
   const [siteDepartments, setSiteDepartments] = useState(departments);
+  const [hasControlPermission, setHasControlPermission] = useState(false);
   const [manualRefreshing, setManualRefreshing] = useState(false); // 添加手动刷新状态
   
   // 添加数据分组状态
@@ -73,7 +73,18 @@ function SiteDetailScreen({ route, navigation }) {
   // 添加flow引用作为组件状态
   const [wsStatusTimeout, setWsStatusTimeout] = useState(null);
 
-
+  // 添加检查权限的ref，防止重复检查
+  const checkingPermissionRef = useRef(false);
+  const permissionRetryCountRef = useRef(0);
+  
+  // 添加一个时间戳跟踪上次权限检查的时间
+  const lastPermissionCheckRef = useRef(0);
+  
+  // 添加本地存储的角色数据，用于直接访问
+  const [localUserRoles, setLocalUserRoles] = useState(userRoles);
+  
+  // 添加一个权限已检查完成的标志
+  const permissionCheckedRef = useRef(false);
   
   // 添加工艺参数设置相关的状态
   const [processModalVisible, setProcessModalVisible] = useState(false);
@@ -82,15 +93,396 @@ function SiteDetailScreen({ route, navigation }) {
   const [upperLimit, setUpperLimit] = useState('');
   const [coefficient, setCoefficient] = useState('');
   
-
+  // 监听全局userRoles变化，更新本地状态
+  useEffect(() => {
+    if (userRoles && userRoles.length > 0) {
+      setLocalUserRoles(userRoles);
+      
+      // 重要：当角色信息发生变化时，重置权限检查完成标志
+      if (permissionCheckedRef.current) {
+        permissionCheckedRef.current = false;
+        permissionRetryCountRef.current = 0;
+      }
+    }
+  }, [userRoles]);
   
+  // 监听部门数据变化，在变化时重置权限检查状态
+  useEffect(() => {
+    // 仅在有实际部门数据时执行，避免组件初始化时的无效触发
+    if (siteDepartments && siteDepartments.length > 0 && permissionCheckedRef.current) {
+      permissionCheckedRef.current = false;
+      permissionRetryCountRef.current = 0;
+    }
+  }, [siteDepartments]);
+  
+  // 检查用户是否有权限控制设备 - 增强版本，避免重复检查
+  const checkControlPermission = useCallback(async (forceCheck = false) => {
+    // 如果已经检查完成且有权限，非强制模式下直接返回
+    if (!forceCheck && permissionCheckedRef.current && hasControlPermission) {
+      // 去掉冗余日志
+      return hasControlPermission;
+    }
+    
+    // 如果正在检查权限，则返回
+    if (checkingPermissionRef.current) {
+      // 去掉冗余日志
+      return hasControlPermission; // 直接返回当前状态
+    }
+    
+    // 非强制检查时，如果权限已经有了，且距离上次检查不超过3秒，则跳过
+    const now = Date.now();
+    if (!forceCheck && hasControlPermission && (now - lastPermissionCheckRef.current < 3000)) {
+      return hasControlPermission;
+    }
+    
+    // 最多重试3次
+    if (permissionRetryCountRef.current >= 3) {
+      console.log('已达到最大权限检查重试次数');
+      return hasControlPermission;
+    }
+    
+    checkingPermissionRef.current = true;
+    permissionRetryCountRef.current++;
+    lastPermissionCheckRef.current = now;
+    
+    try {
+      // 简化第N次开始日志
+      if (permissionRetryCountRef.current > 1) {
+        console.log(`权限检查 (第${permissionRetryCountRef.current}次)`);
+      }
+      
+      // 首先尝试从缓存直接获取角色信息
+      let currentRoles = localUserRoles;
+      
+      // 如果没有本地数据，尝试从AsyncStorage获取
+      if ((!currentRoles || currentRoles.length === 0) && user?.id) {
+        try {
+          const cachedRoles = await AsyncStorage.getItem('userRoles_cache');
+          if (cachedRoles) {
+            const rolesData = JSON.parse(cachedRoles);
+            if (rolesData.userId === user.id && rolesData.roles && rolesData.roles.length > 0) {
+              currentRoles = rolesData.roles;
+              setLocalUserRoles(currentRoles);
+              // 去掉缓存加载日志
+            }
+          }
+        } catch (cacheError) {
+          // 简化错误日志
+          console.log('获取角色缓存失败');
+        }
+      }
+      
+      // 检查是否有角色信息
+      if (!currentRoles || currentRoles.length === 0) {
+        console.log('无法检查权限: 缺少角色信息');
+        
+        // 使用getUserRoles获取最新角色信息
+        if (getUserRoles && user && user.id) {
+          try {
+            const roles = await getUserRoles(user.id, true); // 强制刷新
+            if (roles && roles.length > 0) {
+              setLocalUserRoles(roles); // 更新本地角色
+              currentRoles = roles;
+              // 去掉成功获取角色的日志
+            } else {
+              console.log('获取角色信息成功但为空');
+            }
+          } catch (roleError) {
+            console.error('获取用户角色失败');
+          }
+        }
+        
+        // 如果仍然没有角色，返回失败
+        if (!currentRoles || currentRoles.length === 0) {
+          setHasControlPermission(false);
+          checkingPermissionRef.current = false;
+          return false;
+        }
+      }
+      
+      // 检查是否有siteDepartments
+      let currentDepartments = siteDepartments;
+      if (!currentDepartments || currentDepartments.length === 0) {
+        console.log('无法检查权限: 缺少站点部门信息');
+        
+        // 尝试从缓存获取站点部门信息
+        try {
+          const cachedDepartments = await AsyncStorage.getItem(`site_departments_${siteId}`);
+          if (cachedDepartments) {
+            const deptData = JSON.parse(cachedDepartments);
+            if (deptData.departments && deptData.departments.length > 0) {
+              // 简化部门信息日志
+              setSiteDepartments(deptData.departments);
+              currentDepartments = deptData.departments;
+            }
+          }
+        } catch (cacheError) {
+          console.log('获取站点部门缓存失败');
+        }
+        
+        // 如果仍然没有部门信息，尝试重新获取站点详情
+        if (!currentDepartments || currentDepartments.length === 0) {
+          console.log('正在尝试重新获取站点详情...');
+          try {
+            await fetchSiteDetail();
+            
+            // 直接检查是否有了新数据
+            if (siteDepartments && siteDepartments.length > 0) {
+              currentDepartments = siteDepartments;
+            } else {
+              // 使用传入的部门数据作为最后的备份
+              if (departments && departments.length > 0) {
+                setSiteDepartments(departments);
+                currentDepartments = departments;
+                // 去掉使用路由参数的日志
+              }
+            }
+          } catch (fetchError) {
+            console.error('获取站点详情失败');
+            // 使用传入的部门数据作为最后的备份
+            if (departments && departments.length > 0) {
+              setSiteDepartments(departments);
+              currentDepartments = departments;
+              // 去掉使用路由参数的日志
+            }
+          }
+        }
+        
+        // 如果仍然没有部门信息
+        if (!currentDepartments || currentDepartments.length === 0) {
+          setHasControlPermission(false);
+          checkingPermissionRef.current = false;
+          return false;
+        }
+      }
+      
+      // 管理员始终有权限
+      if (user && (user.is_admin === 1 || user.isAdmin === true)) {
+        console.log('管理员拥有完全控制权限');
+        setHasControlPermission(true);
+        checkingPermissionRef.current = false;
+        return true;
+      }
+      
+      // 从userRoles中提取角色名称
+      const userRoleNames = currentRoles.map(role => {
+        // role可能是对象或直接是ID
+        if (typeof role === 'object' && role !== null) {
+          // 从roleMap中获取角色名称
+          const roleId = role.id || role.role_id;
+          // 在这里确保通过ID找到正确的角色名
+          if (roleId) {
+            // 角色映射示例（在实际实现中，这应该是从Context或API获取）
+            const roleMap = {
+              1: '管理员',
+              2: '部门管理员',
+              3: '运行班组',
+              4: '化验班组',
+              5: '机电班组',
+              6: '污泥车间',
+              7: '5000吨处理站',
+              8: '附属设施',
+              9: '备用权限',
+              10: '超级管理员'
+            };
+            return roleMap[roleId] || role.name;
+          }
+          return role.name;
+        }
+        return role; // 如果role直接是名称字符串
+      }).filter(name => name); // 移除undefined或null
+      
+      // 简化角色和部门日志，只保留权限检查结果
+      console.log('用户角色:', userRoleNames);
+      console.log('站点部门:', currentDepartments);
+      
+      // 超级管理员和管理员角色始终有权限
+      const adminRoles = ['超级管理员', '管理员'];
+      const isAdminRole = userRoleNames.some(roleName => adminRoles.includes(roleName));
+      
+      if (isAdminRole) {
+        console.log('检测到管理员角色，拥有完全控制权限');
+        setHasControlPermission(true);
+        checkingPermissionRef.current = false;
+        permissionRetryCountRef.current = 0;
+        permissionCheckedRef.current = true;
+        return true;
+      }
+      
+      // 检查用户角色是否与站点部门匹配
+      const hasPermission = userRoleNames.some(roleName => 
+        currentDepartments.includes(roleName)
+      );
+      
+      console.log('权限检查结果:', hasPermission ? '有权限' : '无权限');
+      setHasControlPermission(hasPermission);
+      checkingPermissionRef.current = false;
+      
+      // 最后重置重试计数，设置检查完成标志
+      if (hasPermission) {
+        permissionRetryCountRef.current = 0;
+        permissionCheckedRef.current = true; // 标记为已完成成功检查
+      }
+      
+      return hasPermission;
+    } catch (error) {
+      console.error('检查权限出错:', error);
+      setHasControlPermission(false);
+      checkingPermissionRef.current = false;
+      return false;
+    }
+  }, [user, localUserRoles, userRoles, siteDepartments, fetchSiteDetail, siteId, hasControlPermission, getUserRoles, departments]);
 
+  // 在siteDepartments改变时检查权限，但不重复检查
+  useEffect(() => {
+    // 不需要每次都检查，只有当状态关键值改变且未完成检查时才检查
+    if (siteDepartments?.length > 0 && userRoles?.length > 0 && !permissionCheckedRef.current) {
+      // 使用setTimeout确保其他状态更新已完成
+      const timer = setTimeout(() => checkControlPermission(), 500);
+      return () => clearTimeout(timer);
+    }
+  }, [siteDepartments, userRoles, checkControlPermission]);
 
+  // 优化初始加载权限检查
+  useEffect(() => {
+    // 重置权限检查计数器，避免重复初始化
+    if (permissionRetryCountRef.current > 0) {
+      return; // 如果已经开始检查过，就不再重复执行初始检查
+    }
+    
+    permissionRetryCountRef.current = 0;
+    checkingPermissionRef.current = false;
+    
+    // 设置一个递增的延迟检查序列
+    const initialPermissionCheck = async () => {
+      // 简化初始检查日志
+      
+      // 首先检查是否有部门信息，如果没有则直接使用路由参数的部门数据
+      if (!siteDepartments || siteDepartments.length === 0) {
+        if (departments && departments.length > 0) {
+          setSiteDepartments(departments);
+          // 去掉初始化部门数据的日志
+        }
+      }
+      
+      // 尝试预先确保有角色信息
+      if ((!localUserRoles || localUserRoles.length === 0) && getUserRoles && user?.id) {
+        try {
+          // 去掉预先获取角色信息的日志
+          const roles = await getUserRoles(user.id, true); // 使用强制刷新模式
+          if (roles && roles.length > 0) {
+            setLocalUserRoles(roles);
+            // 去掉成功获取角色的日志
+          }
+          // 不管获取结果如何，等待短暂时间让状态更新
+          await new Promise(resolve => setTimeout(resolve, 500));
+        } catch (error) {
+          console.log('预加载角色失败');
+        }
+      }
+      
+      // 立即执行一次权限检查
+      try {
+        const hasPermission = await checkControlPermission(true); // 强制执行初始检查
+        
+        // 如果获取到了权限，就不需要继续了
+        if (hasPermission) {
+          // 去掉初始权限检查成功的日志
+          permissionCheckedRef.current = true;
+          return;
+        }
+        
+        // 如果没有权限并且没有提前返回，只做一次最终检查
+        if (!permissionCheckedRef.current) {
+          // 去掉安排最终检查的日志
+          
+          // 延迟5秒进行最后一次检查
+          setTimeout(async () => {
+            // 如果在这段时间内已经获取到权限，跳过最终检查
+            if (permissionCheckedRef.current || hasControlPermission) {
+              // 去掉已获取权限跳过检查的日志
+              return;
+            }
+            
+            try {
+              // 重置标志以确保可以进行新的检查
+              checkingPermissionRef.current = false;
+              permissionRetryCountRef.current = 0; // 重置以便可以再尝试3次
+              
+              // 去掉执行最终权限检查的日志
+              await checkControlPermission(true);
+            } catch (error) {
+              console.error('权限检查出错');
+            }
+          }, 5000);
+        }
+      } catch (error) {
+        console.error('权限检查过程出错');
+      }
+    };
+    
+    // 延迟执行初始检查，避免与其他useEffect中的检查冲突
+    const timer = setTimeout(initialPermissionCheck, 300);
+    return () => clearTimeout(timer);
+  }, []);  // 减少依赖，只在组件挂载时执行一次
 
-
-
-
-
+  // 优化页面焦点变化时的权限检查
+  useEffect(() => {
+    const focusListener = navigation.addListener('focus', () => {
+      // 简化焦点变化日志
+      
+      // 如果已经有权限，就不再重复检查
+      if (hasControlPermission || permissionCheckedRef.current) {
+        // 去掉已有权限的日志
+        return;
+      }
+      
+      // 优先尝试加载角色数据
+      const loadRolesAndCheck = async () => {
+        try {
+          // 重置检查标志
+          checkingPermissionRef.current = false;
+          
+          // 如果没有角色数据，先尝试获取
+          if ((!localUserRoles || localUserRoles.length === 0) && getUserRoles && user?.id) {
+            // 去掉焦点检查预加载日志
+            const roles = await getUserRoles(user.id);
+            if (roles && roles.length > 0) {
+              setLocalUserRoles(roles);
+              // 去掉焦点检查成功获取日志
+            }
+          }
+          
+          // 如果已经完成了权限检查，跳过
+          if (permissionCheckedRef.current) {
+            // 去掉焦点检查已完成的日志
+            return;
+          }
+          
+          // 延迟检查权限以确保数据已更新
+          setTimeout(() => {
+            // 再次检查当前是否已经完成权限验证
+            if (!permissionCheckedRef.current && !hasControlPermission) {
+              checkControlPermission(true);
+            }
+          }, 800);
+        } catch (error) {
+          console.error('焦点变化权限检查错误');
+          // 尽管出错，仍尝试检查权限
+          if (!permissionCheckedRef.current) {
+            setTimeout(() => checkControlPermission(true), 800);
+          }
+        }
+      };
+      
+      // 执行加载和检查
+      loadRolesAndCheck();
+    });
+    
+    return () => {
+      focusListener();
+    };
+  }, [navigation, checkControlPermission, hasControlPermission, user, getUserRoles, localUserRoles]);
 
   // 首先声明fetchSiteDetailHttp函数
   const fetchSiteDetailHttp = useCallback(async () => {
@@ -102,12 +494,13 @@ function SiteDetailScreen({ route, navigation }) {
     controllerRef.current = controller;
 
     try {
-      const response = await siteApi.getSiteDetail(siteId);
-      console.log('站点详情API响应:', response);
+      const response = await axios.get(`https://nodered.jzz77.cn:9003/api/sites/site/${siteId}`, {
+        signal: controller.signal,
+        timeout: 10000
+      });
 
-      // 直接使用响应数据，不需要 .data 属性
-      const data = response;
-      if (data) {
+      if (response.data) {
+        const data = response.data;
         if (data.indata) setInData(data.indata);
         if (data.outdata) setOutData(data.outdata);
         if (data.devices) setDevices(data.devices);
@@ -212,7 +605,17 @@ function SiteDetailScreen({ route, navigation }) {
     // WebSocket不可用或请求失败时，使用HTTP API
     await fetchSiteDetailHttp();
     
-  }, [siteId, wsConnected, wsRef, fetchSiteDetailHttp]);
+    // 只有当没有权限且未完成权限检查时才在获取数据后检查权限
+    if (!hasControlPermission && !permissionCheckedRef.current && siteDepartments && siteDepartments.length > 0) {
+      // 延迟检查以确保状态已更新，但不添加日志
+      setTimeout(() => {
+        // 再次检查，确保仍然需要检查权限
+        if (!hasControlPermission && !permissionCheckedRef.current) {
+          checkControlPermission();
+        }
+      }, 500);
+    }
+  }, [siteId, wsConnected, wsRef, fetchSiteDetailHttp, hasControlPermission, siteDepartments, checkControlPermission, permissionCheckedRef]);
 
   const startDataFetching = useCallback(() => {
     // 避免重复调用
@@ -273,7 +676,13 @@ function SiteDetailScreen({ route, navigation }) {
       
       // 发送日志到服务器
       try {
-        const response = await logApi.createLog(logData);
+        const response = await axios.post('https://nodered.jzz77.cn:9003/api/logs', logData, {
+          timeout: 10000, // 增加超时时间
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
+        });
         console.log('操作日志已记录:', response.status);
       } catch (apiError) {
         console.error('发送日志到服务器失败:', apiError.message);
@@ -830,7 +1239,8 @@ function SiteDetailScreen({ route, navigation }) {
       setWsConnected(true);
     }
     
-
+    // 初始检查权限
+    checkControlPermission();
     
     // 仅当页面获得焦点时处理WebSocket连接
     let hadFocus = false; // 记录是否曾经获得过焦点
@@ -953,11 +1363,16 @@ function SiteDetailScreen({ route, navigation }) {
   // 保留原有HTTP控制命令逻辑作为备份
   const sendCommand = async (command) => {
     try {
-      const response = await siteApi.sendCommand(siteId, command);
+      const response = await axios.post(`https://nodered.jzz77.cn:9003/api/site/${siteId}/command`, command, {
+        timeout: 10000,
+        validateStatus: function (status) {
+          return status >= 200 && status < 300;
+        }
+      });
       
       // 发送命令后立即获取最新数据
       await fetchSiteDetail();
-      return response;
+      return response.data;
     } catch (error) {
       console.error('发送控制命令失败:', error);
       throw error;
@@ -967,7 +1382,10 @@ function SiteDetailScreen({ route, navigation }) {
   // 修改设备控制函数使用WebSocket
   const handleDeviceControl = async (deviceName, action) => {
     // 权限检查
-
+    if (!hasControlPermission) {
+      Alert.alert('权限不足', '您没有控制此设备的权限');
+      return;
+    }
 
     try {
       // 记录操作日志
@@ -997,7 +1415,11 @@ function SiteDetailScreen({ route, navigation }) {
 
   // 修改阀门控制函数使用WebSocket
   const handleValveControl = async (valveName, action, openKey, closeKey) => {
-
+    // 权限检查
+    if (!hasControlPermission) {
+      Alert.alert('权限不足', '您没有控制此阀门的权限');
+      return;
+    }
 
     try {
       // 记录操作日志
@@ -1032,7 +1454,10 @@ function SiteDetailScreen({ route, navigation }) {
   // 修改频率设置函数使用WebSocket
   const handleSetFrequency = async (deviceName, frequency) => {
     // 权限检查
-
+    if (!hasControlPermission) {
+      Alert.alert('权限不足', '您没有设置此设备频率的权限');
+      return;
+    }
 
     try {
       // 记录操作日志
@@ -1161,11 +1586,15 @@ function SiteDetailScreen({ route, navigation }) {
       key={item.name}
       style={[styles.card, { backgroundColor: colors.card }]}
       onPress={() => {
+        if (!hasControlPermission) {
+          Alert.alert('权限不足', '您没有设置此设备频率的权限');
+          return;
+        }
         setSelectedDevice(item);
         setNewFrequency(item.sethz?.toString() || '');
         setModalVisible(true);
       }}
-      disabled={pendingCommands[item.name]?.status === 'pending'}
+      disabled={pendingCommands[item.name]?.status === 'pending' || !hasControlPermission}
     >
       <Text style={[styles.cardTitle, { color: colors.text }]}>{item.name}</Text>
       <View style={styles.dataContainer}>
@@ -1180,7 +1609,11 @@ function SiteDetailScreen({ route, navigation }) {
         </Text>
       )}
       <CommandStatusDisplay deviceId={item.name} />
-
+      {!hasControlPermission && (
+        <View style={styles.noPermissionBadge}>
+          <Text style={styles.noPermissionText}>无控制权限</Text>
+        </View>
+      )}
     </TouchableOpacity>
   );
   
@@ -1203,13 +1636,13 @@ function SiteDetailScreen({ route, navigation }) {
         <View style={styles.controlButtonContainer}>
           <TouchableOpacity
             onPress={() => handleDeviceControl(device.name, device.run ? 'stop' : 'start')}
-            disabled={pendingCommands[device.name]?.status === 'pending'}
+            disabled={pendingCommands[device.name]?.status === 'pending' || !hasControlPermission}
           >
             <Text
               style={[
                 styles.controlButton, 
                 { backgroundColor: device.run ? '#FF5252' : '#4CAF50' },
-                (pendingCommands[device.name]?.status === 'pending') && { opacity: 0.6 }
+                (pendingCommands[device.name]?.status === 'pending' || !hasControlPermission) && { opacity: 0.6 }
               ]}
             >
               {pendingCommands[device.name]?.status === 'pending' 
@@ -1220,7 +1653,11 @@ function SiteDetailScreen({ route, navigation }) {
         </View>
       </View>
       <CommandStatusDisplay deviceId={device.name} />
-
+      {!hasControlPermission && (
+        <View style={styles.noPermissionBadge}>
+          <Text style={styles.noPermissionText}>无控制权限</Text>
+        </View>
+      )}
     </View>
   );
   
@@ -1248,13 +1685,13 @@ function SiteDetailScreen({ route, navigation }) {
               valve.openKey,
               valve.closeKey
             )}
-            disabled={valve.fault === 1 || pendingCommands[valve.name]?.status === 'pending'}
+            disabled={valve.fault === 1 || pendingCommands[valve.name]?.status === 'pending' || !hasControlPermission}
           >
             <Text
               style={[
                 styles.controlButton,
                 { backgroundColor: valve.open ? '#FF5252' : '#4CAF50' },
-                (valve.fault === 1 || pendingCommands[valve.name]?.status === 'pending') && { opacity: 0.5 }
+                (valve.fault === 1 || pendingCommands[valve.name]?.status === 'pending' || !hasControlPermission) && { opacity: 0.5 }
               ]}
             >
               {pendingCommands[valve.name]?.status === 'pending' 
@@ -1265,7 +1702,11 @@ function SiteDetailScreen({ route, navigation }) {
         </View>
       </View>
       <CommandStatusDisplay deviceId={valve.name} />
-
+      {!hasControlPermission && (
+        <View style={styles.noPermissionBadge}>
+          <Text style={styles.noPermissionText}>无控制权限</Text>
+        </View>
+      )}
     </View>
   );
   
@@ -1340,7 +1781,10 @@ function SiteDetailScreen({ route, navigation }) {
   // 修改工艺参数控制函数使用WebSocket
   const handleProcessControl = async (processName, action, params = {}) => {
     // 权限检查
-
+    if (!hasControlPermission) {
+      Alert.alert('权限不足', '您没有设置工艺参数的权限');
+      return;
+    }
 
     try {
       // 记录操作日志
@@ -1372,7 +1816,10 @@ function SiteDetailScreen({ route, navigation }) {
 
   // 处理工艺参数点击，打开设置窗口
   const handleProcessClick = (process) => {
-
+    if (!hasControlPermission) {
+      Alert.alert('权限不足', '您没有设置工艺参数的权限');
+      return;
+    }
     
     setSelectedProcess(process);
     setLowerLimit(process.lowerLimit?.toString() || '');
@@ -1417,6 +1864,7 @@ function SiteDetailScreen({ route, navigation }) {
         item.status === 'abnormal' && styles.abnormalCard
       ]}
       onPress={() => handleProcessClick(item)}
+      disabled={!hasControlPermission}
     >
       <Text style={[styles.cardTitle, { color: colors.text }]}>{item.name}</Text>
       <View style={styles.processDataRow}>
@@ -1456,7 +1904,11 @@ function SiteDetailScreen({ route, navigation }) {
         </View>
       )}
       
-
+      {!hasControlPermission && (
+        <View style={styles.noPermissionBadge}>
+          <Text style={styles.noPermissionText}>无设置权限</Text>
+        </View>
+      )}
     </TouchableOpacity>
   );
 
@@ -1481,7 +1933,7 @@ function SiteDetailScreen({ route, navigation }) {
           {new Date(item.timestamp).toLocaleString('zh-CN', { hour12: false })}
         </Text>
         
-        {item.status === 'unconfirmed' && (
+        {item.status === 'unconfirmed' && hasControlPermission && (
           <TouchableOpacity 
             style={styles.confirmButton}
             onPress={() => handleAlarmConfirm(item.id)}
@@ -1616,12 +2068,14 @@ function SiteDetailScreen({ route, navigation }) {
           </View>
         </View>
         
-        <TouchableOpacity 
-          style={[styles.maintenanceButton, { backgroundColor: '#2196F3' }]}
-          onPress={() => handleShowMaintenanceDetail(item)}
-        >
-          <Text style={styles.maintenanceButtonText}>查看详情</Text>
-        </TouchableOpacity>
+        {hasControlPermission && (
+          <TouchableOpacity 
+            style={[styles.maintenanceButton, { backgroundColor: '#2196F3' }]}
+            onPress={() => handleShowMaintenanceDetail(item)}
+          >
+            <Text style={styles.maintenanceButtonText}>查看详情</Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
   };
@@ -1702,6 +2156,11 @@ function SiteDetailScreen({ route, navigation }) {
 
   // 报警确认处理函数
   const handleAlarmConfirm = useCallback(async (alarmId) => {
+    if (!hasControlPermission) {
+      Alert.alert('权限不足', '您没有确认报警的权限');
+      return;
+    }
+
     try {
       // 记录操作日志
       logOperation(alarmId, '报警管理', '确认报警');
@@ -1725,7 +2184,7 @@ function SiteDetailScreen({ route, navigation }) {
         console.error('HTTP报警确认也失败:', httpError);
       }
     }
-  }, [sendCommandWs, sendCommand, logOperation]);
+  }, [hasControlPermission, sendCommandWs, sendCommand, logOperation]);
 
   // 设备维护详情处理函数
   const handleShowMaintenanceDetail = useCallback((device) => {
@@ -2006,11 +2465,15 @@ function SiteDetailScreen({ route, navigation }) {
                 key={item.name}
                 style={[styles.card, { backgroundColor: colors.card }]}
                 onPress={() => {
+                      if (!hasControlPermission) {
+                        Alert.alert('权限不足', '您没有设置此设备频率的权限');
+                        return;
+                      }
                   setSelectedDevice(item);
                   setNewFrequency(item.sethz?.toString() || '');
                   setModalVisible(true);
                 }}
-                    disabled={pendingCommands[item.name]?.status === 'pending'}
+                    disabled={pendingCommands[item.name]?.status === 'pending' || !hasControlPermission}
               >
                 <Text style={[styles.cardTitle, { color: colors.text }]}>{item.name}</Text>
                 <View style={styles.dataContainer}>
@@ -2025,7 +2488,11 @@ function SiteDetailScreen({ route, navigation }) {
                   </Text>
                 )}
                     <CommandStatusDisplay deviceId={item.name} />
-
+                    {!hasControlPermission && (
+                      <View style={styles.noPermissionBadge}>
+                        <Text style={styles.noPermissionText}>无控制权限</Text>
+                      </View>
+                )}
               </TouchableOpacity>
             ))}
           </View>
@@ -2054,13 +2521,13 @@ function SiteDetailScreen({ route, navigation }) {
                   <View style={styles.controlButtonContainer}>
                         <TouchableOpacity
                       onPress={() => handleDeviceControl(device.name, device.run ? 'stop' : 'start')}
-                          disabled={pendingCommands[device.name]?.status === 'pending'}
+                          disabled={pendingCommands[device.name]?.status === 'pending' || !hasControlPermission}
                         >
                           <Text
                             style={[
                               styles.controlButton, 
                               { backgroundColor: device.run ? '#FF5252' : '#4CAF50' },
-                              pendingCommands[device.name]?.status === 'pending' && { opacity: 0.6 }
+                              (pendingCommands[device.name]?.status === 'pending' || !hasControlPermission) && { opacity: 0.6 }
                             ]}
                           >
                             {pendingCommands[device.name]?.status === 'pending' 
@@ -2071,7 +2538,11 @@ function SiteDetailScreen({ route, navigation }) {
                   </View>
                 </View>
                     <CommandStatusDisplay deviceId={device.name} />
-
+                    {!hasControlPermission && (
+                      <View style={styles.noPermissionBadge}>
+                        <Text style={styles.noPermissionText}>无控制权限</Text>
+                      </View>
+                    )}
               </View>
             ))}
           </View>
@@ -2104,13 +2575,13 @@ function SiteDetailScreen({ route, navigation }) {
                         valve.openKey,
                         valve.closeKey
                       )}
-                          disabled={valve.fault === 1 || pendingCommands[valve.name]?.status === 'pending'}
+                          disabled={valve.fault === 1 || pendingCommands[valve.name]?.status === 'pending' || !hasControlPermission}
                     >
                       <Text
                         style={[
                           styles.controlButton,
                           { backgroundColor: valve.open ? '#FF5252' : '#4CAF50' },
-                              (valve.fault === 1 || pendingCommands[valve.name]?.status === 'pending') && { opacity: 0.5 }
+                              (valve.fault === 1 || pendingCommands[valve.name]?.status === 'pending' || !hasControlPermission) && { opacity: 0.5 }
                         ]}
                       >
                             {pendingCommands[valve.name]?.status === 'pending' 
@@ -2121,7 +2592,11 @@ function SiteDetailScreen({ route, navigation }) {
                   </View>
                 </View>
                     <CommandStatusDisplay deviceId={valve.name} />
-
+                    {!hasControlPermission && (
+                      <View style={styles.noPermissionBadge}>
+                        <Text style={styles.noPermissionText}>无控制权限</Text>
+                      </View>
+                    )}
               </View>
             ))}
           </View>
@@ -2266,25 +2741,23 @@ function SiteDetailScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 16,
+    padding: 15,
   },
   connectionStatusContainer: {
-    marginBottom: 16,
-    padding: 16,
-    borderRadius: 12,
+    marginBottom: 15,
+    padding: 12,
+    borderRadius: 10,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 4,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.06)',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   connectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   statusGroup: {
     flex: 1,
@@ -2292,40 +2765,32 @@ const styles = StyleSheet.create({
   connectionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   connectionStatus: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
-    elevation: 2,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 8,
   },
   connectionText: {
-    fontSize: 15,
-    fontWeight: '600',
-    letterSpacing: 0.2,
+    fontSize: 14,
+    fontWeight: '500',
   },
   lastUpdateText: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#666666',
-    marginRight: 10,
-    fontWeight: '500',
-    letterSpacing: 0.1,
+    marginRight: 8,
   },
   section: {
-    marginBottom: 24,
+    marginBottom: 20,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 16,
-    letterSpacing: 0.3,
-    opacity: 0.95,
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 12,
+    letterSpacing: 0.5,
+    opacity: 0.9,
   },
   cardGrid: {
     flexDirection: 'row',
@@ -2334,132 +2799,116 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '48%',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 10,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
     borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.06)',
+    borderColor: 'rgba(0, 0, 0, 0.05)',
     backgroundColor: '#FFFFFF',
-    transform: [{ scale: 1 }],
   },
   cardTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 8,
-    letterSpacing: 0.3,
-    opacity: 0.95,
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 6,
+    letterSpacing: 0.2,
+    opacity: 0.9,
   },
   dataContainer: {
     flexDirection: 'row',
     alignItems: 'baseline',
   },
   dataValue: {
-    fontSize: 22,
-    fontWeight: '800',
-    marginRight: 4,
-    letterSpacing: 0.2,
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginRight: 3,
+    letterSpacing: 0.3,
   },
   dataUnit: {
-    fontSize: 12,
-    opacity: 0.85,
-    fontWeight: '500',
+    fontSize: 11,
+    opacity: 0.8,
   },
   deviceControlContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 8,
   },
   deviceStatus: {
-    fontSize: 14,
-    fontWeight: '700',
-    marginRight: 8,
+    fontSize: 13,
+    fontWeight: '600',
+    marginRight: 6,
     letterSpacing: 0.2,
   },
   alarmStatus: {
     color: '#FF5252',
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '600',
     backgroundColor: 'rgba(255, 82, 82, 0.15)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 82, 82, 0.3)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
   controlButton: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 4,
     color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '600',
     overflow: 'hidden',
     textShadowColor: 'rgba(0, 0, 0, 0.3)',
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-    letterSpacing: 0.2,
+    textShadowRadius: 1,
   },
   frequencySetpoint: {
-    fontSize: 12,
-    marginTop: 6,
-    opacity: 0.85,
+    fontSize: 11,
+    marginTop: 4,
+    opacity: 0.8,
     letterSpacing: 0.1,
-    fontWeight: '500',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   modalContent: {
-    width: '85%',
-    borderRadius: 16,
-    padding: 24,
+    width: '80%',
+    borderRadius: 10,
+    padding: 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 20,
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 15,
     textAlign: 'center',
-    letterSpacing: 0.3,
   },
   frequencyInput: {
-    borderWidth: 1.5,
-    borderRadius: 8,
-    padding: 14,
-    marginBottom: 18,
+    borderWidth: 1,
+    borderRadius: 5,
+    padding: 10,
+    marginBottom: 15,
     fontSize: 16,
-    fontWeight: '500',
   },
   modalButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 8,
   },
   modalButton: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    marginHorizontal: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
+    paddingVertical: 10,
+    borderRadius: 5,
+    marginHorizontal: 5,
   },
   cancelButton: {
     backgroundColor: '#FF5252',
@@ -2471,8 +2920,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     textAlign: 'center',
     fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 0.2,
+    fontWeight: '500',
   },
   // 新增样式
   wsStatusContainer: {
@@ -2490,121 +2938,85 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   statusBadge: {
-    marginTop: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
+    marginTop: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
     borderWidth: 1,
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)'
   },
   noPermissionBadge: {
-    marginTop: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1.5,
+    marginTop: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    borderWidth: 1,
     borderColor: '#FF5252',
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(255, 82, 82, 0.12)',
-    shadowColor: '#FF5252',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
-    elevation: 2,
+    backgroundColor: 'rgba(255, 82, 82, 0.1)'
   },
   noPermissionText: {
     color: '#FF5252',
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0.2,
+    fontSize: 12,
+    fontWeight: '600',
   },
   refreshButton: {
-    padding: 10,
-    borderRadius: 22,
-    backgroundColor: 'rgba(33, 150, 243, 0.12)',
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(33, 150, 243, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
-    height: 40,
-    width: 40,
-    shadowColor: '#2196F3',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
-    borderWidth: 1,
-    borderColor: 'rgba(33, 150, 243, 0.2)',
+    height: 36,
+    width: 36,
   },
   refreshingButton: {
     backgroundColor: 'rgba(33, 150, 243, 0.6)',
-    transform: [{ scale: 0.95 }],
   },
   timeAndRefreshContainer: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   trendBadge: {
-    marginTop: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
+    marginTop: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
     alignSelf: 'flex-start',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
   },
   warningBadge: {
-    marginTop: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1.5,
+    marginTop: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    borderWidth: 1,
     borderColor: '#FF9800',
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(255, 152, 0, 0.12)',
-    shadowColor: '#FF9800',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
-    elevation: 2,
+    backgroundColor: 'rgba(255, 152, 0, 0.1)'
   },
   warningText: {
     color: '#FF9800',
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0.2,
+    fontSize: 12,
+    fontWeight: '600',
   },
   runtimeContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 12,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(0, 0, 0, 0.08)',
+    marginTop: 8,
   },
   runtimeItem: {
     flex: 1,
     alignItems: 'center',
   },
   runtimeValue: {
-    fontSize: 20,
-    fontWeight: '800',
+    fontSize: 18,
+    fontWeight: 'bold',
     color: '#2196F3',
-    letterSpacing: 0.2,
   },
   runtimeLabel: {
-    fontSize: 12,
-    marginTop: 4,
-    opacity: 0.85,
-    fontWeight: '500',
-    letterSpacing: 0.1,
+    fontSize: 11,
+    color: '#666666',
+    marginTop: 2,
   },
   runtimeDivider: {
     width: 1,
@@ -2829,38 +3241,29 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   visibilityToggle: {
-    padding: 6,
-    borderRadius: 6,
-    borderWidth: 1.5,
+    padding: 4,
+    borderRadius: 4,
+    borderWidth: 1,
     borderColor: '#2196F3',
     alignItems: 'center',
-    shadowColor: '#2196F3',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
-    elevation: 2,
-    backgroundColor: 'rgba(33, 150, 243, 0.05)',
   },
   visibilityText: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#2196F3',
-    fontWeight: '700',
-    letterSpacing: 0.2,
+    fontWeight: '600',
   },
   visibilityTextDisabled: {
     color: '#FF5252',
-    fontWeight: '700',
-    letterSpacing: 0.2,
+    fontWeight: '600',
   },
   modalLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    marginTop: 12,
-    marginBottom: 6,
-    letterSpacing: 0.2,
+    fontSize: 14,
+    fontWeight: '500',
+    marginTop: 10,
+    marginBottom: 4,
   },
   processCoefficient: {
     fontSize: 12,
