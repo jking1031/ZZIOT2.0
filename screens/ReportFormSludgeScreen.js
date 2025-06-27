@@ -69,8 +69,8 @@ const ReportFormSludgeScreen = ({ route }) => {
         const userData = await AsyncStorage.getItem('user');
         if (userData) {
           const user = JSON.parse(userData);
-          // 使用用户姓名，如果不存在则使用用户名
-          const operatorName = user.real_name || user.username || '';
+          // 使用员工姓名，如果不存在则使用用户名
+          const operatorName = user.nickname || user.username || '';
           setFormData(prevData => ({
             ...prevData,
             operator: operatorName

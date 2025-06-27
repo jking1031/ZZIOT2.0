@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { StyleSheet, View, Text, ScrollView, RefreshControl, Modal, TextInput, TouchableOpacity, AppState, Platform, Alert, ActivityIndicator, TouchableWithoutFeedback, Keyboard } from 'react-native';
-import { useTheme } from '../context/ThemeContext';
+
 import { useAuth } from '../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons'; // 导入Ionicons图标
 import axios from 'axios';
@@ -32,7 +32,7 @@ const globalReconnectTimeoutRef = { current: null };
 const globalConnected = { current: false };
 
 function SiteDetailScreen({ route, navigation }) {
-  const { colors, isDarkMode } = useTheme();
+  const colors = { primary: '#667eea', secondary: '#764ba2' }; // 固定颜色主题
   const { siteId, siteName, departments = [] } = route.params;
   const { user, userRoles = [], getUserRoles } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
@@ -1554,8 +1554,8 @@ function SiteDetailScreen({ route, navigation }) {
       <View style={[styles.connectionStatus, { backgroundColor: wsConnected ? '#4CAF50' : '#FF5252' }]} />
       <Text style={[styles.connectionText, { color: colors.text }]}>
         {wsConnected 
-          ? '设备控制已连接' 
-          : '设备控制未连接'}
+          ? '控制已连接' 
+          : '控制未连接'}
       </Text>
     </View>
   );
@@ -2378,7 +2378,7 @@ function SiteDetailScreen({ route, navigation }) {
             <View style={styles.connectionRow}>
         <View style={[styles.connectionStatus, { backgroundColor: updateTimer ? '#4CAF50' : '#FF5252' }]} />
         <Text style={[styles.connectionText, { color: colors.text }]}>
-          {updateTimer ? '自动更新已开启' : '自动更新已关闭'}
+          {updateTimer ? '更新已开启' : '更新已关闭'}
         </Text>
             </View>
             
